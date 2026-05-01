@@ -80,8 +80,8 @@ func TickPlayerPoison(p *world.PlayerInfo, deps *handler.Deps) {
 			p.Paralyzed = true
 			// 視覺：綠色→灰色
 			broadcastPlayerPoison(p, 2, deps) // 灰色
-			// S_Paralysis: 怪物麻痺毒施加（Java TYPE_PARALYSIS2, true → 0x04）
-			handler.SendParalysis(p.Session, handler.ParalysisMobApply)
+			// yiwei L1ParalysisPoison 使用 S_Paralysis(TYPE_PARALYSIS, true)。
+			handler.SendParalysis(p.Session, handler.ParalysisApply)
 		}
 
 	case 4: // 麻痺毒已麻痺（灰色，不可動）
@@ -126,7 +126,7 @@ func CurePoison(p *world.PlayerInfo, deps *handler.Deps) {
 		if !shouldStayParalyzed(p, true, false) {
 			p.Paralyzed = false
 		}
-		handler.SendParalysis(p.Session, handler.ParalysisMobRemove) // 0x05
+		handler.SendParalysis(p.Session, handler.ParalysisRemove) // 0x03
 	}
 
 	// 沉默毒 → 解除沉默
@@ -187,41 +187,107 @@ func shouldStayParalyzed(p *world.PlayerInfo, skipPoison, skipCurse bool) bool {
 // ApplyNpcPoisonAttack 怪物攻擊後的施毒判定（Java L1AttackNpc.addNpcPoisonAttack）。
 // 15% 機率觸發，單毒限制（已中毒不可再次中毒）。
 func ApplyNpcPoisonAttack(npc *world.NpcInfo, target *world.PlayerInfo, ws *world.State, deps *handler.Deps) {
+	ApplyNpcPoisonAttackWithRoll(npc, target, deps, world.RandInt(100))
+}
+
+func ApplyNpcPoisonAttackWithRoll(npc *world.NpcInfo, target *world.PlayerInfo, deps *handler.Deps, roll int) {
 	// 已中毒 → 不可再次中毒（Java: getPoison() != null → 拒絕）
-	if target.PoisonType != 0 {
+	if !canApplyPoisonToPlayer(target) {
 		return
 	}
 
-	// TODO: 防毒免疫檢查（venom_resist 道具、VENOM_RESIST 技能、DRAGON5 技能）
-	// 這些系統尚未實現，預留檢查位
-
 	// 15% 機率觸發（Java: if (15 >= _random.nextInt(100) + 1)）
-	if world.RandInt(100) >= 15 {
+	if roll >= 15 {
 		return
 	}
 
 	switch npc.PoisonAtk {
 	case 1: // 傷害毒（Java: L1DamagePoison.doInfection(_npc, target, 3000, 20)）
-		target.PoisonType = 1
-		target.PoisonTicksLeft = 150 // 30 秒 = 150 ticks
-		target.PoisonDmgTimer = 0
-		target.PoisonDmgAmount = 20 // NPC 攻擊型傷害毒：每次 20
-		target.PoisonAttacker = 0   // NPC 攻擊暫不追蹤歸屬
-		broadcastPlayerPoison(target, 1, deps) // 綠色
-
+		applyDamagePoisonToPlayer(target, 0, 20, deps)
 	case 2: // 沉默毒（Java: L1SilencePoison.doInfection(target)）
-		target.PoisonType = 2
-		target.PoisonTicksLeft = 0 // 永久（直到解毒）
-		target.Silenced = true
-		broadcastPlayerPoison(target, 1, deps) // 綠色
-		handler.SendServerMessage(target.Session, 310) // "喉嚨受到乾燥，無法發動魔法。"
-
+		applySilencePoisonToPlayer(target, deps)
 	case 4: // 麻痺毒延遲（Java: L1ParalysisPoison.doInfection(target, 20000, 16000)）
-		target.PoisonType = 3 // 階段一：延遲中
-		target.PoisonTicksLeft = 100 // 20 秒 = 100 ticks
-		broadcastPlayerPoison(target, 1, deps) // 綠色
-		handler.SendServerMessage(target.Session, 212) // "你的身體漸漸麻痺。"
+		applyParalysisPoisonToPlayer(target, deps)
 	}
+}
+
+// applySilencePoisonToPlayer 對玩家施加沉默毒（永久直到解毒）。
+// Java: L1SilencePoison.doInfection。
+func applySilencePoisonToPlayer(target *world.PlayerInfo, deps *handler.Deps) {
+	target.PoisonType = 2
+	target.PoisonTicksLeft = 0
+	target.Silenced = true
+	broadcastPlayerPoison(target, 1, deps)
+	handler.SendServerMessage(target.Session, 310) // "喉嚨受到乾燥，無法發動魔法。"
+}
+
+// applyParalysisPoisonToPlayer 對玩家施加麻痺毒延遲階段（20 秒延遲後麻痺 16 秒）。
+// Java: L1ParalysisPoison.doInfection(target, 20000, 16000)。
+func applyParalysisPoisonToPlayer(target *world.PlayerInfo, deps *handler.Deps) {
+	target.PoisonType = 3 // 階段一：延遲中
+	target.PoisonTicksLeft = 100
+	broadcastPlayerPoison(target, 1, deps)
+	handler.SendServerMessage(target.Session, 212) // "你的身體漸漸麻痺。"
+}
+
+func applyEnchantVenomPoisonToPlayer(attacker, target *world.PlayerInfo, deps *handler.Deps) bool {
+	return applyEnchantVenomPoisonToPlayerWithRoll(attacker, target, deps, world.RandInt(100))
+}
+
+func applyEnchantVenomPoisonToPlayerWithRoll(attacker, target *world.PlayerInfo, deps *handler.Deps, roll int) bool {
+	if attacker == nil || target == nil || !attacker.HasBuff(98) || attacker.Equip.Weapon() == nil || roll >= 10 {
+		return false
+	}
+	return applyDamagePoisonToPlayer(target, attacker.SessionID, 5, deps)
+}
+
+func applyEnchantVenomPoisonToNpc(attacker *world.PlayerInfo, npc *world.NpcInfo, deps *handler.Deps) bool {
+	return applyEnchantVenomPoisonToNpcWithRoll(attacker, npc, deps, world.RandInt(100))
+}
+
+func applyEnchantVenomPoisonToNpcWithRoll(attacker *world.PlayerInfo, npc *world.NpcInfo, deps *handler.Deps, roll int) bool {
+	if attacker == nil || npc == nil || !attacker.HasBuff(98) || attacker.Equip.Weapon() == nil || roll >= 10 {
+		return false
+	}
+	return applyDamagePoisonToNpc(npc, attacker.SessionID, 5, deps)
+}
+
+func applyDamagePoisonToPlayer(target *world.PlayerInfo, attackerSID uint64, amount int16, deps *handler.Deps) bool {
+	if !canApplyPoisonToPlayer(target) {
+		return false
+	}
+	target.PoisonType = 1
+	target.PoisonTicksLeft = 150
+	target.PoisonDmgTimer = 0
+	target.PoisonDmgAmount = amount
+	target.PoisonAttacker = attackerSID
+	broadcastPlayerPoison(target, 1, deps)
+	return true
+}
+
+func applyDamagePoisonToNpc(npc *world.NpcInfo, attackerSID uint64, amount int32, deps *handler.Deps) bool {
+	if npc == nil || npc.Dead || npc.PoisonDmgAmt > 0 {
+		return false
+	}
+	npc.PoisonDmgAmt = amount
+	npc.PoisonDmgTimer = 0
+	npc.PoisonAttackerSID = attackerSID
+	if deps != nil && deps.World != nil {
+		nearby := deps.World.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+		handler.BroadcastToPlayers(nearby, handler.BuildPoison(npc.ID, 1))
+	}
+	return true
+}
+
+func canApplyPoisonToPlayer(target *world.PlayerInfo) bool {
+	if target == nil || target.PoisonType != 0 {
+		return false
+	}
+	return !hasPoisonResistance(target)
+}
+
+func hasPoisonResistance(target *world.PlayerInfo) bool {
+	return target != nil && (target.HasBuff(104) || target.HasBuff(6687))
 }
 
 // broadcastPlayerPoison 廣播 S_Poison 到附近所有玩家（含自己）。
@@ -239,4 +305,24 @@ func broadcastPlayerPoison(target *world.PlayerInfo, poisonType byte, deps *hand
 // BroadcastPlayerPoison 廣播毒素色調到附近所有玩家。Exported for other system packages.
 func BroadcastPlayerPoison(target *world.PlayerInfo, poisonType byte, deps *handler.Deps) {
 	broadcastPlayerPoison(target, poisonType, deps)
+}
+
+// GMApplyPoison GM 指令用：對玩家施加指定毒類型，效果與怪物施毒完全等同。
+// ptype 對應 npc.PoisonAtk: 1=傷害毒, 2=沉默毒（卡司特毒）, 4=麻痺毒延遲。
+// 已中毒或具毒抵抗時回傳 false（與怪物施毒邏輯一致）。
+func GMApplyPoison(target *world.PlayerInfo, ptype byte, deps *handler.Deps) bool {
+	if !canApplyPoisonToPlayer(target) {
+		return false
+	}
+	switch ptype {
+	case 1:
+		return applyDamagePoisonToPlayer(target, 0, 20, deps)
+	case 2:
+		applySilencePoisonToPlayer(target, deps)
+		return true
+	case 4:
+		applyParalysisPoisonToPlayer(target, deps)
+		return true
+	}
+	return false
 }

@@ -279,7 +279,7 @@ func buildViewName(item *world.InvItem, itemInfo *data.ItemInfo) string {
 	if item.Equipped && itemInfo != nil {
 		switch itemInfo.Category {
 		case data.CategoryWeapon:
-			name += " ($9)"   // 裝備中 (Armed)
+			name += " ($9)" // 裝備中 (Armed)
 		case data.CategoryArmor:
 			name += " ($117)" // 裝備中 (Worn)
 		}
@@ -356,6 +356,15 @@ func handleUseEtcItem(sess *net.Session, r *packet.Reader, player *world.PlayerI
 	if itemInfo.UseType == "identify" {
 		if deps.ItemUse != nil {
 			deps.ItemUse.IdentifyItem(sess, r, player, invItem)
+		}
+		return
+	}
+
+	// Resurrection scrolls: Java Scroll_Resurrection / Reactivating_Reel reads [D targetObjID].
+	if itemInfo.UseType == "res" {
+		targetObjID := r.ReadD()
+		if deps.ItemUse != nil {
+			deps.ItemUse.UseResurrectionScroll(sess, player, invItem, targetObjID)
 		}
 		return
 	}
@@ -645,11 +654,16 @@ func buildStatusBytes(item *world.InvItem, info *data.ItemInfo) []byte {
 	return buf
 }
 
-// appendEquipSuffix appends the shared weapon/armor TLV suffix (enchant, hit, dmg, class, stats).
+// appendEquipSuffix appends the shared weapon/armor TLV suffix (enchant, durability, hit, dmg, class, stats).
 // Java: L1ItemStatus.weapon() / armor() — 武器和防具的 hitMod 使用不同格式。
 func appendEquipSuffix(buf []byte, item *world.InvItem, info *data.ItemInfo) []byte {
 	if item.EnchantLvl != 0 {
 		buf = append(buf, 2, byte(item.EnchantLvl))
+	}
+	// Tag 3 = 損壞度（Java L1ItemStatus 第 969-972 行）。
+	// 客戶端依此顯示武器/防具的損壞圖示與名稱前綴，缺少此 tag 會讓壞掉的裝備看起來跟正常一樣。
+	if item.Durability != 0 {
+		buf = append(buf, 3, byte(item.Durability))
 	}
 	if info.Category == data.CategoryWeapon && world.IsTwoHanded(info.Type) {
 		buf = append(buf, 4) // 雙手武器旗標（無值位元組）
@@ -710,7 +724,6 @@ func appendEquipSuffix(buf []byte, item *world.InvItem, info *data.ItemInfo) []b
 	}
 	return buf
 }
-
 
 // appendStatusString 將 tag 39 + 客戶端編碼 null-terminated 字串附加到 status bytes 緩衝區。
 // Java weapon() 中命中率等欄位使用此格式：writeC(39) + writeS("武器命中 :N")。
@@ -986,4 +999,3 @@ func checkClassBitmask(class int32, mask int) bool {
 func useVIPItem(sess *net.Session, player *world.PlayerInfo, invItem *world.InvItem, vip *data.ItemVIP, deps *Deps) {
 	deps.ItemUse.ActivateVIP(sess, player, invItem, vip)
 }
-

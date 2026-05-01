@@ -12,9 +12,10 @@ import (
 
 // HandleAttr processes C_ATTR (opcode 121) — 多用途封包。
 // Java C_Attr 格式：
-//   mode = readH()
-//   if mode == 0 { readD(); mode = readH() }  ← 前綴跳過
-//   switch(mode) { case 479: 加點; case 97/252/630/951/953/954: yes/no 回應 }
+//
+//	mode = readH()
+//	if mode == 0 { readD(); mode = readH() }  ← 前綴跳過
+//	switch(mode) { case 479: 加點; case 97/252/630/951/953/954: yes/no 回應 }
 func HandleAttr(sess *net.Session, r *packet.Reader, deps *Deps) {
 	player := deps.World.GetBySession(sess.ID)
 	if player == nil {
@@ -124,6 +125,10 @@ func handleResurrectionResponse(sess *net.Session, player *world.PlayerInfo, acc
 		return // 施法者已離線
 	}
 
+	if deps.Death != nil {
+		deps.Death.ClearPlayerTomb(player)
+	}
+
 	// 從 Lua 取得復活效果（hp_ratio / mp_ratio）
 	eff := deps.Scripting.GetResurrectEffect(int(skillID))
 	player.Dead = false
@@ -146,12 +151,18 @@ func handleResurrectionResponse(sess *net.Session, player *world.PlayerInfo, acc
 	sendHpUpdate(sess, player)
 	sendMpUpdate(sess, player)
 	SendPlayerStatus(sess, player)
-	SendPutObject(sess, player)
 
 	nearbyTarget := deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	resData := BuildResurrection(player, caster.CharID, 0)
+	soundData := BuildSkillEffect(player.CharID, 230)
+	sess.Send(soundData)
+	sess.Send(resData)
+	sendCharVisualUpdate(sess, player)
 	for _, viewer := range nearbyTarget {
 		if viewer.SessionID != sess.ID {
-			SendPutObject(viewer.Session, player)
+			viewer.Session.Send(soundData)
+			viewer.Session.Send(resData)
+			sendCharVisualUpdate(viewer.Session, player)
 		}
 	}
 

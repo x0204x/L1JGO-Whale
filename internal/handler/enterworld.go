@@ -44,42 +44,42 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 
 	// Register player in world state
 	player := &world.PlayerInfo{
-		SessionID: sess.ID,
-		Session:   sess,
-		CharID:    ch.ID,
-		Name:      ch.Name,
-		X:         ch.X,
-		Y:         ch.Y,
-		MapID:     ch.MapID,
-		Heading:   ch.Heading,
-		ClassID:   ch.ClassID,
-		ClassType: ch.ClassType,
-		Level:     ch.Level,
-		Lawful:    ch.Lawful,
-		Title:     ch.Title,
-		ClanID:    ch.ClanID,
-		ClanName:  ch.ClanName,
-		ClanRank:  ch.ClanRank,
-		HP:        ch.HP,
-		MaxHP:     ch.MaxHP,
-		MP:        ch.MP,
-		MaxMP:     ch.MaxMP,
-		Str:       ch.Str,
-		Dex:       ch.Dex,
-		Con:       ch.Con,
-		Wis:       ch.Wis,
-		Intel:     ch.Intel,
-		Cha:       ch.Cha,
-		Exp:        int32(ch.Exp),
-		BonusStats:  ch.BonusStats,
-		ElixirStats: ch.ElixirStats,
+		SessionID:    sess.ID,
+		Session:      sess,
+		CharID:       ch.ID,
+		Name:         ch.Name,
+		X:            ch.X,
+		Y:            ch.Y,
+		MapID:        ch.MapID,
+		Heading:      ch.Heading,
+		ClassID:      ch.ClassID,
+		ClassType:    ch.ClassType,
+		Level:        ch.Level,
+		Lawful:       ch.Lawful,
+		Title:        ch.Title,
+		ClanID:       ch.ClanID,
+		ClanName:     ch.ClanName,
+		ClanRank:     ch.ClanRank,
+		HP:           ch.HP,
+		MaxHP:        ch.MaxHP,
+		MP:           ch.MP,
+		MaxMP:        ch.MaxMP,
+		Str:          ch.Str,
+		Dex:          ch.Dex,
+		Con:          ch.Con,
+		Wis:          ch.Wis,
+		Intel:        ch.Intel,
+		Cha:          ch.Cha,
+		Exp:          int32(ch.Exp),
+		BonusStats:   ch.BonusStats,
+		ElixirStats:  ch.ElixirStats,
 		Food:         ch.Food, // 從 DB 載入飽食度
-		FoodFullTime: -1,     // 登入時重置生存吶喊計時（Java: _h_time = -1）
-		AccessLevel: ch.AccessLevel,
-		PKCount:     ch.PKCount,
-		Karma:       ch.Karma,
-		AttackView: true, // Java: is_attack_view 預設啟用浮動傷害數字
-		Inv:        world.NewInventory(),
+		FoodFullTime: -1,      // 登入時重置生存吶喊計時（Java: _h_time = -1）
+		AccessLevel:  ch.AccessLevel,
+		PKCount:      ch.PKCount,
+		Karma:        ch.Karma,
+		AttackView:   true, // Java: is_attack_view 預設啟用浮動傷害數字
+		Inv:          world.NewInventory(),
 	}
 	// 載入帳號的倉庫密碼
 	if deps.AccountRepo != nil {
@@ -275,6 +275,12 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 	}
 
 	// --- 發送附近門 + 填入 Known ---
+	nearbyEffects := deps.World.GetNearbyGroundEffects(ch.X, ch.Y, ch.MapID)
+	for _, effect := range nearbyEffects {
+		SendGroundEffectPack(sess, effect)
+		player.Known.GroundEffects[effect.ID] = world.KnownPos{X: effect.X, Y: effect.Y}
+	}
+
 	nearbyDoors := deps.World.GetNearbyDoors(ch.X, ch.Y, ch.MapID)
 	for _, d := range nearbyDoors {
 		SendDoorPerceive(sess, d)
@@ -461,32 +467,32 @@ func sendOwnCharPack(sess *net.Session, ch *persist.CharacterRow, currentWeapon 
 	w.WriteH(uint16(ch.Y))
 	w.WriteD(ch.ID)
 	w.WriteH(uint16(gfxID))
-	w.WriteC(currentWeapon)    // current weapon
+	w.WriteC(currentWeapon) // current weapon
 	w.WriteC(byte(ch.Heading))
-	w.WriteC(0)                // light size
-	w.WriteC(0)                // move speed
-	w.WriteD(1)                // unknown (always 1)
+	w.WriteC(0) // light size
+	w.WriteC(0) // move speed
+	w.WriteD(1) // unknown (always 1)
 	w.WriteH(uint16(ch.Lawful))
 	w.WriteS(ch.Name)
 	w.WriteS(ch.Title)
-	w.WriteC(0x04)             // status flags: bit 2 = PC
-	w.WriteD(0)                // clan emblem ID
+	w.WriteC(0x04) // status flags: bit 2 = PC
+	w.WriteD(0)    // clan emblem ID
 	w.WriteS(ch.ClanName)
-	w.WriteS("")               // null
+	w.WriteS("") // null
 	// Clan rank: rank << 4 if rank > 0, else 0xb0
 	if ch.ClanRank > 0 {
 		w.WriteC(byte(ch.ClanRank << 4))
 	} else {
 		w.WriteC(0xb0)
 	}
-	w.WriteC(0xff)             // party HP (0xff = not in party)
-	w.WriteC(0x00)             // third speed
-	w.WriteC(0x00)             // PC = 0
-	w.WriteC(0x00)             // unknown
-	w.WriteC(0xff)             // unknown
-	w.WriteC(0xff)             // unknown
-	w.WriteS("")               // null
-	w.WriteC(0x00)             // unknown
+	w.WriteC(0xff) // party HP (0xff = not in party)
+	w.WriteC(0x00) // third speed
+	w.WriteC(0x00) // PC = 0
+	w.WriteC(0x00) // unknown
+	w.WriteC(0xff) // unknown
+	w.WriteC(0xff) // unknown
+	w.WriteS("")   // null
+	w.WriteC(0x00) // unknown
 	sess.Send(w.Bytes())
 }
 
@@ -673,7 +679,7 @@ func sendCharResetInfo(sess *net.Session, ch *persist.CharacterRow, player *worl
 	upCha := clamp(int(ch.Cha) - classData.BaseCHA)
 
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_CHARSYNACK) // opcode 64
-	w.WriteC(0x04)                                               // sub-type: 屬性增加資訊
+	w.WriteC(0x04)                                              // sub-type: 屬性增加資訊
 	w.WriteC((upInt << 4) | upStr)
 	w.WriteC((upDex << 4) | upWis)
 	w.WriteC((upCha << 4) | upCon)

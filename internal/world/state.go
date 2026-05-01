@@ -10,79 +10,83 @@ import (
 // PlayerInfo holds in-memory data for a player currently in-world.
 // Accessed only from the game loop goroutine — no locks needed.
 type PlayerInfo struct {
-	SessionID uint64
-	Session   *net.Session
-	CharID    int32  // DB ID, used as object ID in packets
-	Name      string
-	X         int32
-	Y         int32
-	MapID     int16
-	Heading   int16
-	ClassID   int32 // GFX
-	Level     int16
-	Lawful    int32
-	Title     string
-	ClanID    int32
-	ClanName  string
-	ClanRank  int16
-	ClassType int16 // 0=Prince, 1=Knight, 2=Elf, 3=Wizard, 4=DarkElf, 5=DragonKnight, 6=Illusionist
-	HP        int32
-	MaxHP     int32
-	MP        int32
-	MaxMP     int32
-	Str       int16
-	Dex       int16
-	Con       int16
-	Wis       int16
-	Intel     int16
-	Cha       int16
-	Exp        int32 // cumulative total exp
-	BonusStats  int16 // number of bonus stat points already allocated (level 51+)
-	ElixirStats int16 // 萬能藥使用次數（洗點時用於計算可分配點數）
-	Speed      byte  // 0=normal, 1=fast, etc.
-	MoveSpeed  byte  // 0=normal, 1=hasted (green potion), 2=slowed
-	BraveSpeed byte  // 0=none, 1=brave (attack speed), 3=elf brave
-	HasteTicks  int   // remaining ticks for haste buff (0 = expired)
-	BraveTicks  int   // remaining ticks for brave buff (0 = expired)
-	WisdomTicks int   // remaining ticks for wisdom buff (0 = expired)
-	WisdomSP    int16 // SP bonus from wisdom potion (removed when buff expires)
-	AC         int16 // current AC (base 10 - equipment bonus; lower = better)
-	MR         int16 // magic resistance
-	HitMod     int16 // melee hit bonus from buffs
-	DmgMod     int16 // melee damage bonus from buffs
-	BowHitMod  int16 // bow hit bonus from buffs
-	BowDmgMod  int16 // bow damage bonus from buffs
-	SP         int16 // spell power bonus from buffs
-	HPR        int16 // HP regen bonus from buffs (per regen tick)
-	MPR        int16 // MP regen bonus from buffs (per regen tick)
-	FireRes    int16 // fire resistance
-	WaterRes   int16 // water resistance
-	WindRes    int16 // wind resistance
-	EarthRes   int16 // earth resistance
-	Dodge         int16 // dodge bonus
-	RegistSustain int16 // 持續傷害抗性
-	RegistFreeze  int16 // 凍結抗性
-	RegistStun    int16 // 暈眩抗性
-	RegistStone   int16 // 石化抗性
-	RegistBlind   int16 // 失明抗性
-	RegistSleep   int16 // 睡眠抗性
-	MagicCritical int16 // 魔法爆擊加成
-	Food         int16 // satiety 0-225 (225=full); sent in S_STATUS
-	FoodFullTime int64 // 飽食度達 225 的時刻（Unix 秒）；-1=未滿（Java: _h_time，生存吶喊用）
-	CookingID    int32 // 當前料理 buff 的 skill ID（0=無）；同時只能有一個
-	AccessLevel   int16 // GM 等級（0=一般玩家, ≥200=GM）
-	PKCount       int32 // PK kill count
-	KillCount     int32 // PvP 擊殺累計（排名用）
-	DeathCount    int32 // PvP 死亡累計（排名用）
+	SessionID      uint64
+	Session        *net.Session
+	CharID         int32 // DB ID, used as object ID in packets
+	Name           string
+	X              int32
+	Y              int32
+	MapID          int16
+	Heading        int16
+	ClassID        int32 // GFX
+	Level          int16
+	Lawful         int32
+	Title          string
+	ClanID         int32
+	ClanName       string
+	ClanRank       int16
+	ClassType      int16 // 0=Prince, 1=Knight, 2=Elf, 3=Wizard, 4=DarkElf, 5=DragonKnight, 6=Illusionist
+	ElfAttr        int16 // Java getElfAttr(): 0=無, 1=地, 2=火, 4=水, 8=風
+	HP             int32
+	MaxHP          int32
+	MP             int32
+	MaxMP          int32
+	Str            int16
+	Dex            int16
+	Con            int16
+	Wis            int16
+	Intel          int16
+	Cha            int16
+	Exp            int32 // cumulative total exp
+	BonusStats     int16 // number of bonus stat points already allocated (level 51+)
+	ElixirStats    int16 // 萬能藥使用次數（洗點時用於計算可分配點數）
+	Speed          byte  // 0=normal, 1=fast, etc.
+	MoveSpeed      byte  // 0=normal, 1=hasted (green potion), 2=slowed
+	BraveSpeed     byte  // 0=none, 1=brave (attack speed), 3=elf brave
+	HasteTicks     int   // remaining ticks for haste buff (0 = expired)
+	BraveTicks     int   // remaining ticks for brave buff (0 = expired)
+	WisdomTicks    int   // remaining ticks for wisdom buff (0 = expired)
+	WisdomSP       int16 // SP bonus from wisdom potion (removed when buff expires)
+	AC             int16 // current AC (base 10 - equipment bonus; lower = better)
+	MR             int16 // magic resistance
+	HitMod         int16 // melee hit bonus from buffs
+	DmgMod         int16 // melee damage bonus from buffs
+	BowHitMod      int16 // bow hit bonus from buffs
+	BowDmgMod      int16 // bow damage bonus from buffs
+	SP             int16 // spell power bonus from buffs
+	HPR            int16 // HP regen bonus from buffs (per regen tick)
+	MPR            int16 // MP regen bonus from buffs (per regen tick)
+	FireRes        int16 // fire resistance
+	WaterRes       int16 // water resistance
+	WindRes        int16 // wind resistance
+	EarthRes       int16 // earth resistance
+	Dodge          int16 // dodge bonus
+	RegistSustain  int16 // 持續傷害抗性
+	RegistFreeze   int16 // 凍結抗性
+	RegistStun     int16 // 暈眩抗性
+	RegistStone    int16 // 石化抗性
+	RegistBlind    int16 // 失明抗性
+	RegistSleep    int16 // 睡眠抗性
+	MagicCritical  int16 // 魔法爆擊加成
+	Food           int16 // satiety 0-225 (225=full); sent in S_STATUS
+	FoodFullTime   int64 // 飽食度達 225 的時刻（Unix 秒）；-1=未滿（Java: _h_time，生存吶喊用）
+	CookingID      int32 // 當前料理 buff 的 skill ID（0=無）；同時只能有一個
+	AccessLevel    int16 // GM 等級（0=一般玩家, ≥200=GM）
+	PKCount        int32 // PK kill count
+	KillCount      int32 // PvP 擊殺累計（排名用）
+	DeathCount     int32 // PvP 死亡累計（排名用）
 	PartnerID      int32 // 配偶角色 ID（0=未婚；結婚系統用）
 	MarriageRingID int32 // 結婚時使用的戒指物品 ID（Java: QUEST_MARRY step）
 	TempID         int32 // 暫存目標 ID（Java: pc.setTempID）— 寵物改名等用途
 
 	// 武器吸血/吸魔累計值（Java: L1PcInstance dice_hp/sucking_hp/dice_mp/sucking_mp）
-	DrainDiceHP    int // 所有裝備累計的 HP 吸取機率
-	DrainSuckingHP int // 所有裝備累計的 HP 吸取量
-	DrainDiceMP    int // 所有裝備累計的 MP 吸取機率
-	DrainSuckingMP int // 所有裝備累計的 MP 吸取量
+	DrainDiceHP       int   // 所有裝備累計的 HP 吸取機率
+	DrainSuckingHP    int   // 所有裝備累計的 HP 吸取量
+	DrainDiceMP       int   // 所有裝備累計的 MP 吸取機率
+	DrainSuckingMP    int   // 所有裝備累計的 MP 吸取量
+	WeaknessLevel     int16 // 龍騎士弱點曝光階段，0=無，1-3=階段
+	WeaknessTargetID  int32 // 目前弱點曝光鎖定目標；切換目標會清除階段
+	FoeSlayerBonusDmg int32 // 屠宰者額外傷害加成來源，例如娃娃效果
 
 	// 釣魚系統
 	Fishing       bool  // 是否正在釣魚
@@ -91,13 +95,13 @@ type PlayerInfo struct {
 	FishingPoleID int32 // 使用中的釣竿物品 ID
 	FishingTick   int   // 釣魚計時器（tick 計數）
 
-	Karma         int32 // 善惡值（Java: L1Karma）— 正=善, 負=惡
-	PinkName      bool  // temporary red name (180 seconds after attacking blue player)
-	PinkNameTicks int   // remaining ticks for pink name timer
-	WantedTicks   int   // >0 = wanted by guards (24h = 432000 ticks at 200ms/tick)
+	Karma             int32 // 善惡值（Java: L1Karma）— 正=善, 負=惡
+	PinkName          bool  // temporary red name (180 seconds after attacking blue player)
+	PinkNameTicks     int   // remaining ticks for pink name timer
+	WantedTicks       int   // >0 = wanted by guards (24h = 432000 ticks at 200ms/tick)
 	FightId           int32 // 0=無決鬥, >0=決鬥對手角色 ID（Java: L1PcInstance.fightId）
 	WarehousePassword int32 // 倉庫密碼（0=未設定, >0=6位數密碼）。從帳號載入。
-	RegenHPAcc int   // HP regen accumulator: counts 1-second ticks since last HP regen
+	RegenHPAcc        int   // HP regen accumulator: counts 1-second ticks since last HP regen
 
 	// 角色重置（洗點）暫存欄位（Java: tempMaxLevel, tempLevel, tempElixirstats 等）
 	InCharReset      bool  // true=正在重置中（凍結操作）
@@ -105,15 +109,16 @@ type PlayerInfo struct {
 	ResetMaxLevel    int16 // 重置目標等級（當前等級）
 	ResetElixirStats int16 // 萬能藥額外點數
 
-	Dead             bool // true when HP <= 0, waiting for restart
+	Dead             bool  // true when HP <= 0, waiting for restart
 	PendingResSkill  int32 // 待同意的復活技能 ID（61/75），0=無待復活
 	PendingResCaster int32 // 施法者 CharID
+	TombEffectID     int32 // 死亡時生成的墓碑 GroundEffect ID（Java: pc.get_tomb）
 	Invisible        bool  // true when under Invisibility
-	Paralyzed        bool // true when frozen/stunned/bound
-	Sleeped          bool // true when under sleep effect
-	Silenced         bool // 沉默狀態（沉默毒 / silence 技能）— 禁止施法
-	AbsoluteBarrier  bool // 絕對屏障（skill 78）— 免疫所有傷害，攻擊/施法/使用道具時解除
-	AttackView       bool // 浮動傷害數字開關（Java: is_attack_view，預設 true，聊天輸入 dmg 切換）
+	Paralyzed        bool  // true when frozen/stunned/bound
+	Sleeped          bool  // true when under sleep effect
+	Silenced         bool  // 沉默狀態（沉默毒 / silence 技能）— 禁止施法
+	AbsoluteBarrier  bool  // 絕對屏障（skill 78）— 免疫所有傷害，攻擊/施法/使用道具時解除
+	AttackView       bool  // 浮動傷害數字開關（Java: is_attack_view，預設 true，聊天輸入 dmg 切換）
 
 	LastMoveTime int64 // time.Now().UnixNano() of last accepted move (0 = no throttle)
 
@@ -124,6 +129,7 @@ type PlayerInfo struct {
 	// Summon selection mode: true when "summonlist" dialog is open, waiting for player to pick a summon.
 	// Set by executeSummonMonster when ring equipped; cleared by HandleNpcAction on numeric response.
 	SummonSelectionMode bool
+	PendingPolySkill    bool // true when skill 67 opened monlist and is waiting for player selection
 
 	Inv          *Inventory // in-memory inventory
 	Equip        Equipment  // equipped items (value type, zero-initialized = all slots empty)
@@ -140,7 +146,7 @@ type PlayerInfo struct {
 	HasTeleport     bool // true when a teleport is prepared and waiting for C_TELEPORT confirmation
 
 	// 卷軸延遲傳送：特效發出後延遲 1 tick 再執行（模擬 Java Thread.sleep(196ms)）
-	ScrollTPTick int   // >0 = 剩餘等待 tick 數；每 tick -1，到 0 時執行傳送
+	ScrollTPTick int // >0 = 剩餘等待 tick 數；每 tick -1，到 0 時執行傳送
 	ScrollTPX    int32
 	ScrollTPY    int32
 	ScrollTPMap  int16
@@ -162,7 +168,7 @@ type PlayerInfo struct {
 	WarehouseType  int16             // 3=personal, 4=elf, 5=clan
 
 	// Party
-	PartyID     int32  // 0=not in party
+	PartyID     int32 // 0=not in party
 	PartyLeader bool
 
 	// Trade
@@ -173,12 +179,12 @@ type PlayerInfo struct {
 	TradeGold       int32      // gold offered in trade
 
 	// 個人商店（擺攤）
-	PrivateShop       bool                 // true = 正在擺攤中
-	ShopSellList      []*PrivateShopSell   // 出售清單
-	ShopBuyList       []*PrivateShopBuy    // 收購清單
-	ShopChat          []byte               // 商店標語（Big5 原始位元組）
-	ShopTradingLocked bool                 // true = 有人正在購買中，防止併發
-	ShopPartnerCount  int                  // 對方商店的商品數量快取（Java: partnersPrivateShopItemCount）
+	PrivateShop       bool               // true = 正在擺攤中
+	ShopSellList      []*PrivateShopSell // 出售清單
+	ShopBuyList       []*PrivateShopBuy  // 收購清單
+	ShopChat          []byte             // 商店標語（Big5 原始位元組）
+	ShopTradingLocked bool               // true = 有人正在購買中，防止併發
+	ShopPartnerCount  int                // 對方商店的商品數量快取（Java: partnersPrivateShopItemCount）
 
 	// 光源（Java turnOnOffLight: 0=無光, 14=日光術, 最大值=角色周圍亮光圈半徑）
 	LightSize byte
@@ -232,9 +238,9 @@ type PlayerInfo struct {
 
 	// 火神精煉：當玩家開啟精煉介面時，記住 NPC 物件 ID，以便 C_Result 攔截。
 	// 0 = 未開啟精煉介面。
-	FireSmithNpcObjID int32
-	CnShopNpcID       int32 // 最近瀏覽的寄賣商城 NPC ID（購買時用於查詢商品）
-	PowerItemNpcID    int32 // 最近瀏覽的強化物品商店 NPC ID
+	FireSmithNpcObjID     int32
+	CnShopNpcID           int32 // 最近瀏覽的寄賣商城 NPC ID（購買時用於查詢商品）
+	PowerItemNpcID        int32 // 最近瀏覽的強化物品商店 NPC ID
 	PendingAuctionHouseID int32 // 拍賣出價待處理的小屋 ID（0=無）
 
 	// 旅館租房：記錄 S_HowManyKey 發送後的待處理狀態
@@ -319,30 +325,30 @@ type PrivateShopBuy struct {
 
 // ActiveBuff tracks a single active buff/debuff on a player.
 type ActiveBuff struct {
-	SkillID      int32
-	TicksLeft    int   // remaining ticks (0 = permanent until cancelled)
+	SkillID   int32
+	TicksLeft int // remaining ticks (0 = permanent until cancelled)
 	// Stat deltas applied when buff started (reversed on removal)
-	DeltaAC      int16
-	DeltaStr     int16
-	DeltaDex     int16
-	DeltaCon     int16
-	DeltaWis     int16
-	DeltaIntel   int16
-	DeltaCha     int16
-	DeltaMaxHP   int32
-	DeltaMaxMP   int32
-	DeltaHitMod  int16
-	DeltaDmgMod  int16
-	DeltaSP      int16
-	DeltaMR      int16
-	DeltaHPR     int16
-	DeltaMPR     int16
-	DeltaBowHit  int16
-	DeltaBowDmg  int16
-	DeltaFireRes  int16
-	DeltaWaterRes int16
-	DeltaWindRes  int16
-	DeltaEarthRes int16
+	DeltaAC            int16
+	DeltaStr           int16
+	DeltaDex           int16
+	DeltaCon           int16
+	DeltaWis           int16
+	DeltaIntel         int16
+	DeltaCha           int16
+	DeltaMaxHP         int32
+	DeltaMaxMP         int32
+	DeltaHitMod        int16
+	DeltaDmgMod        int16
+	DeltaSP            int16
+	DeltaMR            int16
+	DeltaHPR           int16
+	DeltaMPR           int16
+	DeltaBowHit        int16
+	DeltaBowDmg        int16
+	DeltaFireRes       int16
+	DeltaWaterRes      int16
+	DeltaWindRes       int16
+	DeltaEarthRes      int16
 	DeltaDodge         int16
 	DeltaRegistSustain int16
 	DeltaRegistFreeze  int16
@@ -352,12 +358,13 @@ type ActiveBuff struct {
 	DeltaRegistSleep   int16
 	DeltaMagicCritical int16
 	// Special flags for non-stat effects
-	SetMoveSpeed  byte // if > 0, the buff set MoveSpeed to this value
-	SetBraveSpeed byte // if > 0, the buff set BraveSpeed to this value
-	SetInvisible        bool // buff made player invisible
-	SetParalyzed        bool // buff paralyzed/froze player
-	SetSleeped          bool // buff put player to sleep
-	SetAbsoluteBarrier  bool // buff 設定了絕對屏障（到期/移除時清 flag）
+	SetMoveSpeed       byte // if > 0, the buff set MoveSpeed to this value
+	SetBraveSpeed      byte // if > 0, the buff set BraveSpeed to this value
+	SetInvisible       bool // buff made player invisible
+	SetParalyzed       bool // buff paralyzed/froze player
+	SetSleeped         bool // buff put player to sleep
+	SetSilenced        bool // buff made player unable to cast spells
+	SetAbsoluteBarrier bool // buff 設定了絕對屏障（到期/移除時清 flag）
 }
 
 // HasBuff returns true if the player has the given skill effect active.
@@ -425,29 +432,31 @@ type KnownPos struct{ X, Y int32 }
 // KnownEntities 追蹤玩家目前視野中的已知實體（類似 Java knownObjects）。
 // VisibilitySystem 每 2 tick 掃描一次，與此集合做 diff。
 type KnownEntities struct {
-	Players     map[int32]KnownPos // CharID → 位置
-	Npcs        map[int32]KnownPos // NPC 實例 ID → 位置
-	Summons     map[int32]KnownPos // 召喚獸 ID → 位置
-	Dolls       map[int32]KnownPos // 魔法娃娃 ID → 位置
-	Hierarchs   map[int32]KnownPos // 隨身祭司 ID → 位置
-	Followers   map[int32]KnownPos // 隨從 ID → 位置
-	Pets        map[int32]KnownPos // 寵物 ID → 位置
-	GroundItems map[int32]KnownPos // 地面物品 ID → 位置
-	Doors       map[int32]KnownPos // 門 ID → 位置
+	Players       map[int32]KnownPos // CharID → 位置
+	Npcs          map[int32]KnownPos // NPC 實例 ID → 位置
+	Summons       map[int32]KnownPos // 召喚獸 ID → 位置
+	Dolls         map[int32]KnownPos // 魔法娃娃 ID → 位置
+	Hierarchs     map[int32]KnownPos // 隨身祭司 ID → 位置
+	Followers     map[int32]KnownPos // 隨從 ID → 位置
+	Pets          map[int32]KnownPos // 寵物 ID → 位置
+	GroundItems   map[int32]KnownPos // 地面物品 ID → 位置
+	GroundEffects map[int32]KnownPos // 地面技能效果 ID → 位置
+	Doors         map[int32]KnownPos // 門 ID → 位置
 }
 
 // NewKnownEntities 建立空白的已知實體集合。
 func NewKnownEntities() *KnownEntities {
 	return &KnownEntities{
-		Players:     make(map[int32]KnownPos),
-		Npcs:        make(map[int32]KnownPos),
-		Summons:     make(map[int32]KnownPos),
-		Dolls:       make(map[int32]KnownPos),
-		Hierarchs:   make(map[int32]KnownPos),
-		Followers:   make(map[int32]KnownPos),
-		Pets:        make(map[int32]KnownPos),
-		GroundItems: make(map[int32]KnownPos),
-		Doors:       make(map[int32]KnownPos),
+		Players:       make(map[int32]KnownPos),
+		Npcs:          make(map[int32]KnownPos),
+		Summons:       make(map[int32]KnownPos),
+		Dolls:         make(map[int32]KnownPos),
+		Hierarchs:     make(map[int32]KnownPos),
+		Followers:     make(map[int32]KnownPos),
+		Pets:          make(map[int32]KnownPos),
+		GroundItems:   make(map[int32]KnownPos),
+		GroundEffects: make(map[int32]KnownPos),
+		Doors:         make(map[int32]KnownPos),
 	}
 }
 
@@ -554,6 +563,7 @@ type State struct {
 	byName    map[string]*PlayerInfo // CharName → PlayerInfo
 	aoi       *AOIGrid
 	npcAoi    *NpcAOIGrid
+	effectAoi *NpcAOIGrid
 	entity    *EntityGrid
 
 	npcs    map[int32]*NpcInfo // NPC object ID → NpcInfo
@@ -562,14 +572,15 @@ type State struct {
 	doors    map[int32]*DoorInfo // door object ID → DoorInfo
 	doorList []*DoorInfo         // all doors (for tick iteration)
 
-	pets       map[int32]*PetInfo       // pet object ID → PetInfo
-	summons    map[int32]*SummonInfo    // summon object ID → SummonInfo
-	dolls      map[int32]*DollInfo      // doll object ID → DollInfo
-	followers  map[int32]*FollowerInfo  // follower object ID → FollowerInfo
-	hierarchs  map[int32]*HierarchInfo  // hierarch object ID → HierarchInfo
+	pets      map[int32]*PetInfo      // pet object ID → PetInfo
+	summons   map[int32]*SummonInfo   // summon object ID → SummonInfo
+	dolls     map[int32]*DollInfo     // doll object ID → DollInfo
+	followers map[int32]*FollowerInfo // follower object ID → FollowerInfo
+	hierarchs map[int32]*HierarchInfo // hierarch object ID → HierarchInfo
 
-	groundItems   map[int32]*GroundItem // ground item object ID → GroundItem
-	furnitureNpcs map[int32]int32      // 道具 objectID → NPC objectID
+	groundItems   map[int32]*GroundItem   // ground item object ID → GroundItem
+	groundEffects map[int32]*GroundEffect // ground skill effect object ID → GroundEffect
+	furnitureNpcs map[int32]int32         // 道具 objectID → NPC objectID
 
 	Parties     *PartyManager
 	ChatParties *ChatPartyManager
@@ -580,8 +591,9 @@ type State struct {
 	LastHour int  // last game hour for hour-change detection (-1 = uninitialized)
 
 	// 可重用 AOI 查詢 buffer（遊戲迴圈單線程，無需鎖）
-	aoiBuf    []uint64
-	npcAoiBuf []int32
+	aoiBuf       []uint64
+	npcAoiBuf    []int32
+	effectAoiBuf []int32
 }
 
 // RandomizeWeather picks a random weather with weighted distribution.
@@ -602,24 +614,26 @@ func (s *State) RandomizeWeather() {
 
 func NewState() *State {
 	return &State{
-		bySession:   make(map[uint64]*PlayerInfo),
-		byCharID:    make(map[int32]*PlayerInfo),
-		byName:      make(map[string]*PlayerInfo),
-		aoi:         NewAOIGrid(),
-		npcAoi:      NewNpcAOIGrid(),
-		entity:      newEntityGrid(),
-		Parties:     NewPartyManager(),
-		ChatParties: NewChatPartyManager(),
-		Clans:       NewClanManager(),
-		npcs:        make(map[int32]*NpcInfo),
-		doors:       make(map[int32]*DoorInfo),
-		pets:        make(map[int32]*PetInfo),
-		summons:     make(map[int32]*SummonInfo),
-		dolls:       make(map[int32]*DollInfo),
-		followers:   make(map[int32]*FollowerInfo),
+		bySession:     make(map[uint64]*PlayerInfo),
+		byCharID:      make(map[int32]*PlayerInfo),
+		byName:        make(map[string]*PlayerInfo),
+		aoi:           NewAOIGrid(),
+		npcAoi:        NewNpcAOIGrid(),
+		effectAoi:     NewNpcAOIGrid(),
+		entity:        newEntityGrid(),
+		Parties:       NewPartyManager(),
+		ChatParties:   NewChatPartyManager(),
+		Clans:         NewClanManager(),
+		npcs:          make(map[int32]*NpcInfo),
+		doors:         make(map[int32]*DoorInfo),
+		pets:          make(map[int32]*PetInfo),
+		summons:       make(map[int32]*SummonInfo),
+		dolls:         make(map[int32]*DollInfo),
+		followers:     make(map[int32]*FollowerInfo),
 		groundItems:   make(map[int32]*GroundItem),
+		groundEffects: make(map[int32]*GroundEffect),
 		furnitureNpcs: make(map[int32]int32),
-		LastHour:    -1,
+		LastHour:      -1,
 	}
 }
 
@@ -1164,6 +1178,94 @@ func (s *State) TickGroundItems() []*GroundItem {
 		}
 	}
 	return expired
+}
+
+// --- Ground effect methods ---
+
+func (s *State) AddGroundEffect(effect *GroundEffect) {
+	s.groundEffects[effect.ID] = effect
+	s.effectAoi.Add(effect.ID, effect.X, effect.Y, effect.MapID)
+}
+
+func (s *State) RemoveGroundEffect(id int32) *GroundEffect {
+	effect, ok := s.groundEffects[id]
+	if !ok {
+		return nil
+	}
+	s.effectAoi.Remove(effect.ID, effect.X, effect.Y, effect.MapID)
+	delete(s.groundEffects, id)
+	return effect
+}
+
+func (s *State) GetGroundEffect(id int32) *GroundEffect {
+	return s.groundEffects[id]
+}
+
+func (s *State) GroundEffectList() []*GroundEffect {
+	result := make([]*GroundEffect, 0, len(s.groundEffects))
+	for _, effect := range s.groundEffects {
+		result = append(result, effect)
+	}
+	return result
+}
+
+func (s *State) GetNearbyGroundEffects(x, y int32, mapID int16) []*GroundEffect {
+	s.effectAoiBuf = s.effectAoi.GetNearbyInto(x, y, mapID, s.effectAoiBuf)
+	nearbyIDs := s.effectAoiBuf
+	result := make([]*GroundEffect, 0, len(nearbyIDs))
+	for _, id := range nearbyIDs {
+		effect := s.groundEffects[id]
+		if effect == nil || effect.MapID != mapID {
+			continue
+		}
+		if chebyshevDistance32(effect.X, effect.Y, x, y) <= 20 {
+			result = append(result, effect)
+		}
+	}
+	return result
+}
+
+func (s *State) HasGroundEffectAt(x, y int32, mapID int16, npcID int32) bool {
+	s.effectAoiBuf = s.effectAoi.GetNearbyInto(x, y, mapID, s.effectAoiBuf)
+	for _, id := range s.effectAoiBuf {
+		effect := s.groundEffects[id]
+		if effect != nil && effect.MapID == mapID && effect.X == x && effect.Y == y && effect.NpcID == npcID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *State) TickGroundEffects() []*GroundEffect {
+	var expired []*GroundEffect
+	for _, effect := range s.groundEffects {
+		if effect.TicksLeft <= 0 {
+			continue
+		}
+		effect.TicksLeft--
+		if effect.TicksLeft <= 0 {
+			expired = append(expired, effect)
+		}
+	}
+	for _, effect := range expired {
+		s.RemoveGroundEffect(effect.ID)
+	}
+	return expired
+}
+
+func chebyshevDistance32(x1, y1, x2, y2 int32) int32 {
+	dx := x1 - x2
+	if dx < 0 {
+		dx = -dx
+	}
+	dy := y1 - y2
+	if dy < 0 {
+		dy = -dy
+	}
+	if dy > dx {
+		return dy
+	}
+	return dx
 }
 
 // --- 家具 NPC 追蹤 ---

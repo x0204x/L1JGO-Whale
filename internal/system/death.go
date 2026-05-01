@@ -18,6 +18,8 @@ func NewDeathSystem(deps *handler.Deps) *DeathSystem {
 	return &DeathSystem{deps: deps}
 }
 
+const tombEffectDurationTicks = 300 * groundEffectTickSec
+
 // ==================== 玩家死亡 ====================
 
 // KillPlayer implements handler.DeathManager — 處理玩家死亡。
@@ -48,6 +50,9 @@ func (s *DeathSystem) KillPlayer(player *world.PlayerInfo) {
 		handler.SendActionGfx(viewer.Session, player.CharID, 8) // ACTION_Die = 8
 	}
 	handler.SendActionGfx(player.Session, player.CharID, 8)
+	if s.deps.Config != nil && s.deps.Config.Gameplay.EnableTombEffect {
+		s.spawnPlayerTomb(player)
+	}
 
 	// 死亡時清除所有毒和詛咒
 	if player.PoisonType != 0 {
@@ -89,6 +94,8 @@ func (s *DeathSystem) ProcessRestart(sess *net.Session, player *world.PlayerInfo
 	if !player.Dead {
 		return
 	}
+
+	s.ClearPlayerTomb(player)
 
 	// 復活
 	player.Dead = false
@@ -228,6 +235,73 @@ func (s *DeathSystem) ProcessRestart(sess *net.Session, player *world.PlayerInfo
 }
 
 // ==================== 內部輔助函式 ====================
+
+// ClearPlayerTomb implements handler.DeathManager — 清除死亡時生成的墓碑。
+func (s *DeathSystem) ClearPlayerTomb(player *world.PlayerInfo) {
+	if s == nil || s.deps == nil {
+		return
+	}
+	clearPlayerTomb(s.deps.World, player)
+}
+
+func (s *DeathSystem) spawnPlayerTomb(player *world.PlayerInfo) {
+	if s == nil || s.deps == nil || s.deps.World == nil || player == nil {
+		return
+	}
+	if player.TombEffectID != 0 {
+		clearPlayerTomb(s.deps.World, player)
+	}
+	tomb := &world.GroundEffect{
+		ID:           world.NextGroundEffectID(),
+		NpcID:        world.TombEffectNpcID,
+		GfxID:        world.TombEffectGfxID,
+		Type:         world.GroundEffectTomb,
+		X:            player.X,
+		Y:            player.Y,
+		MapID:        player.MapID,
+		OwnerCharID:  player.CharID,
+		OwnerSession: player.SessionID,
+		OwnerName:    player.Name,
+		OwnerIntel:   player.Intel,
+		OwnerClanID:  player.ClanID,
+		Lawful:       player.Lawful,
+		TicksLeft:    tombEffectDurationTicks,
+	}
+	s.deps.World.AddGroundEffect(tomb)
+	player.TombEffectID = tomb.ID
+
+	nearby := s.deps.World.GetNearbyPlayersAt(tomb.X, tomb.Y, tomb.MapID)
+	actionData := handler.BuildActionGfx(tomb.ID, 4) // yiwei: gfx 13600 墓碑生成後播放 action 4
+	for _, viewer := range nearby {
+		handler.SendGroundEffectPack(viewer.Session, tomb)
+		viewer.Session.Send(actionData)
+		if viewer.Known != nil {
+			viewer.Known.GroundEffects[tomb.ID] = world.KnownPos{X: tomb.X, Y: tomb.Y}
+		}
+	}
+}
+
+func clearPlayerTomb(ws *world.State, player *world.PlayerInfo) {
+	if ws == nil || player == nil || player.TombEffectID == 0 {
+		return
+	}
+	tombID := player.TombEffectID
+	player.TombEffectID = 0
+	tomb := ws.RemoveGroundEffect(tombID)
+	if tomb == nil {
+		return
+	}
+	nearby := ws.GetNearbyPlayersAt(tomb.X, tomb.Y, tomb.MapID)
+	actionData := handler.BuildActionGfx(tomb.ID, 8)
+	removeData := handler.BuildRemoveObject(tomb.ID)
+	for _, viewer := range nearby {
+		viewer.Session.Send(actionData)
+		viewer.Session.Send(removeData)
+		if viewer.Known != nil {
+			delete(viewer.Known.GroundEffects, tomb.ID)
+		}
+	}
+}
 
 // applyDeathExpPenalty 透過 Lua 扣除死亡經驗懲罰。
 func applyDeathExpPenalty(player *world.PlayerInfo, deps *handler.Deps) {

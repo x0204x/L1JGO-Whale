@@ -45,6 +45,7 @@ func (s *VisibilitySystem) Update(_ time.Duration) {
 		s.updateFollowerVisibility(p)
 		s.updatePetVisibility(p)
 		s.updateGroundItemVisibility(p)
+		s.updateGroundEffectVisibility(p)
 		s.updateDoorVisibility(p)
 	})
 }
@@ -298,6 +299,29 @@ func (s *VisibilitySystem) updateGroundItemVisibility(p *world.PlayerInfo) {
 		if _, still := currentSet[id]; !still {
 			handler.SendRemoveObject(p.Session, id)
 			delete(p.Known.GroundItems, id)
+		}
+	}
+}
+
+// --- 地面技能效果 AOI ---
+
+func (s *VisibilitySystem) updateGroundEffectVisibility(p *world.PlayerInfo) {
+	nearby := s.world.GetNearbyGroundEffects(p.X, p.Y, p.MapID)
+
+	currentSet := make(map[int32]struct{}, len(nearby))
+	for _, effect := range nearby {
+		currentSet[effect.ID] = struct{}{}
+
+		if _, known := p.Known.GroundEffects[effect.ID]; !known {
+			handler.SendGroundEffectPack(p.Session, effect)
+			p.Known.GroundEffects[effect.ID] = world.KnownPos{X: effect.X, Y: effect.Y}
+		}
+	}
+
+	for id := range p.Known.GroundEffects {
+		if _, still := currentSet[id]; !still {
+			handler.SendRemoveObject(p.Session, id)
+			delete(p.Known.GroundEffects, id)
 		}
 	}
 }

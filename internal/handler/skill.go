@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strings"
+
 	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/net"
 	"github.com/l1jgo/server/internal/net/packet"
@@ -15,34 +17,66 @@ const (
 )
 
 // HandleUseSpell processes C_USE_SPELL (opcode 6).
-// Thin handler: parse packet → queue to SkillSystem (Phase 2).
-// 封包格式依技能不同：
-//   一般技能:      [C row][C column][D targetID][H targetX][H targetY]
-//   傳送技能(5,69): [C row][C column][H mapID][D bookmarkID]
-//   火牆/生命之流:  [C row][C column][H targetX][H targetY]
+// Thin handler: parse packet -> queue to SkillSystem (Phase 2).
+// 封包格式依 Java C_UseSkill.java 讀取順序：
+//
+//	一般技能:           [C row][C column][D targetID][H targetX][H targetY]
+//	傳送技能(5,69):    [C row][C column][H mapID][D bookmarkID]
+//	精準目標(113):     [C row][C column][D targetID][H targetX][H targetY][S text]
+//	呼喚/援護盟友:      [C row][C column][S charName]
+//	火牢/生命之泉:      [C row][C column][H targetX][H targetY]
+//	召喚術(51):        [C row][C column][D summonID 或 targetID]
 func HandleUseSpell(sess *net.Session, r *packet.Reader, deps *Deps) {
 	row := int32(r.ReadC())
 	column := int32(r.ReadC())
 	skillID := row*8 + column + 1
 
-	// Java C_UseSkill: 依技能類型讀取不同的後續欄位
 	var targetID int32
-	if skillID == 5 || skillID == 69 {
-		// 指定傳送 / 集體傳送術：[H mapID][D bookmarkID]
-		if r.Remaining() >= 2 {
-			_ = r.ReadH() // mapID（客戶端發送但伺服器不使用）
-		}
-		if r.Remaining() >= 4 {
-			targetID = r.ReadD() // bookmarkID
-		}
-	} else {
-		// 一般技能：[D targetID][H targetX][H targetY]
+	var targetX int32
+	var targetY int32
+	var mapID int32
+	var bookmarkID int32
+	var summonID int32
+	var targetName string
+	var text string
+
+	switch skillID {
+	case 116, 118: // CALL_CLAN / RUN_CLAN
+		targetName = trimSkillTargetName(r.ReadS())
+	case 113: // TRUE_TARGET
 		if r.Remaining() >= 4 {
 			targetID = r.ReadD()
 		}
 		if r.Remaining() >= 4 {
-			_ = r.ReadH() // targetX
-			_ = r.ReadH() // targetY
+			targetX = int32(r.ReadH())
+			targetY = int32(r.ReadH())
+		}
+		text = r.ReadS()
+	case 5, 69: // TELEPORT / MASS_TELEPORT
+		if r.Remaining() >= 2 {
+			mapID = int32(r.ReadH())
+		}
+		if r.Remaining() >= 4 {
+			bookmarkID = r.ReadD()
+			targetID = bookmarkID
+		}
+	case 58, 63: // FIRE_WALL / LIFE_STREAM
+		if r.Remaining() >= 4 {
+			targetX = int32(r.ReadH())
+			targetY = int32(r.ReadH())
+		}
+	case 51: // SUMMON_MONSTER
+		if r.Remaining() >= 4 {
+			summonID = r.ReadD()
+			targetID = summonID
+		}
+	default:
+		if r.Remaining() >= 4 {
+			targetID = r.ReadD()
+		}
+		if r.Remaining() >= 4 {
+			targetX = int32(r.ReadH())
+			targetY = int32(r.ReadH())
 		}
 	}
 
@@ -50,10 +84,22 @@ func HandleUseSpell(sess *net.Session, r *packet.Reader, deps *Deps) {
 		return
 	}
 	deps.Skill.QueueSkill(SkillRequest{
-		SessionID: sess.ID,
-		SkillID:   skillID,
-		TargetID:  targetID,
+		SessionID:  sess.ID,
+		SkillID:    skillID,
+		TargetID:   targetID,
+		TargetX:    targetX,
+		TargetY:    targetY,
+		MapID:      mapID,
+		BookmarkID: bookmarkID,
+		SummonID:   summonID,
+		TargetName: targetName,
+		Text:       text,
 	})
+}
+
+func trimSkillTargetName(raw string) string {
+	name, _, _ := strings.Cut(raw, "[")
+	return name
 }
 
 // ========================================================================

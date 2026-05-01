@@ -31,7 +31,7 @@ end
 --   CON bonus: Lv12+, CON >= 14: random(CON-12)+1, cap 14
 --   Equipment HPR added on top
 --   Blocked if food < 3 or overweight (Weight242 >= 121)
---   Overweight bypassed by EXOTIC_VITALIZE (226) or ADDITIONAL_FIRE (238)
+--   Overweight bypassed by EXOTIC_VITALIZE (169) or ADDITIONAL_FIRE (176)
 function calc_hp_regen_amount(ctx)
     local blocked = false
 

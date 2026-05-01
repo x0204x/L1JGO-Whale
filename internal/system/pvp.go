@@ -57,8 +57,10 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 
 	// 近戰傷害計算
 	weaponDmg := 4 // 空手
+	weaponType := ""
 	if wpn := attacker.Equip.Weapon(); wpn != nil {
 		if info := s.deps.Items.Get(wpn.ItemID); info != nil {
+			weaponType = info.Type
 			if info.DmgSmall > 0 {
 				weaponDmg = info.DmgSmall
 			}
@@ -82,11 +84,18 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 	if !result.IsHit {
 		damage = 0
 	}
+	if damage > 0 {
+		s.applyDragonKnightWeaknessFromMelee(attacker, target.CharID)
+	}
 
 	// 破壞盔甲傷害倍率（Java: L1AttackPc — 近戰非弓攻擊 damage *= 1.58）
 	if damage > 0 && target.HasBuff(112) {
 		damage = int32(float64(damage) * 1.58)
 	}
+	damage = darkElfPhysicalDamage(attacker, damage, weaponType)
+	damage = elfMeleeDamage(attacker, damage, weaponType)
+	damage = braveAuraDamage(attacker, damage)
+	damage = applyImmuneToHarmDamage(target, damage)
 
 	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
 
@@ -134,15 +143,7 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 
 		// 武器附毒（skill 98）：PvP 近戰命中時 10% 機率對目標施加毒素
 		// Java: L1AttackPc.addPcPoisonAttack — hasSkillEffect(98) → 10% → doInfection(3000, 5)
-		if attacker.HasBuff(98) && attacker.Equip.Weapon() != nil &&
-			target.PoisonType == 0 && world.RandInt(100) < 10 {
-			target.PoisonType = 1
-			target.PoisonTicksLeft = 150 // 30 秒 = 150 ticks
-			target.PoisonDmgTimer = 0
-			target.PoisonDmgAmount = 5 // 每 3 秒扣 5 HP
-			target.PoisonAttacker = attacker.SessionID
-			BroadcastPlayerPoison(target, 1, s.deps) // 綠色毒
-		}
+		applyEnchantVenomPoisonToPlayer(attacker, target, s.deps)
 
 		if target.HP <= 0 {
 			// 在 KillPlayer 之前保存決鬥狀態（KillPlayer 會清除 FightId）
@@ -263,6 +264,9 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 	if !result.IsHit {
 		damage = 0
 	}
+	damage = strikerGaleRangedDamage(target, damage)
+	damage = braveAuraDamage(attacker, damage)
+	damage = applyImmuneToHarmDamage(target, damage)
 
 	handler.SendArrowAttackPacket(attacker.Session, attacker.CharID, target.CharID, damage, attacker.Heading,
 		attacker.X, attacker.Y, target.X, target.Y)

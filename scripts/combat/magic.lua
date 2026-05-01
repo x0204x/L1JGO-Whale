@@ -85,7 +85,7 @@ function calc_magic_damage(ctx)
 end
 
 ---------------------------------------------------------------------
--- Physical skill damage (108, 132, 187, 203, 208)
+-- Physical skill damage (108, 132, 203, 208)
 -- Uses STR/DEX/weapon tables from tables.lua, not INT/dice
 ---------------------------------------------------------------------
 function calc_physical_skill(ctx)
@@ -136,8 +136,6 @@ function calc_physical_skill(ctx)
             damage = damage + level + math.floor(str / 3)
         elseif sid == 132 then  -- Triple Arrow: 3 separate hits
             hit_count = 3
-        elseif sid == 187 then  -- Slaughterer: heavy melee
-            damage = damage + math.floor(level / 2)
         elseif sid == 203 then  -- Smash/Rampage
             damage = damage + math.floor(level / 3)
         elseif sid == 208 then  -- Bone Break/Skull Destruction
@@ -151,35 +149,22 @@ function calc_physical_skill(ctx)
 end
 
 ---------------------------------------------------------------------
--- Mind Break (207): drains 5 MP from target, deals WIS*5 damage
+-- Mind Break (207): drains 5 MP from target, deals SP*3.8 damage
 ---------------------------------------------------------------------
 function calc_mind_break(ctx)
     local atk = ctx.attacker
-    local tgt = ctx.target
-    local drain_mp = 0
-    local damage = 0
-
-    if tgt.mp >= 5 then
-        drain_mp = 5
-        damage = atk.wis * 5
-    end
+    local drain_mp = 5
+    local damage = math.floor(atk.sp * 3.8)
 
     if damage < 0 then damage = 0 end
     return { damage = damage, drain_mp = drain_mp, hit_count = 1 }
 end
 
 ---------------------------------------------------------------------
--- Joy of Pain (218): damage = (maxHP - currentHP) / 5, ignores MR
+-- Joy of Pain (218): Go primes the caster-side one-shot state.
 ---------------------------------------------------------------------
 function calc_joy_of_pain(ctx)
-    local atk = ctx.attacker
-    local hp_deficit = atk.max_hp - atk.hp
-    local damage = 0
-    if hp_deficit > 0 then
-        damage = math.floor(hp_deficit / 5)
-    end
-    if damage < 1 then damage = 1 end
-    return { damage = damage, drain_mp = 0, hit_count = 1 }
+    return { damage = 0, drain_mp = 0, hit_count = 1 }
 end
 
 ---------------------------------------------------------------------

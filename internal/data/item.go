@@ -3,6 +3,8 @@ package data
 import (
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -235,6 +237,32 @@ func (t *ItemTable) Get(itemID int32) *ItemInfo {
 // Count returns total loaded items.
 func (t *ItemTable) Count() int {
 	return len(t.items)
+}
+
+// FindByName 以中文名稱查詢物品。
+// 完全相符優先（Name == query）；無完全相符時退回部分相符（strings.Contains）。
+// 結果依 ItemID 升序，便於穩定輸出。
+func (t *ItemTable) FindByName(query string) []*ItemInfo {
+	if query == "" {
+		return nil
+	}
+	var exact, partial []*ItemInfo
+	for _, info := range t.items {
+		if info == nil || info.Name == "" {
+			continue
+		}
+		if info.Name == query {
+			exact = append(exact, info)
+		} else if strings.Contains(info.Name, query) {
+			partial = append(partial, info)
+		}
+	}
+	results := exact
+	if len(results) == 0 {
+		results = partial
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].ItemID < results[j].ItemID })
+	return results
 }
 
 // LoadItemTable loads weapon, armor, and etcitem YAML files into a single table.

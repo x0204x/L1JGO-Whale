@@ -17,15 +17,15 @@ import (
 // InputSystem drains packet queues from all sessions and dispatches them
 // through the packet registry. Phase 0 (Input).
 type InputSystem struct {
-	netServer   *net.Server
-	registry    *packet.Registry
-	store       *net.SessionStore
-	maxPerTick  int
-	log         *zap.Logger
-	accountRepo *persist.AccountRepo
-	charRepo    *persist.CharacterRepo
-	itemRepo    *persist.ItemRepo
-	buffRepo    *persist.BuffRepo
+	netServer    *net.Server
+	registry     *packet.Registry
+	store        *net.SessionStore
+	maxPerTick   int
+	log          *zap.Logger
+	accountRepo  *persist.AccountRepo
+	charRepo     *persist.CharacterRepo
+	itemRepo     *persist.ItemRepo
+	buffRepo     *persist.BuffRepo
 	worldState   *world.State
 	mapData      *data.MapDataTable
 	petRepo      *persist.PetRepo
@@ -163,6 +163,8 @@ func (s *InputSystem) handleDisconnect(sess *net.Session) {
 	// Remove from world state and broadcast removal
 	player := s.worldState.RemovePlayer(sess.ID)
 	if player != nil {
+		clearPlayerTomb(s.worldState, player)
+
 		// Clean up trade if in progress — restore partner's items (items are deducted on add-to-trade)
 		if player.TradePartnerID != 0 {
 			partner := s.worldState.GetByCharID(player.TradePartnerID)
@@ -447,7 +449,6 @@ func buildRemoveObjectPacket(charID int32) []byte {
 	return w.Bytes()
 }
 
-
 // SessionCount returns the current number of active sessions.
 func (s *InputSystem) SessionCount() int {
 	return len(s.store.Raw())
@@ -509,11 +510,11 @@ func sendAddItemPacket(sess *net.Session, item *world.InvItem) {
 	w.WriteD(item.ObjectID)
 	w.WriteH(world.ItemDescID(item.ItemID)) // descId — Java: switch(itemId) for material items
 	w.WriteC(item.UseType)
-	w.WriteC(0)                    // charge count
+	w.WriteC(0) // charge count
 	w.WriteH(uint16(item.InvGfx))
 	w.WriteC(world.EffectiveBless(item)) // bless: 3=unidentified
 	w.WriteD(item.Count)
-	w.WriteC(0)                          // itemStatusX
+	w.WriteC(0) // itemStatusX
 	w.WriteS(item.Name)
 	w.WriteC(0) // status bytes length
 	// 尾部固定 11 bytes（Java: S_AddItem 格式）
@@ -740,7 +741,11 @@ func sendNpcPackForInput(sess *net.Session, npc *world.NpcInfo) {
 	w.WriteH(0)
 	w.WriteS(npc.NameID)
 	w.WriteS(npc.Name)
-	w.WriteC(0) // poison
+	poisonStatus := byte(0)
+	if npc.PoisonDmgAmt > 0 {
+		poisonStatus = 0x01
+	}
+	w.WriteC(poisonStatus)
 	w.WriteD(0)
 	w.WriteS("")
 	w.WriteS("")

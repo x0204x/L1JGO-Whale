@@ -201,6 +201,77 @@ func (s *ItemUseSystem) UseConsumable(sess *net.Session, player *world.PlayerInf
 	return consumed
 }
 
+// UseResurrectionScroll 處理復活卷軸。Java: Scroll_Resurrection / Reactivating_Reel。
+// 封包額外欄位為目標物件 ID；有效死亡目標會先消耗卷軸，再依目標類型處理。
+func (s *ItemUseSystem) UseResurrectionScroll(sess *net.Session, player *world.PlayerInfo, scroll *world.InvItem, targetObjID int32) bool {
+	if player == nil || scroll == nil || targetObjID == 0 {
+		return false
+	}
+	if targetObjID == player.CharID {
+		return false
+	}
+
+	if target := s.deps.World.GetByCharID(targetObjID); target != nil {
+		if !target.Dead {
+			return false
+		}
+		s.consumeUsedItem(sess, player, scroll)
+		if s.deps.World.IsPlayerAt(target.X, target.Y, target.MapID, target.SessionID) {
+			handler.SendServerMessage(sess, 592)
+			return true
+		}
+		if s.deps.MapData != nil {
+			if mi := s.deps.MapData.GetInfo(player.MapID); mi != nil && !mi.Resurrection {
+				return true
+			}
+		}
+		target.PendingResCaster = player.CharID
+		if scroll.Bless != 0 {
+			target.PendingResSkill = 61
+			handler.SendYesNoDialog(target.Session, 321)
+		} else {
+			target.PendingResSkill = 75
+			handler.SendYesNoDialog(target.Session, 322)
+		}
+		return true
+	}
+
+	skillSys := &SkillSystem{deps: s.deps}
+	if pet := s.deps.World.GetPet(targetObjID); pet != nil {
+		if !pet.Dead {
+			return false
+		}
+		s.consumeUsedItem(sess, player, scroll)
+		skill := &data.SkillInfo{SkillID: 61}
+		if skillSys.resurrectPetWithHP(sess, player, skill, pet, pet.MaxHP/4) {
+			return true
+		}
+		return true
+	}
+	if npc := s.deps.World.GetNpc(targetObjID); npc != nil {
+		if !npc.Dead {
+			return false
+		}
+		s.consumeUsedItem(sess, player, scroll)
+		_ = skillSys.resurrectNpcWithHP(npc, npc.MaxHP/4)
+		return true
+	}
+	return false
+}
+
+func (s *ItemUseSystem) consumeUsedItem(sess *net.Session, player *world.PlayerInfo, item *world.InvItem) {
+	if player == nil || player.Inv == nil || item == nil {
+		return
+	}
+	removed := player.Inv.RemoveItem(item.ObjectID, 1)
+	if removed {
+		handler.SendRemoveInventoryItem(sess, item.ObjectID)
+	} else {
+		handler.SendItemCountUpdate(sess, item)
+	}
+	handler.SendWeightUpdate(sess, player)
+}
+
 // ---------- 衝裝卷軸 ----------
 
 // EnchantItem 處理武器/防具衝裝卷軸使用。
@@ -371,12 +442,12 @@ func (s *ItemUseSystem) IdentifyItem(sess *net.Session, r *packet.Reader, player
 // spellBookPrefixes 技能書名稱前綴對照。
 // Java 透過物品名稱 "魔法書(技能名)" → 技能名 來解析。
 var spellBookPrefixes = []string{
-	"魔法書(",       // Wizard / common
-	"技術書(",       // Knight
-	"精靈水晶(",     // Elf
+	"魔法書(",    // Wizard / common
+	"技術書(",    // Knight
+	"精靈水晶(",   // Elf
 	"黑暗精靈水晶(", // Dark Elf
-	"龍騎士書板(",   // Dragon Knight
-	"記憶水晶(",     // Illusionist
+	"龍騎士書板(",  // Dragon Knight
+	"記憶水晶(",   // Illusionist
 }
 
 // extractSkillName 從技能書名稱中提取技能名。
@@ -1006,7 +1077,7 @@ func (s *ItemUseSystem) applyThirdSpeed(sess *net.Session, player *world.PlayerI
 	}
 	player.AddBuff(buff)
 
-	sendLiquorPacket(sess, 8) // 1.15x 角色大小視覺
+	sendLiquorPacket(sess, 8)             // 1.15x 角色大小視覺
 	handler.SendServerMessage(sess, 1065) // "將發生神秘的奇蹟力量"
 	s.BroadcastEffect(sess, player, gfxID)
 }
@@ -1447,42 +1518,43 @@ func (s *ItemUseSystem) useCreateMonsterWand(sess *net.Session, player *world.Pl
 	}
 
 	mob := &world.NpcInfo{
-		ID:         world.NextNpcID(),
-		NpcID:      tmpl.NpcID,
-		Impl:       tmpl.Impl,
-		GfxID:      tmpl.GfxID,
-		Name:       tmpl.Name,
-		NameID:     tmpl.NameID,
-		Level:      tmpl.Level,
-		X:          spawnX,
-		Y:          spawnY,
-		MapID:      player.MapID,
-		Heading:    int16(rand.Intn(8)),
-		HP:         tmpl.HP,
-		MaxHP:      tmpl.HP,
-		MP:         tmpl.MP,
-		MaxMP:      tmpl.MP,
-		AC:         tmpl.AC,
-		STR:        tmpl.STR,
-		DEX:        tmpl.DEX,
-		Exp:        tmpl.Exp,
-		Lawful:     tmpl.Lawful,
-		Size:       tmpl.Size,
-		MR:         tmpl.MR,
-		Undead:     tmpl.Undead,
-		Agro:       tmpl.Agro,
-		AtkDmg:     int32(tmpl.Level) + int32(tmpl.STR)/3,
-		Ranged:     tmpl.Ranged,
-		AtkSpeed:   atkSpeed,
-		MoveSpeed:  moveSpeed,
-		PoisonAtk:  tmpl.PoisonAtk,
-		FireRes:    tmpl.FireRes,
-		WaterRes:   tmpl.WaterRes,
-		WindRes:    tmpl.WindRes,
-		EarthRes:   tmpl.EarthRes,
-		SpawnX:     spawnX,
-		SpawnY:     spawnY,
-		SpawnMapID: player.MapID,
+		ID:            world.NextNpcID(),
+		NpcID:         tmpl.NpcID,
+		Impl:          tmpl.Impl,
+		GfxID:         tmpl.GfxID,
+		Name:          tmpl.Name,
+		NameID:        tmpl.NameID,
+		Level:         tmpl.Level,
+		X:             spawnX,
+		Y:             spawnY,
+		MapID:         player.MapID,
+		Heading:       int16(rand.Intn(8)),
+		HP:            tmpl.HP,
+		MaxHP:         tmpl.HP,
+		MP:            tmpl.MP,
+		MaxMP:         tmpl.MP,
+		AC:            tmpl.AC,
+		STR:           tmpl.STR,
+		DEX:           tmpl.DEX,
+		Exp:           tmpl.Exp,
+		Lawful:        tmpl.Lawful,
+		Size:          tmpl.Size,
+		MR:            tmpl.MR,
+		Undead:        tmpl.Undead,
+		CantResurrect: tmpl.CantResurrect,
+		Agro:          tmpl.Agro,
+		AtkDmg:        int32(tmpl.Level) + int32(tmpl.STR)/3,
+		Ranged:        tmpl.Ranged,
+		AtkSpeed:      atkSpeed,
+		MoveSpeed:     moveSpeed,
+		PoisonAtk:     tmpl.PoisonAtk,
+		FireRes:       tmpl.FireRes,
+		WaterRes:      tmpl.WaterRes,
+		WindRes:       tmpl.WindRes,
+		EarthRes:      tmpl.EarthRes,
+		SpawnX:        spawnX,
+		SpawnY:        spawnY,
+		SpawnMapID:    player.MapID,
 	}
 
 	s.deps.World.AddNpc(mob)

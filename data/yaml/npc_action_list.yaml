@@ -3825,3 +3825,6 @@ actions:
   - npc_id: 81436
     normal_action: refine
     caotic_action: refine
+  - npc_id: 99999
+    normal_action: test_hover
+    caotic_action: test_hover

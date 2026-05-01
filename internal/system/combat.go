@@ -150,12 +150,14 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 
 	// 從裝備武器取得傷害
 	weaponDmg := 4 // 空手傷害
+	weaponType := ""
 	targetSize := npc.Size
 	if targetSize == "" {
 		targetSize = "small"
 	}
 	if wpn := player.Equip.Weapon(); wpn != nil {
 		if info := s.deps.Items.Get(wpn.ItemID); info != nil {
+			weaponType = info.Type
 			if targetSize == "large" && info.DmgLarge > 0 {
 				weaponDmg = info.DmgLarge
 			} else if info.DmgSmall > 0 {
@@ -166,12 +168,12 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 
 	// 呼叫 Lua 戰鬥公式 — 裝備屬性已套用至 player 欄位
 	ctx := scripting.CombatContext{
-		AttackerLevel:  int(player.Level),
-		AttackerSTR:    int(player.Str),
-		AttackerDEX:    int(player.Dex),
-		AttackerWeapon: weaponDmg,
-		AttackerHitMod: int(player.HitMod),
-		AttackerDmgMod: int(player.DmgMod),
+		AttackerLevel:   int(player.Level),
+		AttackerSTR:     int(player.Str),
+		AttackerDEX:     int(player.Dex),
+		AttackerWeapon:  weaponDmg,
+		AttackerHitMod:  int(player.HitMod),
+		AttackerDmgMod:  int(player.DmgMod),
 		TargetAC:        int(npc.AC),
 		TargetLevel:     int(npc.Level),
 		TargetMR:        int(npc.MR),
@@ -183,11 +185,17 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 	if !result.IsHit {
 		damage = 0
 	}
+	if damage > 0 {
+		s.applyDragonKnightWeaknessFromMelee(player, npc.ID)
+	}
 
 	// 破壞盔甲傷害倍率（Java: L1AttackPc — 近戰非弓攻擊 damage *= 1.58）
 	if damage > 0 && npc.HasDebuff(112) {
 		damage = int32(float64(damage) * 1.58)
 	}
+	damage = darkElfPhysicalDamage(player, damage, weaponType)
+	damage = elfMeleeDamage(player, damage, weaponType)
+	damage = braveAuraDamage(player, damage)
 
 	// 取附近玩家用於廣播
 	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
@@ -229,6 +237,10 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 
 		// 武器吸血/吸魔（Java: L1AttackPc.commit — dice_hp/sucking_hp/dice_mp/sucking_mp）
 		applyWeaponDrain(player, npc)
+
+		// 武器附毒（skill 98）：玩家近戰命中時 10% 機率對目標施加傷害毒
+		// Java: L1AttackPc.addPcPoisonAttack → L1DamagePoison.doInfection(3000, 5)
+		applyEnchantVenomPoisonToNpc(player, npc, s.deps)
 
 		// 受傷累加仇恨（Java: L1HateList.add）
 		AddHate(npc, sessID, damage)
@@ -410,6 +422,8 @@ func (s *CombatSystem) processRangedAttack(sessID uint64, targetID int32) *handl
 	if !result.IsHit {
 		damage = 0
 	}
+	damage = strikerGaleRangedDamageToNpc(npc, damage)
+	damage = braveAuraDamage(player, damage)
 
 	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
 
@@ -527,8 +541,8 @@ func handleNpcDeath(npc *world.NpcInfo, killer *world.PlayerInfo, nearby []*worl
 
 	// 廣播死亡動畫 + 屍體狀態
 	for _, viewer := range nearby {
-		handler.SendActionGfx(viewer.Session, npc.ID, 8)    // 播放死亡動畫
-		handler.SendNpcDeadPack(viewer.Session, npc)         // 設定屍體姿態（HP%=0xFF）
+		handler.SendActionGfx(viewer.Session, npc.ID, 8) // 播放死亡動畫
+		handler.SendNpcDeadPack(viewer.Session, npc)     // 設定屍體姿態（HP%=0xFF）
 	}
 
 	// 延遲移除（Java: NPC_DELETION_TIME = 10 秒 = 50 ticks）
@@ -658,8 +672,8 @@ func handleMobGroupDeath(npc *world.NpcInfo) {
 		// 解散群體：所有隊員清除群體關聯、禁止重生
 		for _, m := range gi.Members {
 			m.GroupInfo = nil
-			m.IsMinion = true    // 確保不重生
-			m.RespawnDelay = 0   // 額外保險
+			m.IsMinion = true  // 確保不重生
+			m.RespawnDelay = 0 // 額外保險
 		}
 	} else {
 		// 自動晉升：第一個存活成員成為新隊長
@@ -776,12 +790,12 @@ func (s *CombatSystem) processScarecrowHit(player *world.PlayerInfo, npc *world.
 	}
 
 	ctx := scripting.CombatContext{
-		AttackerLevel:  int(player.Level),
-		AttackerSTR:    int(player.Str),
-		AttackerDEX:    int(player.Dex),
-		AttackerWeapon: weaponDmg,
-		AttackerHitMod: int(player.HitMod),
-		AttackerDmgMod: int(player.DmgMod),
+		AttackerLevel:   int(player.Level),
+		AttackerSTR:     int(player.Str),
+		AttackerDEX:     int(player.Dex),
+		AttackerWeapon:  weaponDmg,
+		AttackerHitMod:  int(player.HitMod),
+		AttackerDmgMod:  int(player.DmgMod),
 		TargetAC:        int(npc.AC),
 		TargetLevel:     int(npc.Level),
 		TargetMR:        int(npc.MR),

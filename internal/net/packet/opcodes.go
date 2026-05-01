@@ -7,29 +7,31 @@ const (
 	S_OPCODE_DEPOSIT                byte = 4   // S_Deposit (open deposit window)
 	S_OPCODE_ADD_INVENTORY_BATCH    byte = 5   // S_InvList
 	S_OPCODE_DELETE_CHAR_OK         byte = 6
-	S_OPCODE_STATUS                 byte = 8   // S_OwnCharStatus
+	S_OPCODE_STATUS                 byte = 8 // S_OwnCharStatus
 	S_OPCODE_MOVE_OBJECT            byte = 10
-	S_OPCODE_ADD_ITEM               byte = 15  // S_AddItem (single item add)
+	S_OPCODE_TRUETARGET             byte = 11 // S_TrueTarget
+	S_OPCODE_ADD_ITEM               byte = 15 // S_AddItem (single item add)
 	S_OPCODE_SOUND_EFFECT           byte = 22
-	S_OPCODE_SKILL_BUY              byte = 23  // S_SkillBuy (magic shop list)
-	S_OPCODE_CHANGE_ITEM_USE        byte = 24  // S_ItemAmount (stack count update)
+	S_OPCODE_SKILL_BUY              byte = 23 // S_SkillBuy (magic shop list)
+	S_OPCODE_CHANGE_ITEM_USE        byte = 24 // S_ItemAmount (stack count update)
 	S_OPCODE_ATTACK                 byte = 30
-	S_OPCODE_MANA_POINT             byte = 33  // S_MPUpdate
-	S_OPCODE_MAGIC_STATUS           byte = 37  // S_SPMR
+	S_OPCODE_MANA_POINT             byte = 33 // S_MPUpdate
+	S_OPCODE_MAGIC_STATUS           byte = 37 // S_SPMR
 	S_OPCODE_HYPERTEXT              byte = 39
 	S_OPCODE_CHANGE_LIGHT           byte = 40
-	S_OPCODE_EFFECT                 byte = 55  // S_SkillSoundGFX
+	S_OPCODE_EFFECT                 byte = 55 // S_SkillSoundGFX
 	S_OPCODE_REMOVE_INVENTORY       byte = 57
-	S_OPCODE_CHARSYNACK             byte = 64  // 多用途: 裝備欄/盟徽/角色重置/角色資訊同步
-	S_OPCODE_SHOP_SELL_LIST         byte = 65  // Items NPC buys from player
-	S_OPCODE_SKILLBRAVE             byte = 67  // S_SkillBrave — brave/elf brave buff (2段加速效果)
-	S_OPCODE_TELL                   byte = 73  // S_WhisperChat — whisper message
-	S_OPCODE_SELL_LIST              byte = 70  // Items NPC sells to player
-	S_OPCODE_MESSAGE_CODE           byte = 71  // S_ServerMsg
+	S_OPCODE_CHARSYNACK             byte = 64 // 多用途: 裝備欄/盟徽/角色重置/角色資訊同步
+	S_OPCODE_SHOP_SELL_LIST         byte = 65 // Items NPC buys from player
+	S_OPCODE_SKILLBRAVE             byte = 67 // S_SkillBrave — brave/elf brave buff (2段加速效果)
+	S_OPCODE_TELL                   byte = 73 // S_WhisperChat — whisper message
+	S_OPCODE_SELL_LIST              byte = 70 // Items NPC sells to player
+	S_OPCODE_MESSAGE_CODE           byte = 71 // S_ServerMsg
 	S_OPCODE_SAY                    byte = 81
-	S_OPCODE_PUT_OBJECT             byte = 87  // S_CharPack / S_OtherCharPack
+	S_OPCODE_RESURRECTION           byte = 85 // S_Resurrection
+	S_OPCODE_PUT_OBJECT             byte = 87 // S_CharPack / S_OtherCharPack
 	S_OPCODE_ADD_BOOKMARK           byte = 92
-	S_OPCODE_CHARACTER_INFO         byte = 93  // S_CharPacks (char list)
+	S_OPCODE_CHARACTER_INFO         byte = 93 // S_CharPacks (char list)
 	S_OPCODE_CREATE_CHARACTER_CHECK byte = 98
 	S_OPCODE_CHANGE_ITEM_DESC       byte = 100 // S_ItemName
 	S_OPCODE_DRUNKEN                byte = 103
@@ -100,13 +102,13 @@ const (
 // ---------- Client Opcodes (V381) ----------
 
 const (
-	C_OPCODE_ASK_XCHG               byte = 2
+	C_OPCODE_ASK_XCHG                byte = 2
 	C_OPCODE_DELETE_BOOKMARK         byte = 3
 	C_OPCODE_QUERY_BUDDY             byte = 4
 	C_OPCODE_DUEL                    byte = 5
 	C_OPCODE_USE_SPELL               byte = 6
-	C_OPCODE_REQUEST_ROLL            byte = 7   // C_ChangeChar
-	C_OPCODE_COMMON_CLICK            byte = 16  // C_CommonClick（回選角後客戶端請求角色列表）
+	C_OPCODE_REQUEST_ROLL            byte = 7  // C_ChangeChar
+	C_OPCODE_COMMON_CLICK            byte = 16 // C_CommonClick（回選角後客戶端請求角色列表）
 	C_OPCODE_PLATE                   byte = 10
 	C_OPCODE_HYPERTEXT_INPUT_RESULT  byte = 11
 	C_OPCODE_WAREHOUSE_CONTROL       byte = 13
@@ -121,7 +123,7 @@ const (
 	C_OPCODE_LEAVE_PARTY             byte = 33
 	C_OPCODE_DIALOG                  byte = 34
 	C_OPCODE_ADD_XCHG                byte = 37
-	C_OPCODE_SHOP                    byte = 38  // C_Shop — 開設/取消個人商店
+	C_OPCODE_SHOP                    byte = 38 // C_Shop — 開設/取消個人商店
 	C_OPCODE_BUY_SPELL               byte = 39
 	C_OPCODE_CHAT                    byte = 40
 	C_OPCODE_OPEN                    byte = 41
@@ -146,7 +148,7 @@ const (
 	C_OPCODE_MAIL                    byte = 87
 	C_OPCODE_TITLE                   byte = 90
 	C_OPCODE_ALIVE                   byte = 95
-	C_OPCODE_CHAR_RESET              byte = 98  // 角色重置（洗點）
+	C_OPCODE_CHAR_RESET              byte = 98 // 角色重置（洗點）
 	C_OPCODE_CHECK_INVENTORY         byte = 103
 	C_OPCODE_NPC_ITEM_CONTROL        byte = 104
 	C_OPCODE_GET                     byte = 112
@@ -166,7 +168,7 @@ const (
 	C_OPCODE_BUYABLE_SPELL           byte = 145
 	C_OPCODE_BOARD_DELETE            byte = 153
 	C_OPCODE_BUY_SELL                byte = 161
-	C_OPCODE_DELETE_CHARACTER         byte = 162
+	C_OPCODE_DELETE_CHARACTER        byte = 162
 	C_OPCODE_USE_ITEM                byte = 164
 	C_OPCODE_BOOKMARK                byte = 165
 	C_OPCODE_EXCLUDE                 byte = 171
@@ -193,5 +195,5 @@ const (
 	C_OPCODE_SHUTDOWN                byte = 253
 	C_OPCODE_WINDOWS                 byte = 254 // Java: C_Windows（書籤排序/地圖計時等）
 	C_OPCODE_BANISH_PARTY            byte = 255
-	C_OPCODE_CLAN_MATCHING           byte = 76  // C_ClanMatching / C_ClanRecommend（血盟配對系統）
+	C_OPCODE_CLAN_MATCHING           byte = 76 // C_ClanMatching / C_ClanRecommend（血盟配對系統）
 )

@@ -122,6 +122,35 @@ func (s *GMCommandSystem) GiveItem(sess *net.Session, player *world.PlayerInfo, 
 	handler.SendWeightUpdate(sess, player)
 }
 
+// ApplyPoison GM 強制施加中毒。委派給 GMApplyPoison（system/poison.go）。
+// ptype: 1=傷害毒, 2=沉默毒（卡司特毒）, 3=麻痺毒延遲。
+func (s *GMCommandSystem) ApplyPoison(player *world.PlayerInfo, ptype byte) bool {
+	return GMApplyPoison(player, ptype, s.deps)
+}
+
+// BreakWeapon GM 強制將玩家當前裝備武器的耐久損壞值設為 amount。
+// amount 會夾在 1-127；無裝備武器則回傳 ("", false)。
+// 成功時回傳武器名稱、true，並發送物品狀態更新封包讓客戶端重繪損壞顯示。
+func (s *GMCommandSystem) BreakWeapon(player *world.PlayerInfo, amount int8) (string, bool) {
+	if player == nil {
+		return "", false
+	}
+	weapon := player.Equip.Weapon()
+	if weapon == nil {
+		return "", false
+	}
+	if amount < 1 {
+		amount = 1
+	}
+	if amount > 127 {
+		amount = 127
+	}
+	weapon.Durability = amount
+	handler.SendItemCountUpdate(player.Session, weapon)
+	player.Dirty = true
+	return weapon.Name, true
+}
+
 // GiveGold 給予金幣。
 func (s *GMCommandSystem) GiveGold(sess *net.Session, player *world.PlayerInfo, amount int32) {
 	adenaInfo := s.deps.Items.Get(world.AdenaItemID)

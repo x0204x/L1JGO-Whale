@@ -15,7 +15,7 @@ func RandInt(n int) int {
 }
 
 const (
-	MaxInventorySize = 180
+	MaxInventorySize = 255
 	AdenaItemID      = 40308
 )
 

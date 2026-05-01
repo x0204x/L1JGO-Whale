@@ -82666,3 +82666,27 @@ npcs:
     undead: false
     agro: false
     tameable: false
+  - npc_id: 99999
+    name: 測試NPC
+    nameid: ''
+    impl: L1Merchant
+    gfx_id: 457
+    level: 1
+    hp: 9999
+    mp: 0
+    ac: 0
+    str: 0
+    dex: 0
+    con: 0
+    wis: 0
+    intel: 0
+    mr: 0
+    exp: 0
+    lawful: 0
+    size: small
+    ranged: 1
+    atk_speed: 0
+    passive_speed: 0
+    undead: false
+    agro: false
+    tameable: false

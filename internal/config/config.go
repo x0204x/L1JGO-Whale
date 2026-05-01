@@ -43,9 +43,9 @@ type LuaConfig struct {
 }
 
 type AntiCheatConfig struct {
-	SpeedThreshold      float64 `toml:"speed_threshold"`      // max tiles/second before flagging
-	TeleportValidation  bool    `toml:"teleport_validation"`  // validate teleport destinations
-	DuplicateItemCheck  bool    `toml:"duplicate_item_check"` // detect duplicated item IDs
+	SpeedThreshold     float64 `toml:"speed_threshold"`      // max tiles/second before flagging
+	TeleportValidation bool    `toml:"teleport_validation"`  // validate teleport destinations
+	DuplicateItemCheck bool    `toml:"duplicate_item_check"` // detect duplicated item IDs
 }
 
 type EnchantConfig struct {
@@ -102,7 +102,7 @@ type GameplayConfig struct {
 	BoardPageSize int `toml:"board_page_size"` // posts per page
 
 	// Mail
-	MailSendCost int `toml:"mail_send_cost"` // adena cost to send mail
+	MailSendCost  int `toml:"mail_send_cost"`   // adena cost to send mail
 	MailMaxPerBox int `toml:"mail_max_per_box"` // max messages per mailbox type
 
 	// Warehouse
@@ -113,7 +113,7 @@ type GameplayConfig struct {
 	RepairCostPerDurability int `toml:"repair_cost_per_durability"` // adena per durability point
 
 	// Chat
-	WorldChatMinFood int `toml:"world_chat_min_food"` // minimum food to world chat
+	WorldChatMinFood  int `toml:"world_chat_min_food"`  // minimum food to world chat
 	WorldChatFoodCost int `toml:"world_chat_food_cost"` // food consumed per world chat
 
 	// PvP
@@ -123,11 +123,15 @@ type GameplayConfig struct {
 	MaxExcludeList int `toml:"max_exclude_list"` // max entries in block list
 
 	// Character defaults
-	InitialFood    int `toml:"initial_food"`    // food on creation / respawn
-	BaseAC         int `toml:"base_ac"`         // base AC for all characters
+	InitialFood    int `toml:"initial_food"`     // food on creation / respawn
+	BaseAC         int `toml:"base_ac"`          // base AC for all characters
 	MaxFoodSatiety int `toml:"max_food_satiety"` // food cap from eating
 	HouseHPRBonus  int `toml:"house_hpr_bonus"`  // 血盟小屋 HP 回復加成
 	HouseMPRBonus  int `toml:"house_mpr_bonus"`  // 血盟小屋 MP 回復加成
+
+	// EnableTombEffect 啟用 yiwei 客製墓碑效果。
+	// 3.80C 原生客戶端沒有墓碑圖檔，只有安裝額外圖檔時才能開啟。
+	EnableTombEffect bool `toml:"enable_tomb_effect"`
 }
 
 type DebugConfig struct {
@@ -209,26 +213,26 @@ func defaults() *Config {
 			ChangeTitleByOneself: true,
 		},
 		Gameplay: GameplayConfig{
-			BoardPostCost:          300,
-			BoardPageSize:          8,
-			MailSendCost:           50,
-			MailMaxPerBox:          40,
-			WarehousePersonalFee:   30,
-			WarehouseElfFee:        2,
+			BoardPostCost:           300,
+			BoardPageSize:           8,
+			MailSendCost:            50,
+			MailMaxPerBox:           40,
+			WarehousePersonalFee:    30,
+			WarehouseElfFee:         2,
 			RepairCostPerDurability: 200,
-			WorldChatMinFood:       6,
-			WorldChatFoodCost:      5,
-			MaxExcludeList:         16,
-			InitialFood:            40,
-			BaseAC:                 10,
-			MaxFoodSatiety:         225,
-			HouseHPRBonus:          10,
-			HouseMPRBonus:          10,
+			WorldChatMinFood:        6,
+			WorldChatFoodCost:       5,
+			MaxExcludeList:          16,
+			InitialFood:             40,
+			BaseAC:                  10,
+			MaxFoodSatiety:          225,
+			HouseHPRBonus:           10,
+			HouseMPRBonus:           10,
 		},
 		Lua: LuaConfig{
 			TickBudgetPct: 0.50,                   // warn if Lua uses > 50% of tick
-			Timeout:       100 * time.Millisecond,  // per-call timeout
-			MemoryLimitMB: 64,                      // 64 MB VM memory
+			Timeout:       100 * time.Millisecond, // per-call timeout
+			MemoryLimitMB: 64,                     // 64 MB VM memory
 		},
 		AntiCheat: AntiCheatConfig{
 			SpeedThreshold:     15.0, // tiles/second (normal walk ~5, haste ~8)

@@ -1,0 +1,251 @@
+package system
+
+import (
+	"github.com/l1jgo/server/internal/data"
+	"github.com/l1jgo/server/internal/handler"
+	"github.com/l1jgo/server/internal/net"
+	"github.com/l1jgo/server/internal/world"
+)
+
+func calcWeaponBreakDurabilityDamage(caster *world.PlayerInfo) int8 {
+	maxDamage := 1
+	if caster != nil {
+		maxDamage = int(caster.Intel) / 3
+		if maxDamage < 1 {
+			maxDamage = 1
+		}
+	}
+	return int8(world.RandInt(maxDamage) + 1)
+}
+
+func applyWeaponBreakDurability(weapon *world.InvItem, amount int8) bool {
+	if weapon == nil || amount <= 0 {
+		return false
+	}
+	before := weapon.Durability
+	next := int16(weapon.Durability) + int16(amount)
+	if next > 127 {
+		next = 127
+	}
+	weapon.Durability = int8(next)
+	return weapon.Durability != before
+}
+
+func clearNpcCancellationState(npc *world.NpcInfo) {
+	if npc == nil {
+		return
+	}
+	npc.PoisonDmgAmt = 0
+	npc.PoisonDmgTimer = 0
+	npc.Paralyzed = false
+	npc.Sleeped = false
+	npc.WeaponBroken = false
+	removeShapeChangeFromNpc(npc)
+}
+
+func applyNpcWeaponBreakDamage(npc *world.NpcInfo, damage int32) int32 {
+	if npc == nil || !npc.WeaponBroken || damage <= 0 {
+		return damage
+	}
+	return damage / 2
+}
+
+// ========================================================================
+//  鎧甲強化技能
+// ========================================================================
+
+// executeArmorEnchant 處理鎧甲護持（skill 21）— 物品強化技能。
+// Java: targetID = 背包物品 ObjectID。檢查物品是否為身體鎧甲（type2=2, type=2），
+// 是 → AC-3 buff + 訊息 161；否 → 訊息 79「沒有任何事情發生。」
+func (s *SkillSystem) executeArmorEnchant(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, itemObjID int32) {
+	// 查找背包物品
+	invItem := player.Inv.FindByObjectID(itemObjID)
+	if invItem == nil {
+		handler.SendServerMessage(sess, 79) // 沒有任何事情發生。
+		return
+	}
+
+	// 查詢物品模板 — 必須為身體鎧甲（Java: type2==2 && type==2）
+	itemInfo := s.deps.Items.Get(invItem.ItemID)
+	if itemInfo == nil || itemInfo.Category != data.CategoryArmor || itemInfo.Type != "armor" {
+		handler.SendServerMessage(sess, 79) // 沒有任何事情發生。
+		return
+	}
+
+	// 施法動畫 + GFX
+	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	if skill.CastGfx > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+	}
+
+	// 套用 AC-3 buff（簡化：Java 是物品級 enchant，Go 用玩家 buff 代替）
+	s.applyBuffEffect(player, skill)
+
+	// 成功訊息（Java: S_ServerMessage 161 "{item} 的 {效果} 增加了。"）
+	handler.SendServerMessage(sess, 161)
+}
+
+// executeWeaponEnchant 處理擬似魔法武器（skill 12）和暗影之牙（skill 107）— 武器強化 buff。
+// Java: targetID = 背包物品 ObjectID。檢查物品是否為武器（type2=1），
+// 是 → 套用武器強化 buff + icon；否 → 訊息 79。
+func (s *SkillSystem) executeWeaponEnchant(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, itemObjID int32) {
+	invItem := player.Inv.FindByObjectID(itemObjID)
+	if invItem == nil {
+		handler.SendServerMessage(sess, 79) // 沒有任何事情發生。
+		return
+	}
+
+	// 查詢物品模板 — 必須為武器（Java: type2==1）
+	itemInfo := s.deps.Items.Get(invItem.ItemID)
+	if itemInfo == nil || itemInfo.Category != data.CategoryWeapon {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	// 施法動畫 + GFX
+	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	if skill.CastGfx > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+	}
+
+	// 套用 buff 效果
+	s.applyBuffEffect(player, skill)
+
+	handler.SendServerMessage(sess, 161)
+}
+
+// executeCreateMagicalWeapon 處理創造魔法武器（skill 73）— 武器強化 +1。
+// Java: 僅可對 safe_enchant > 0 且 enchant_level == 0 的武器使用。
+// Go 簡化：驗證物品為武器即可，完整強化邏輯待後續實作。
+func (s *SkillSystem) executeCreateMagicalWeapon(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, itemObjID int32) {
+	invItem := player.Inv.FindByObjectID(itemObjID)
+	if invItem == nil {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	itemInfo := s.deps.Items.Get(invItem.ItemID)
+	if itemInfo == nil || itemInfo.Category != data.CategoryWeapon {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	// safe_enchant 檢查（Java: safe_enchant <= 0 → msg 79）
+	if itemInfo.SafeEnchant <= 0 {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	// 只對未強化武器有效（Java: enchant_level != 0 → msg 79）
+	if invItem.EnchantLvl != 0 {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	// 廣播施法動畫
+	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	if skill.CastGfx > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+	}
+
+	// 成功：強化 +1（100% 成功率）
+	invItem.EnchantLvl = 1
+
+	// 發送 msg 161：「%0 閃耀 %1 %2 的光芒」（Java: item_name, "$245", "$247"）
+	itemName := invItem.Name
+	if invItem.Identified {
+		itemName = "+0 " + invItem.Name
+	}
+	handler.SendServerMessageArgs(sess, 161, itemName, "$245", "$247")
+
+	// 更新物品名稱顯示
+	handler.SendItemNameUpdate(sess, invItem, itemInfo)
+	player.Dirty = true
+}
+
+// executeBringStone 處理提煉魔石（skill 100）— 魔石升級鏈。
+// Java: 40320→40321→40322→40323→40324，各有不同成功率。
+// Go 簡化：驗證物品為魔石即可，完整升級邏輯待後續實作。
+func (s *SkillSystem) executeBringStone(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, itemObjID int32) {
+	invItem := player.Inv.FindByObjectID(itemObjID)
+	if invItem == nil {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	// 檢查是否為可升級的魔石（Java: 40320/40321/40322/40323）
+	switch invItem.ItemID {
+	case 40320, 40321, 40322, 40323:
+		// 有效的魔石
+	default:
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	// 計算成功率與結果物品 ID
+	rate, resultID, msgArg := calcBringStoneRate(player, invItem.ItemID)
+	if resultID == 0 {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	// 廣播施法動畫
+	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	if skill.CastGfx > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+	}
+
+	// 消耗原石（Java: 無論成功失敗都消耗）
+	removed := player.Inv.RemoveItem(invItem.ObjectID, 1)
+	if removed {
+		handler.SendRemoveInventoryItem(sess, invItem.ObjectID)
+	} else {
+		handler.SendItemCountUpdate(sess, invItem)
+	}
+	// 更新負重
+	handler.SendWeightUpdate(sess, player)
+
+	// 擲骰判定（Java: random.nextInt(100)+1，即 1~100）
+	if world.RandInt(100)+1 <= rate {
+		// 成功：新增升級石到背包
+		resultInfo := s.deps.Items.Get(resultID)
+		if resultInfo == nil {
+			handler.SendServerMessage(sess, 280)
+			player.Dirty = true
+			return
+		}
+		newItem := player.Inv.AddItem(resultID, 1, resultInfo.Name, resultInfo.InvGfx, resultInfo.Weight, resultInfo.Stackable, byte(resultInfo.Bless))
+		handler.SendAddItem(sess, newItem, resultInfo)
+		handler.SendServerMessageStr(sess, 403, msgArg)
+	} else {
+		// 失敗：魔法失敗了
+		handler.SendServerMessage(sess, 280)
+	}
+	handler.SendWeightUpdate(sess, player)
+	player.Dirty = true
+}
+
+// calcBringStoneRate 計算提煉魔石的成功率。
+// Java 公式：dark = floor(10 + level*0.8 + (wis-6)*1.2)，逐級除以常數。
+func calcBringStoneRate(p *world.PlayerInfo, itemID int32) (rate int, resultID int32, msgArg string) {
+	dark := int(10 + float64(p.Level)*0.8 + float64(p.Wis-6)*1.2)
+	brave := int(float64(dark) / 2.1)
+	wise := int(float64(brave) / 2.0)
+	kayser := int(float64(wise) / 1.9)
+
+	switch itemID {
+	case 40320:
+		return dark, 40321, "$2475"
+	case 40321:
+		return brave, 40322, "$2476"
+	case 40322:
+		return wise, 40323, "$2477"
+	case 40323:
+		return kayser, 40324, "$2478"
+	}
+	return 0, 0, ""
+}

@@ -1,0 +1,691 @@
+package system
+
+import (
+	"github.com/l1jgo/server/internal/data"
+	"github.com/l1jgo/server/internal/handler"
+	"github.com/l1jgo/server/internal/net"
+	"github.com/l1jgo/server/internal/scripting"
+	"github.com/l1jgo/server/internal/world"
+)
+
+func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, target *world.PlayerInfo) {
+	if target == nil || target.Dead || target.MapID != player.MapID {
+		return
+	}
+
+	maxRange := int32(skill.Ranged)
+	if maxRange <= 0 {
+		maxRange = 2
+	}
+	if chebyshevDist(player.X, player.Y, target.X, target.Y) > maxRange+2 {
+		return
+	}
+
+	if s.deps.MapData != nil && !s.deps.MapData.HasLineOfSight(player.MapID, player.X, player.Y, target.X, target.Y) {
+		handler.SendServerMessage(sess, skillMsgCastFail)
+		return
+	}
+
+	player.Heading = CalcHeading(player.X, player.Y, target.X, target.Y)
+	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+
+	if skill.SkillID == skillFoeSlayer {
+		s.executeFoeSlayerOnPlayer(sess, player, skill, target, nearby)
+		return
+	}
+
+	targets := []*world.PlayerInfo{target}
+	if skill.Area > 0 {
+		for _, other := range nearby {
+			if other.CharID == player.CharID || other.CharID == target.CharID || other.Dead {
+				continue
+			}
+			if chebyshevDist(target.X, target.Y, other.X, other.Y) <= int32(skill.Area) {
+				targets = append(targets, other)
+			}
+		}
+	}
+
+	for _, p := range targets {
+		if p.CharID != player.CharID && s.tryCounterMagic(p, skill.SkillID) {
+			continue
+		}
+		res := s.deps.Scripting.CalcSkillDamage(s.buildPlayerSkillDamageContext(player, p, skill))
+		dmg := int32(res.Damage)
+		if skill.SkillID == skillJoyOfPain {
+			s.applyJoyOfPainReady(player)
+			dmg = 0
+		} else if skill.SkillID == skillMindBreak {
+			dmg = calcMindBreakDamage(player)
+			applyMindBreakMPDrain(p)
+		}
+		s.applySkillDamageToPlayer(sess, player, p, skill, dmg, nearby)
+		s.applyIllusionistStatusAttackEffect(p, skill)
+		s.applyIllusionistControlAttackEffect(player, p, skill)
+		s.applyDragonKnightBindAttackEffect(player, p, skill)
+		s.applyDragonKnightFreezeAttackEffect(player, p, skill)
+	}
+
+	if skill.Area > 0 {
+		for _, npc := range s.deps.World.GetNearbyNpcs(target.X, target.Y, target.MapID) {
+			if npc.Dead || chebyshevDist(target.X, target.Y, npc.X, npc.Y) > int32(skill.Area) {
+				continue
+			}
+			s.applyAreaSkillDamageToNpc(sess, player, skill, npc, nearby)
+		}
+	}
+}
+
+func (s *SkillSystem) applySelfAreaSkillDamageToPlayers(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, nearby []*world.PlayerInfo) {
+	for _, target := range nearby {
+		if target.CharID == player.CharID || target.Dead {
+			continue
+		}
+		if chebyshevDist(player.X, player.Y, target.X, target.Y) > int32(skill.Area) {
+			continue
+		}
+		if s.tryCounterMagic(target, skill.SkillID) {
+			continue
+		}
+		res := s.deps.Scripting.CalcSkillDamage(s.buildPlayerSkillDamageContext(player, target, skill))
+		s.applySkillDamageToPlayer(sess, player, target, skill, int32(res.Damage), nearby)
+	}
+}
+
+func (s *SkillSystem) buildPlayerSkillDamageContext(player, target *world.PlayerInfo, skill *data.SkillInfo) scripting.SkillDamageContext {
+	return scripting.SkillDamageContext{
+		SkillID:            int(skill.SkillID),
+		DamageValue:        skill.DamageValue,
+		DamageDice:         skill.DamageDice,
+		DamageDiceCount:    skill.DamageDiceCount,
+		SkillLevel:         skill.SkillLevel,
+		Attr:               skill.Attr,
+		AttackerLevel:      int(player.Level),
+		AttackerSTR:        int(player.Str),
+		AttackerDEX:        int(player.Dex),
+		AttackerINT:        int(player.Intel),
+		AttackerWIS:        int(player.Wis),
+		AttackerSP:         int(player.SP),
+		AttackerDmgMod:     int(player.DmgMod),
+		AttackerHitMod:     int(player.HitMod),
+		AttackerHP:         int(player.HP),
+		AttackerMaxHP:      int(player.MaxHP),
+		AttackerMagicLevel: calcMagicLevel(int(player.ClassType), int(player.Level)),
+		TargetAC:           int(target.AC),
+		TargetLevel:        int(target.Level),
+		TargetMR:           int(target.MR),
+		TargetFireRes:      int(target.FireRes),
+		TargetWaterRes:     int(target.WaterRes),
+		TargetWindRes:      int(target.WindRes),
+		TargetEarthRes:     int(target.EarthRes),
+		TargetMP:           int(target.MP),
+	}
+}
+
+func (s *SkillSystem) applySkillDamageToPlayer(sess *net.Session, player, target *world.PlayerInfo, skill *data.SkillInfo, dmg int32, nearby []*world.PlayerInfo) {
+	if dmg < 0 {
+		dmg = 0
+	}
+	if target.AbsoluteBarrier {
+		dmg = 0
+	}
+	dmg = applyImmuneToHarmDamage(target, dmg)
+	dmg = s.applyCounterMirrorMagicDamage(player, target, dmg, world.RandInt(100), nearby)
+
+	gfxID := int32(skill.CastGfx)
+	if gfxID <= 0 {
+		gfxID = int32(skill.ActionID)
+	}
+	useType := byte(6)
+	if skill.Area > 0 {
+		useType = 8
+	}
+	for _, viewer := range nearby {
+		handler.SendUseAttackSkill(viewer.Session, player.CharID, target.CharID,
+			int16(dmg), player.Heading, gfxID, useType,
+			player.X, player.Y, target.X, target.Y)
+	}
+
+	if player.AttackView {
+		handler.SendDamageNumbers(sess, target.CharID, dmg)
+	}
+	if dmg <= 0 {
+		return
+	}
+
+	if target.Sleeped {
+		breakPlayerSleepBySkill(target)
+	}
+
+	s.applyJoyOfPainBacklash(player, target, nearby)
+
+	target.HP -= dmg
+	target.Dirty = true
+	if target.HP <= 0 {
+		target.HP = 0
+		if s.deps.Death != nil {
+			s.deps.Death.KillPlayer(target)
+		}
+		return
+	}
+	sendHpUpdate(target.Session, target)
+}
+
+func (s *SkillSystem) applyAreaSkillDamageToNpc(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, npc *world.NpcInfo, nearby []*world.PlayerInfo) {
+	ctx := scripting.SkillDamageContext{
+		SkillID:            int(skill.SkillID),
+		DamageValue:        skill.DamageValue,
+		DamageDice:         skill.DamageDice,
+		DamageDiceCount:    skill.DamageDiceCount,
+		SkillLevel:         skill.SkillLevel,
+		Attr:               skill.Attr,
+		AttackerLevel:      int(player.Level),
+		AttackerSTR:        int(player.Str),
+		AttackerDEX:        int(player.Dex),
+		AttackerINT:        int(player.Intel),
+		AttackerWIS:        int(player.Wis),
+		AttackerSP:         int(player.SP),
+		AttackerDmgMod:     int(player.DmgMod),
+		AttackerHitMod:     int(player.HitMod),
+		AttackerHP:         int(player.HP),
+		AttackerMaxHP:      int(player.MaxHP),
+		AttackerMagicLevel: calcMagicLevel(int(player.ClassType), int(player.Level)),
+		TargetAC:           int(npc.AC),
+		TargetLevel:        int(npc.Level),
+		TargetMR:           int(npc.MR),
+		TargetFireRes:      int(npc.FireRes),
+		TargetWaterRes:     int(npc.WaterRes),
+		TargetWindRes:      int(npc.WindRes),
+		TargetEarthRes:     int(npc.EarthRes),
+		TargetMP:           int(npc.MP),
+	}
+	res := s.deps.Scripting.CalcSkillDamage(ctx)
+	dmg := int32(res.Damage)
+	if dmg < 0 {
+		dmg = 0
+	}
+	if skill.CastGfx > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
+	}
+	if player.AttackView {
+		handler.SendDamageNumbers(sess, npc.ID, dmg)
+	}
+	npc.HP -= dmg
+	if npc.HP < 0 {
+		npc.HP = 0
+	}
+	AddHate(npc, sess.ID, dmg)
+	hpRatio := int16(0)
+	if npc.MaxHP > 0 {
+		hpRatio = int16((npc.HP * 100) / npc.MaxHP)
+	}
+	handler.BroadcastToPlayers(nearby, handler.BuildHpMeter(npc.ID, hpRatio))
+	if npc.HP <= 0 {
+		handleNpcDeath(npc, player, nearby, s.deps)
+	}
+}
+
+func breakPlayerSleepBySkill(target *world.PlayerInfo) {
+	target.Sleeped = false
+	target.RemoveBuff(62)
+	target.RemoveBuff(66)
+	target.RemoveBuff(103)
+	handler.SendParalysis(target.Session, handler.SleepRemove)
+}
+
+const (
+	burningSpiritChance     = 15
+	doubleBreakBaseChance   = 20
+	doubleBreakEdoryuBonus  = 5
+	burningSpiritMultiplier = 3
+	burningSpiritDivisor    = 2
+	doubleBreakMultiplier   = 2
+)
+
+func darkElfPhysicalDamage(attacker *world.PlayerInfo, damage int32, weaponType string) int32 {
+	return darkElfPhysicalDamageWithRolls(attacker, damage, weaponType, world.RandInt(100), world.RandInt(100))
+}
+
+func darkElfPhysicalDamageWithRolls(attacker *world.PlayerInfo, damage int32, weaponType string, burningRoll, doubleBreakRoll int) int32 {
+	if attacker == nil || damage <= 0 {
+		return damage
+	}
+	if attacker.HasBuff(105) && doubleBreakRoll < doubleBreakChance(attacker, weaponType) {
+		damage *= doubleBreakMultiplier
+	}
+	if attacker.HasBuff(102) && burningRoll < burningSpiritChance {
+		damage = damage * burningSpiritMultiplier / burningSpiritDivisor
+	}
+	return damage
+}
+
+func doubleBreakChance(attacker *world.PlayerInfo, weaponType string) int {
+	switch weaponType {
+	case "claw":
+		return doubleBreakBaseChance + doubleBreakLevelBonus(attacker)
+	case "edoryu":
+		return doubleBreakBaseChance + doubleBreakLevelBonus(attacker) + doubleBreakEdoryuBonus
+	default:
+		return 0
+	}
+}
+
+func doubleBreakLevelBonus(attacker *world.PlayerInfo) int {
+	if attacker == nil || attacker.Level <= 45 {
+		return 0
+	}
+	return int(attacker.Level-45) / 5
+}
+
+func (s *SkillSystem) equippedWeaponType(player *world.PlayerInfo) string {
+	if player == nil || s == nil || s.deps == nil || s.deps.Items == nil {
+		return ""
+	}
+	wpn := player.Equip.Weapon()
+	if wpn == nil {
+		return ""
+	}
+	info := s.deps.Items.Get(wpn.ItemID)
+	if info == nil {
+		return ""
+	}
+	return info.Type
+}
+
+// ========================================================================
+//  攻擊技能
+// ========================================================================
+
+// executeAttackSkill 處理傷害型技能（目標為 NPC）。
+func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, targetID int32) {
+	ws := s.deps.World
+
+	npc := ws.GetNpc(targetID)
+	if npc == nil || npc.Dead {
+		if target := ws.GetByCharID(targetID); target != nil {
+			// Owner: skill_damage.go
+			s.executeAttackSkillOnPlayer(sess, player, skill, target)
+		}
+		return
+	}
+	if npc.MapID != player.MapID {
+		return
+	}
+
+	// 距離檢查
+	maxRange := int32(skill.Ranged)
+	if skill.SkillID == 132 {
+		maxRange = 10
+	} else if maxRange <= 0 {
+		maxRange = 2
+	}
+	dist := chebyshevDist(player.X, player.Y, npc.X, npc.Y)
+	if dist > maxRange+2 {
+		return
+	}
+
+	// LOS 檢查（Java: L1SkillUse — glanceCheck）
+	// 攻擊型技能需要視線，buff/heal 技能豁免
+	if s.deps.MapData != nil && !s.deps.MapData.HasLineOfSight(player.MapID, player.X, player.Y, npc.X, npc.Y) {
+		handler.SendServerMessage(sess, skillMsgCastFail)
+		return
+	}
+
+	player.Heading = CalcHeading(player.X, player.Y, npc.X, npc.Y)
+
+	// 起死回生術 (18)：對不死族 NPC 機率即死
+	if skill.SkillID == 18 {
+		s.executeTurnUndead(sess, player, skill, npc)
+		return
+	}
+
+	// Triple Arrow (132)：消耗 1 箭矢
+	if skill.SkillID == 132 {
+		arrow := FindArrow(player, s.deps)
+		if arrow == nil {
+			handler.SendServerMessage(sess, skillMsgCastFail)
+			return
+		}
+		if player.Inv.RemoveItem(arrow.ObjectID, 1) {
+			handler.SendRemoveInventoryItem(sess, arrow.ObjectID)
+		} else {
+			handler.SendItemCountUpdate(sess, arrow)
+		}
+	}
+
+	// 武器傷害
+	weaponDmg := 4 // 拳頭
+	targetSize := npc.Size
+	if targetSize == "" {
+		targetSize = "small"
+	}
+	if wpn := player.Equip.Weapon(); wpn != nil {
+		if info := s.deps.Items.Get(wpn.ItemID); info != nil {
+			if targetSize == "large" && info.DmgLarge > 0 {
+				weaponDmg = info.DmgLarge
+			} else if info.DmgSmall > 0 {
+				weaponDmg = info.DmgSmall
+			}
+		}
+	}
+
+	// Lua 傷害計算 context 建構
+	buildCtx := func(n *world.NpcInfo) scripting.SkillDamageContext {
+		return scripting.SkillDamageContext{
+			SkillID:            int(skill.SkillID),
+			DamageValue:        skill.DamageValue,
+			DamageDice:         skill.DamageDice,
+			DamageDiceCount:    skill.DamageDiceCount,
+			SkillLevel:         skill.SkillLevel,
+			Attr:               skill.Attr,
+			AttackerLevel:      int(player.Level),
+			AttackerSTR:        int(player.Str),
+			AttackerDEX:        int(player.Dex),
+			AttackerINT:        int(player.Intel),
+			AttackerWIS:        int(player.Wis),
+			AttackerSP:         int(player.SP),
+			AttackerDmgMod:     int(player.DmgMod),
+			AttackerHitMod:     int(player.HitMod),
+			AttackerWeapon:     weaponDmg,
+			AttackerHP:         int(player.HP),
+			AttackerMaxHP:      int(player.MaxHP),
+			AttackerMagicLevel: calcMagicLevel(int(player.ClassType), int(player.Level)),
+			TargetAC:           int(n.AC),
+			TargetLevel:        int(n.Level),
+			TargetMR:           int(n.MR),
+			TargetFireRes:      int(n.FireRes),
+			TargetWaterRes:     int(n.WaterRes),
+			TargetWindRes:      int(n.WindRes),
+			TargetEarthRes:     int(n.EarthRes),
+			TargetMP:           int(n.MP),
+		}
+	}
+
+	type hitTarget struct {
+		npc      *world.NpcInfo
+		dmg      int32
+		hitCount int
+		drainMP  int32
+	}
+
+	res := s.deps.Scripting.CalcSkillDamage(buildCtx(npc))
+
+	// 心靈破壞（207）：特殊傷害公式 SP × 3.8（Java: MIND_BREAK.java）
+	if skill.SkillID == 207 {
+		res.Damage = int(float64(player.SP) * 3.8)
+		res.DrainMP = 5 // 強制扣除目標 5 MP
+	}
+	if skill.SkillID == skillJoyOfPain {
+		s.applyJoyOfPainReady(player)
+		res.Damage = 0
+	}
+
+	// 三重矢（132）：強制 3 次命中
+	if skill.SkillID == 132 && res.HitCount < 3 {
+		res.HitCount = 3
+	}
+
+	hits := []hitTarget{{npc: npc, dmg: int32(res.Damage), hitCount: res.HitCount, drainMP: int32(res.DrainMP)}}
+
+	// 極光雷電（17）：Bresenham 直線目標（Java: getVisibleLineObjects）
+	if skill.SkillID == 17 {
+		lineNpcs := ws.GetNpcsAlongLine(player.X, player.Y, npc.X, npc.Y, player.MapID)
+		for _, other := range lineNpcs {
+			if other.ID == npc.ID {
+				continue
+			}
+			r := s.deps.Scripting.CalcSkillDamage(buildCtx(other))
+			hits = append(hits, hitTarget{npc: other, dmg: int32(r.Damage), hitCount: r.HitCount, drainMP: int32(r.DrainMP)})
+		}
+	} else if skill.Area > 0 {
+		allNpcs := ws.GetNearbyNpcs(npc.X, npc.Y, npc.MapID)
+		for _, other := range allNpcs {
+			if other.ID == npc.ID || other.Dead {
+				continue
+			}
+			if chebyshevDist(npc.X, npc.Y, other.X, other.Y) <= int32(skill.Area) {
+				r := s.deps.Scripting.CalcSkillDamage(buildCtx(other))
+				hits = append(hits, hitTarget{npc: other, dmg: int32(r.Damage), hitCount: r.HitCount, drainMP: int32(r.DrainMP)})
+			}
+		}
+	}
+
+	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+
+	if skill.SkillID == skillFoeSlayer {
+		s.executeFoeSlayerOnNpc(sess, player, skill, npc, nearby)
+		return
+	}
+
+	isPhysicalSkill := skill.DamageValue == 0 && skill.DamageDice == 0
+
+	useType := byte(6)
+	if skill.Area > 0 {
+		useType = 8
+	}
+
+	for i, t := range hits {
+		hitsToApply := t.hitCount
+		if hitsToApply < 1 {
+			hitsToApply = 1
+		}
+
+		for h := 0; h < hitsToApply; h++ {
+			dmg := t.dmg
+
+			if isPhysicalSkill {
+				atkData := handler.BuildAttackPacket(player.CharID, t.npc.ID, dmg, player.Heading)
+				handler.BroadcastToPlayers(nearby, atkData)
+				if skill.CastGfx > 0 {
+					effData := handler.BuildSkillEffect(t.npc.ID, skill.CastGfx)
+					handler.BroadcastToPlayers(nearby, effData)
+				}
+			} else {
+				gfxID := int32(skill.CastGfx)
+				if gfxID <= 0 {
+					gfxID = int32(skill.ActionID)
+				}
+				if i == 0 {
+					// 主目標：完整攻擊技能封包（含施法動畫）
+					for _, viewer := range nearby {
+						handler.SendUseAttackSkill(viewer.Session, player.CharID, t.npc.ID,
+							int16(dmg), player.Heading, gfxID, useType,
+							int32(player.X), int32(player.Y), int32(t.npc.X), int32(t.npc.Y))
+					}
+				} else {
+					// AoE 次要目標：只顯示命中特效，不重播施法動畫
+					if gfxID > 0 {
+						handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(t.npc.ID, gfxID))
+					}
+				}
+			}
+
+			// 浮動傷害數字（技能攻擊，魔防抵抗時顯示 MISS）
+			if player.AttackView {
+				handler.SendDamageNumbers(sess, t.npc.ID, dmg)
+			}
+
+			t.npc.HP -= dmg
+			if t.npc.HP < 0 {
+				t.npc.HP = 0
+			}
+
+			// 受傷時解除睡眠
+			if t.npc.Sleeped {
+				BreakNpcSleep(t.npc, ws)
+			}
+
+			// Mind Break: Java 會扣 5 MP，目標不足時扣到 0。
+			if h == 0 && t.drainMP > 0 {
+				t.npc.MP -= t.drainMP
+				if t.npc.MP < 0 {
+					t.npc.MP = 0
+				}
+			}
+
+			// 技能傷害累加仇恨
+			AddHate(t.npc, sess.ID, dmg)
+
+			hpRatio := int16(0)
+			if t.npc.MaxHP > 0 {
+				hpRatio = int16((t.npc.HP * 100) / t.npc.MaxHP)
+			}
+			hpData := handler.BuildHpMeter(t.npc.ID, hpRatio)
+			handler.BroadcastToPlayers(nearby, hpData)
+
+			if t.npc.HP <= 0 {
+				handleNpcDeath(t.npc, player, nearby, s.deps)
+				break
+			}
+		}
+	}
+
+	// 吸血系技能：傷害轉為治療（Java: CHILL_TOUCH / VAMPIRIC_TOUCH — heal = this._dmg）
+	if skill.SkillID == 28 || skill.SkillID == 10 {
+		totalDmg := int32(0)
+		for _, t := range hits {
+			totalDmg += int32(t.dmg)
+		}
+		if totalDmg > 0 {
+			player.HP += totalDmg
+			if player.HP > player.MaxHP {
+				player.HP = player.MaxHP
+			}
+			sendHpUpdate(sess, player)
+		}
+	}
+
+	// 凍結類攻擊技能：傷害後 MR 判定凍結（Java: setFrozen + S_Poison 灰色）
+	// 50=冰矛圍籬, 30=岩牢, 80=冰雪颶風（Java: skill 22 寒冰氣息無凍結效果）
+	if skill.SkillID == 50 || skill.SkillID == 30 || skill.SkillID == 80 || skill.SkillID == 194 {
+		for _, t := range hits {
+			if t.npc.Dead || t.npc.Paralyzed || t.npc.HasDebuff(22) || t.npc.HasDebuff(30) || t.npc.HasDebuff(50) || t.npc.HasDebuff(80) || t.npc.HasDebuff(194) {
+				continue
+			}
+			if s.checkNpcMRResist(player, t.npc, skill.SkillID) {
+				dur := skill.BuffDuration
+				if dur <= 0 {
+					switch skill.SkillID {
+					case 50:
+						dur = 16
+					case 30:
+						dur = 10
+					case 80:
+						dur = 16
+					case 194:
+						dur = 3
+					}
+				}
+				t.npc.Paralyzed = true
+				t.npc.AddDebuff(skill.SkillID, (dur+1)*5)
+				handler.BroadcastToPlayers(nearby, handler.BuildPoison(t.npc.ID, 2))
+			}
+		}
+	}
+
+	// 奪命之雷（192）：傷害後束縛 NPC（Java: THUNDER_GRAB.java — S_Paralysis type 6）
+	if skill.SkillID == 192 {
+		for _, t := range hits {
+			if t.npc.Dead || t.npc.Paralyzed {
+				continue
+			}
+			if s.checkNpcMRResist(player, t.npc, 192) {
+				dur := world.RandInt(4) + 1 // 1-4 秒
+				t.npc.Paralyzed = true
+				t.npc.AddDebuff(192, dur*5)
+			}
+		}
+	}
+
+	// 骷髏毀壞（208）：傷害後暈眩 NPC（Java: BONE_BREAK.java — S_Paralysis type 5）
+	if skill.SkillID == 208 {
+		for _, t := range hits {
+			if t.npc.Dead || t.npc.Paralyzed {
+				continue
+			}
+			if s.checkNpcMRResist(player, t.npc, 208) {
+				dur := world.RandInt(2) + 1 // 1-2 秒
+				t.npc.Paralyzed = true
+				t.npc.AddDebuff(208, dur*5)
+			}
+		}
+	}
+
+	// 混亂（202）：傷害後沉默 NPC（Java: CONFUSION.java — 設定 SILENCE 效果）
+	if skill.SkillID == 202 {
+		for _, t := range hits {
+			if t.npc.Dead || t.npc.HasDebuff(202) {
+				continue
+			}
+			dur := skill.BuffDuration
+			if dur <= 0 {
+				dur = 8
+			}
+			t.npc.AddDebuff(202, dur*5)
+		}
+	}
+}
+
+// executeTurnUndead 起死回生術（skill 18）— 對不死族 NPC 機率即死。
+// Java 參考: L1SkillUse.java TYPE_CURSE 分支，undeadType == 1 || 3 時 _dmg = currentHp。
+// GFX：不走攻擊動畫，走 ActionGfx + SkillEffect（Java 明確排除 Turn Undead 的 S_UseAttackSkill）。
+func (s *SkillSystem) executeTurnUndead(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, npc *world.NpcInfo) {
+	ws := s.deps.World
+	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+
+	// 施法動畫（Java: S_DoActionGFX）
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+
+	// 前置判定：目標必須是不死族（Java: undeadType == 1 || 3 且 isTU == true）
+	if !npc.Undead {
+		// 非不死族：施法動畫播放但不造成傷害
+		return
+	}
+
+	// 目標特效（Java: S_SkillSound(targetId, castGfx=754)）
+	if skill.CastGfx > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
+	}
+
+	// 機率判定（Java: calcProbabilityMagic → default 分支）
+	// diceCount = max(magicBonus + magicLevel, 1)
+	// probability = sum of diceCount rolls of d7
+	// 成功條件: probability >= random(1~100)
+	magicLevel := int(player.Level) / 4 // 簡化：施法者等級 / 4
+	magicBonus := int(player.Intel) - 12
+	if magicBonus < 0 {
+		magicBonus = 0
+	}
+	diceCount := magicLevel + magicBonus
+	if diceCount < 1 {
+		diceCount = 1
+	}
+	probability := 0
+	for i := 0; i < diceCount; i++ {
+		probability += world.RandInt(7) + 1 // 1~7
+	}
+	rnd := world.RandInt(100) + 1 // 1~100
+	if probability < rnd {
+		// 失敗
+		handler.SendServerMessage(sess, skillMsgCastFail)
+		return
+	}
+
+	// 成功：傷害 = 目標當前 HP（即死）
+	dmg := npc.HP
+	npc.HP = 0
+
+	// 受傷時解除睡眠
+	if npc.Sleeped {
+		BreakNpcSleep(npc, ws)
+	}
+
+	// 即死傷害累加仇恨
+	AddHate(npc, sess.ID, dmg)
+
+	hpData := handler.BuildHpMeter(npc.ID, 0)
+	handler.BroadcastToPlayers(nearby, hpData)
+
+	_ = dmg // 即死傷害值，用於 handleNpcDeath 的經驗計算
+	handleNpcDeath(npc, player, nearby, s.deps)
+}

@@ -45,7 +45,7 @@ BUFF_DEFS = {
     [47] = { dmg_mod = -5, hit_mod = -1 },                                     -- Weakness 弱化術 (debuff)
 
     [50] = { paralyzed = true },                                              -- Ice Lance (freeze)
-    [52] = { brave_speed = 4 },                                               -- Holy Walk
+    [52] = { brave_speed = 4, exclusions = {101, 150, 155, 186} },            -- Holy Walk
     [54] = { move_speed = 1, exclusions = {43, 29, 76} },                    -- Greater Haste
 
     [55] = { hit_mod = 2, dmg_mod = 5, ac = 10 },                            -- Berserker
@@ -73,13 +73,13 @@ BUFF_DEFS = {
 
     [97]  = { invisible = true },                                             -- Dark Invisibility
     [98]  = {},                                                               -- Venom (poison enchant flag)
-    [99]  = { ac = -3, exclusions = {3, 21, 24} },                           -- DE Shadow Armor
+    [99]  = { mr = 5 },                                                       -- Shadow Armor（Java: MR +5）
 
-    [101] = { brave_speed = 4 },                                              -- Moving Acceleration
-    [102] = { sp = 2, hit_mod = 3 },                                          -- Burning Spirit
+    [101] = { brave_speed = 4, exclusions = {52, 150, 155, 186} },            -- Moving Acceleration
+    [102] = {},                                                               -- Burning Spirit（觸發型增傷旗標）
     [103] = {},                                                               -- Dark Blind (debuff flag)
     [104] = {},                                                               -- Poison Resist (flag)
-    [105] = { dmg_mod = 4 },                                                  -- Double Break
+    [105] = {},                                                               -- Double Break（觸發型增傷旗標）
     [106] = { dodge = 5 },                                                    -- Shadow Dodge
     [107] = { dmg_mod = 5 },                                                  -- Shadow Fang
     [112] = {},                                                               -- Armor Break（破壞盔甲，旗標型 debuff：傷害倍率在 Go 戰鬥系統中處理）
@@ -89,42 +89,43 @@ BUFF_DEFS = {
     [87]  = { paralyzed = true },                                             -- Shock Stun
     [88]  = { ac = -4 },                                                      -- Reduction Armor（增幅防禦）
     [89]  = { hit_mod = 6 },                                                  -- Spiked Armor（尖刺盔甲，HIT+6 + PvP 武器破壞）
-    [90]  = { ac = -2 },                                                      -- Solid Carriage（堅固防護）
+    [90]  = { dodge = 15 },                                                   -- Solid Carriage（堅固防護，Java: ER +15）
     [91]  = { ac = -2 },                                                      -- Counter Barrier（反擊屏障）— AC-2 + 近戰反彈
 
-    [109] = { str = 1 },                                                      -- Dress Mighty
-    [110] = { dex = 1 },                                                      -- Dress Dexterity
-    [111] = { dodge = 5, ac = -4 },                                           -- Reduction Armor
-    [113] = { hit_mod = 3 },                                                  -- Accurate Target
+    [109] = { str = 3 },                                                      -- Dress Mighty
+    [110] = { dex = 3 },                                                      -- Dress Dexterity
+    [111] = { dodge = 18 },                                                   -- Dress Evasion（Java: ER +18）
+    [113] = {},                                                               -- True Target（精準目標，傷害加成在 Go PvP/戰鬥路徑處理）
 
-    [114] = { hit_mod = 5, bow_hit = 5, mr = 20, exclusions = {115, 117} },  -- Glowing Aura
+    [114] = { hit_mod = 5, dmg_mod = 5, exclusions = {115, 117} },            -- Glowing Aura
     [115] = { ac = -8, exclusions = {114, 117} },                             -- Shining Aura
-    [117] = { dmg_mod = 5, exclusions = {114, 115} },                         -- Brave Aura
+    [117] = { exclusions = {114, 115} },                                      -- Brave Aura（33% 物理傷害 1.5 倍）
     [118] = {},                                                               -- Guard Ally (flag)
 
     -- ==================== Elf Skills (129-176) ====================
 
     [129] = { mr = 10 },                                                      -- Resist Magic
-    [133] = { fire_res = -20, water_res = -20, wind_res = -20, earth_res = -20 }, -- Weaken Element
+    [133] = {},                                                               -- Weaken Element（Go 依施法者 ElfAttr 動態降低單一屬性 -50）
     [134] = {},                                                               -- Mirror Reflect (flag)
     [137] = { wis = 3 },                                                      -- Clear Mind
     [138] = { fire_res = 10, water_res = 10, wind_res = 10, earth_res = 10 }, -- Resist Elemental
-    [147] = { fire_res = 30, water_res = 30, wind_res = 30, earth_res = 30 }, -- Elemental Protection
+    [147] = {},                                                               -- Elemental Protection（Go 依 ElfAttr 動態加單一屬性 +50）
 
     [148] = { dmg_mod = 4, exclusions = {163} },                              -- Fire Weapon
     [149] = { bow_hit = 6, exclusions = {166} },                              -- Wind Shot
-    [150] = { brave_speed = 4 },                                              -- Wind Walk
+    [150] = { brave_speed = 4, exclusions = {52, 101, 155, 186} },            -- Wind Walk
 
     [151] = { ac = -6, exclusions = {3, 21, 24, 99, 159, 168} },             -- Earth Skin
     [152] = { move_speed = 2, exclusions = {43, 54} },                        -- Entangle (slow)
 
-    [155] = { bow_hit = 2, bow_dmg = 3 },                                    -- Storm Eye (party)
+    [155] = { brave_speed = 1, exclusions = {52, 101, 150, 186} },            -- Fire Bless（烈炎氣息）
     [156] = { bow_hit = 2, bow_dmg = 3 },                                    -- Eye of Storm
     [157] = { paralyzed = true },                                              -- Earth Barrier
     [158] = { hpr = 4 },                                                      -- Spring of Life
 
-    [159] = { ac = -7, exclusions = {3, 21, 24, 151, 168} },                 -- Earth Bless
-    [160] = { ac = -2, water_res = 30 },                                      -- Water Protection
+    [159] = { exclusions = {151, 168} },                                      -- Earth Bless（義維 Java 只送盾牌圖示）
+    [160] = { dodge = 5 },                                                    -- Water Protection（Java getEr: ER +5）
+    [161] = {},                                                               -- Area of Silence（Go 範圍沉默旗標）
 
     [163] = { dmg_mod = 6, hit_mod = 3, exclusions = {148} },                -- Burning Weapon
     [166] = { bow_dmg = 5, bow_hit = -1, exclusions = {149} },               -- Storm Shot
@@ -132,11 +133,11 @@ BUFF_DEFS = {
 
     [168] = { ac = -10, exclusions = {3, 21, 24, 151, 159} },                -- Iron Skin
     [169] = { str = 5 },                                                      -- Physical Power (Elf)
-    [170] = { hpr = 3, mpr = 1 },                                            -- Aqua Vitality
-    [171] = { dmg_mod = 3 },                                                  -- Elemental Fire
+    [170] = {},                                                               -- Water Life（下一次治療加倍後移除）
+    [171] = {},                                                               -- Elemental Fire（近戰觸發型增傷）
     [173] = {},                                                               -- Pollute Water (debuff flag)
-    [174] = { bow_hit = 3, bow_dmg = 3 },                                    -- True Target
-    [175] = { sp = 2, intel = 2 },                                            -- Flame of Soul
+    [174] = {},                                                               -- Striker Gale（遠程承傷加成旗標）
+    [175] = {},                                                               -- Soul of Flame（近戰增傷旗標）
     [176] = { str = 2, dex = 2 },                                            -- Elemental Energy
 
     -- ==================== Dragon Knight Skills (181-195) ====================
@@ -146,8 +147,9 @@ BUFF_DEFS = {
     [183] = { ac = 5, dmg_mod = -3 },                                        -- Guard Break (debuff)
 
     [185] = { ac = -3, regist_sustain = 10, exclusions = {190, 195} },         -- Awaken Antharas（安塔瑞斯覺醒：AC-3, 持傷抗+10）
-    [186] = { dmg_mod = 6, hit_mod = 3, ac = 5, brave_speed = 1 },            -- Blood Lust（血之渴望：DMG+6, HIT+3, AC+5, 勇敢速度+1）
-    [188] = { str = -5, intel = -5 },                                         -- Horror of Death (debuff)
+    [186] = { dmg_mod = 6, hit_mod = 3, ac = 5, brave_speed = 1,
+              exclusions = {52, 101, 150, 155} },                            -- Blood Lust（血之渴望：DMG+6, HIT+3, AC+5, 勇敢速度+1）
+    [188] = { dodge = -5 },                                                   -- Resist Fear
     [189] = { ac = -5 },                                                      -- Shock Skin (+ reflect flag)
     [190] = { regist_freeze = 10, exclusions = {185, 195} },                  -- Awaken Fafurion（法利昂覺醒：凍結抗+10）
     [191] = { brave_speed = 4 },                                              -- Underground Path
@@ -164,7 +166,7 @@ BUFF_DEFS = {
 
     [209] = { sp = 2, exclusions = {204, 214, 219} },                        -- Illusion Lich
     [211] = { hpr = 5 },                                                      -- Patience
-    [212] = { paralyzed = true },                                              -- Phantasm
+    [212] = { sleeped = true },                                                -- Phantasm
 
     [214] = { ac = -20, exclusions = {204, 209, 219} },                      -- Illusion Diamond Golem
 

@@ -195,6 +195,13 @@ func (s *PolymorphSystem) UsePolyScroll(sess *net.Session, player *world.PlayerI
 
 // UsePolySkill 處理變形術技能選擇對話框結果（業務邏輯從 handler/polymorph.go 搬入）。
 func (s *PolymorphSystem) UsePolySkill(sess *net.Session, player *world.PlayerInfo, monsterName string) {
+	if player == nil || !player.PendingPolySkill {
+		return
+	}
+	player.PendingPolySkill = false
+	if monsterName == "" {
+		return
+	}
 	if s.deps.Polys == nil {
 		return
 	}
@@ -215,23 +222,6 @@ func (s *PolymorphSystem) UsePolySkill(sess *net.Session, player *world.PlayerIn
 	if !poly.IsMatchCause(data.PolyCauseMagic) {
 		handler.SendServerMessage(sess, 181)
 		return
-	}
-
-	// 消耗魔法材料（item 40318 for skill 67）
-	skill := s.deps.Skills.Get(handler.SkillShapeChange)
-	if skill != nil && skill.ItemConsumeID > 0 && skill.ItemConsumeCount > 0 {
-		slot := player.Inv.FindByItemID(int32(skill.ItemConsumeID))
-		if slot == nil || slot.Count < int32(skill.ItemConsumeCount) {
-			handler.SendServerMessage(sess, 280) // "施展魔法失敗。"
-			return
-		}
-		removed := player.Inv.RemoveItem(slot.ObjectID, int32(skill.ItemConsumeCount))
-		if removed {
-			handler.SendRemoveInventoryItem(sess, slot.ObjectID)
-		} else {
-			handler.SendItemCountUpdate(sess, slot)
-		}
-		handler.SendWeightUpdate(sess, player)
 	}
 
 	// 執行變身：7200 秒 = 2 小時（Java 預設）

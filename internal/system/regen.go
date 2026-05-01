@@ -20,10 +20,11 @@ import (
 //   - MpRegeneration.java: 1-second timer, fixed 64-point threshold (16 seconds)
 //
 // Conversion to tick-based:
-//   Java runs every 1 second adding 4 points.
-//   Go tick = 200ms, so every 5 ticks = 1 second. We add 4 points per 5 ticks.
-//   Simplification: accumulate 1 point per tick, thresholds = Java threshold / 4 * 5.
-//   Or simpler: count ticks, trigger every N ticks.
+//
+//	Java runs every 1 second adding 4 points.
+//	Go tick = 200ms, so every 5 ticks = 1 second. We add 4 points per 5 ticks.
+//	Simplification: accumulate 1 point per tick, thresholds = Java threshold / 4 * 5.
+//	Or simpler: count ticks, trigger every N ticks.
 //
 // Approach: count ticks. HP regen triggers every hpInterval ticks (level-based).
 // MP regen triggers every mpInterval ticks (fixed ~16 seconds = 80 ticks).
@@ -91,8 +92,8 @@ func (s *RegenSystem) tickHPRegen(p *world.PlayerInfo) {
 		HPR:               int(p.HPR),
 		Food:              int(p.Food),
 		WeightPct:         int(p.Inv.Weight242(maxW)),
-		HasExoticVitalize: p.HasBuff(226),
-		HasAdditionalFire: p.HasBuff(238),
+		HasExoticVitalize: p.HasBuff(169),
+		HasAdditionalFire: p.HasBuff(176),
 	})
 	if amount == 0 {
 		return
@@ -102,6 +103,7 @@ func (s *RegenSystem) tickHPRegen(p *world.PlayerInfo) {
 
 	// 血盟小屋 HP 回復加成（Java: HprExecutor + ConfigOther.HOMEHPR）
 	total += s.houseHPBonus(p)
+	total += s.lifeStreamHPBonus(p)
 
 	newHP := p.HP + total
 	if newHP < 1 {
@@ -135,8 +137,8 @@ func (s *RegenSystem) tickMPRegen(p *world.PlayerInfo) {
 		MPR:               int(p.MPR),
 		Food:              int(p.Food),
 		WeightPct:         int(p.Inv.Weight242(maxW)),
-		HasExoticVitalize: p.HasBuff(226),
-		HasAdditionalFire: p.HasBuff(238),
+		HasExoticVitalize: p.HasBuff(169),
+		HasAdditionalFire: p.HasBuff(176),
 		HasBluePotion:     p.HasBuff(1002),
 	})
 	if amount == 0 {
@@ -181,6 +183,18 @@ func (s *RegenSystem) isInHouse(p *world.PlayerInfo) bool {
 func (s *RegenSystem) houseHPBonus(p *world.PlayerInfo) int32 {
 	if s.cfg != nil && s.cfg.Gameplay.HouseHPRBonus > 0 && s.isInHouse(p) {
 		return int32(s.cfg.Gameplay.HouseHPRBonus)
+	}
+	return 0
+}
+
+func (s *RegenSystem) lifeStreamHPBonus(p *world.PlayerInfo) int32 {
+	if s.world == nil {
+		return 0
+	}
+	for _, effect := range s.world.GetNearbyGroundEffects(p.X, p.Y, p.MapID) {
+		if effect.Type == world.GroundEffectLifeStream && chebyshevDist(effect.X, effect.Y, p.X, p.Y) < 4 {
+			return 3
+		}
 	}
 	return 0
 }

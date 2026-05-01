@@ -78,9 +78,9 @@ var summonRingTable = map[int32]summonRingEntry{
 	13: {81228, 52, 8}, 269: {81229, 52, 8}, 525: {81230, 52, 8},
 	14: {81231, 56, 10}, 270: {81232, 56, 10}, 526: {81233, 56, 10},
 	15: {81234, 60, 12}, 271: {81235, 60, 12}, 527: {81236, 60, 12},
-	16: {81237, 64, 20},
-	17: {81238, 68, 42},
-	18: {81239, 72, 42},
+	16:  {81237, 64, 20},
+	17:  {81238, 68, 42},
+	18:  {81239, 72, 42},
 	274: {81240, 72, 50},
 }
 
@@ -90,6 +90,20 @@ var specialSummonNpcIDs = map[int32]bool{
 	81238: true,
 	81239: true,
 	81240: true,
+}
+
+var lesserElementalByAttr = map[int16]int32{
+	1: 45306,
+	2: 45303,
+	4: 45304,
+	8: 45305,
+}
+
+var greaterElementalByAttr = map[int16]int32{
+	1: 81053,
+	2: 81050,
+	4: 81051,
+	8: 81052,
 }
 
 // ExecuteSummonMonster 處理技能 51（召喚怪物）。
@@ -258,6 +272,91 @@ func (s *SummonSystem) ExecuteSummonMonster(sess *net.Session, player *world.Pla
 	if len(summons) > 0 {
 		handler.SendSummonMenu(sess, summons[0])
 	}
+}
+
+// ExecuteElementalSummon 處理召喚屬性精靈 154 與召喚強力屬性精靈 162。
+// Java: LESSER_ELEMENTAL.java / GREATER_ELEMENTAL.java
+func (s *SummonSystem) ExecuteElementalSummon(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo) {
+	if player == nil || skill == nil {
+		return
+	}
+	if player.ElfAttr == 0 {
+		return
+	}
+	if s.deps.MapData != nil {
+		md := s.deps.MapData.GetInfo(player.MapID)
+		if md != nil && !md.RecallPets {
+			handler.SendServerMessage(sess, msgCannotSummonHere)
+			return
+		}
+	}
+	if s.calcUsedPetCost(player.CharID) != 0 {
+		return
+	}
+
+	var npcID int32
+	switch skill.SkillID {
+	case 154:
+		npcID = lesserElementalByAttr[player.ElfAttr]
+	case 162:
+		npcID = greaterElementalByAttr[player.ElfAttr]
+	}
+	if npcID == 0 {
+		return
+	}
+
+	tmpl := s.deps.Npcs.Get(npcID)
+	if tmpl == nil {
+		handler.SendServerMessage(sess, msgSummonCastFail)
+		return
+	}
+
+	petCost := int(player.Cha) + 7
+	if petCost <= 0 {
+		petCost = 7
+	}
+	s.deps.Skill.ConsumeSkillResources(sess, player, skill)
+
+	sum := &world.SummonInfo{
+		ID:          world.NextNpcID(),
+		OwnerCharID: player.CharID,
+		NpcID:       npcID,
+		GfxID:       tmpl.GfxID,
+		NameID:      tmpl.NameID,
+		Name:        tmpl.Name,
+		Level:       tmpl.Level,
+		HP:          tmpl.HP,
+		MaxHP:       tmpl.HP,
+		MP:          tmpl.MP,
+		MaxMP:       tmpl.MP,
+		AC:          tmpl.AC,
+		STR:         tmpl.STR,
+		DEX:         tmpl.DEX,
+		MR:          tmpl.MR,
+		AtkDmg:      int32(tmpl.Level) + int32(tmpl.STR)/3,
+		AtkSpeed:    tmpl.AtkSpeed,
+		MoveSpd:     tmpl.PassiveSpeed,
+		Ranged:      tmpl.Ranged,
+		Lawful:      tmpl.Lawful,
+		Size:        tmpl.Size,
+		PetCost:     petCost,
+		X:           player.X + int32(world.RandInt(5)) - 2,
+		Y:           player.Y + int32(world.RandInt(5)) - 2,
+		MapID:       player.MapID,
+		Heading:     player.Heading,
+		Status:      world.SummonAggressive,
+		Tamed:       false,
+		TimerTicks:  3600 * 5,
+	}
+
+	s.deps.World.AddSummon(sum)
+	nearby := s.deps.World.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+	for _, viewer := range nearby {
+		isOwner := viewer.CharID == player.CharID
+		handler.SendSummonPack(viewer.Session, sum, isOwner, player.Name)
+	}
+	handler.SendSummonPack(sess, sum, true, player.Name)
+	handler.SendSummonMenu(sess, sum)
 }
 
 // ========================================================================

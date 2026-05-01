@@ -1,0 +1,95 @@
+package system
+
+import (
+	"testing"
+
+	"github.com/l1jgo/server/internal/data"
+	"github.com/l1jgo/server/internal/world"
+)
+
+func TestSkillDragonKnightStatusResistFearAppliesDodgePenaltyOnly(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		Str:       12,
+		Intel:     13,
+		Dodge:     3,
+	})
+	s := newSkillBuffTestSystem(t, ws)
+	skill := &data.SkillInfo{
+		SkillID:      188,
+		Target:       "buff",
+		BuffDuration: 60,
+		Ranged:       3,
+		ActionID:     19,
+		CastGfx:      6586,
+	}
+
+	s.executeBuffSkill(caster.Session, caster, skill, target.CharID)
+
+	if target.Dodge != -2 {
+		t.Fatalf("恐懼無助應降低閃避 5，Dodge=%d", target.Dodge)
+	}
+	if target.Str != 12 || target.Intel != 13 {
+		t.Fatalf("恐懼無助不應調整 STR/INT，Str=%d Int=%d", target.Str, target.Intel)
+	}
+}
+
+func TestSkillDragonKnightStatusThunderGrabBindsPlayerTarget(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		Level:     100,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		Level:     1,
+		HP:        100,
+		MaxHP:     100,
+	})
+	s := newSkillTestSystem(t, ws)
+	skill := &data.SkillInfo{
+		SkillID:          192,
+		Target:           "attack",
+		Type:             64,
+		Ranged:           8,
+		DamageValue:      1,
+		ProbabilityValue: 10,
+		ProbabilityDice:  25,
+		ActionID:         18,
+		CastGfx:          6512,
+	}
+
+	s.executeAttackSkillOnPlayer(caster.Session, caster, skill, target)
+
+	if !target.Paralyzed || !target.HasBuff(192) {
+		t.Fatalf("奪命之雷應束縛玩家目標，Paralyzed=%v buff192=%v", target.Paralyzed, target.GetBuff(192))
+	}
+}

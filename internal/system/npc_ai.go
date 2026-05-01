@@ -151,7 +151,7 @@ func (s *NpcAISystem) tickMonsterAI(npc *world.NpcInfo) {
 		}
 		if target != nil {
 			npc.AggroTarget = target.SessionID
-			npc.MoveTimer = 0  // snap out of wander — react immediately
+			npc.MoveTimer = 0 // snap out of wander — react immediately
 			npc.WanderDist = 0
 		}
 	}
@@ -485,6 +485,8 @@ func (s *NpcAISystem) npcMeleeAttack(npc *world.NpcInfo, target *world.PlayerInf
 	if !res.IsHit || damage < 0 {
 		damage = 0
 	}
+	damage = applyNpcWeaponBreakDamage(npc, damage)
+	damage = applyImmuneToHarmDamage(target, damage)
 
 	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
 
@@ -590,6 +592,8 @@ func (s *NpcAISystem) npcRangedAttack(npc *world.NpcInfo, target *world.PlayerIn
 	if !res.IsHit || damage < 0 {
 		damage = 0
 	}
+	damage = applyNpcWeaponBreakDamage(npc, damage)
+	damage = applyImmuneToHarmDamage(target, damage)
 
 	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
 	rngData := buildNpcRangedAttack(npc.ID, target.CharID, damage, npc.Heading,
@@ -738,6 +742,7 @@ func (s *NpcAISystem) executeNpcSkill(npc *world.NpcInfo, target *world.PlayerIn
 			if damage < 1 {
 				damage = 1
 			}
+			damage = applyImmuneToHarmDamage(target, damage)
 
 			skillAtkData := buildNpcUseAttackSkill(npc.ID, target.CharID,
 				int16(damage), npc.Heading, gfx, 6,
@@ -796,6 +801,7 @@ func (s *NpcAISystem) executeNpcPhysicalSkill(npc *world.NpcInfo, target *world.
 	if damage < 1 {
 		damage = 1
 	}
+	damage = applyImmuneToHarmDamage(target, damage)
 
 	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
 
@@ -1385,8 +1391,15 @@ func removeNpcDebuffEffect(npc *world.NpcInfo, skillID int32, ws *world.State) {
 		npc.Sleeped = false
 	case 20, 40: // 闇盲咒術 — 致盲（NPC 無視覺，僅計時）
 		// NPC 致盲不影響行動旗標
+	case handler.SkillShapeChange: // 變形術 — 還原 NPC 原始圖像
+		removeShapeChangeFromNpc(npc)
+		for _, viewer := range nearby {
+			handler.SendChangeShape(viewer.Session, npc.ID, npc.GfxID, 0)
+		}
 	case 29, 76, 152: // 緩速系列 — NPC debuff 到期
 		// 速度恢復由 calcNpcMoveTicks 自動處理（不再有 slow debuff → 不翻倍）
+	case cubeStatusQuakeEnemy: // 立方：地裂 — 解除短暫束縛
+		npc.Paralyzed = false
 	case 11: // 毒咒 — 清除傷害毒
 		npc.PoisonDmgAmt = 0
 		npc.PoisonDmgTimer = 0
@@ -1409,6 +1422,8 @@ func removeNpcDebuffEffect(npc *world.NpcInfo, skillID int32, ws *world.State) {
 		npc.Paralyzed = false
 		handler.BroadcastToPlayers(nearby, clearPoison)
 	case 47: // 弱化術 — 僅計時自動清除
+	case skillElementalFallDown: // 弱化屬性 — 還原被降低的單一屬性抗性
+		removeElementalFallDownFromNpc(npc)
 	case 56: // 疾病術 — 僅計時自動清除
 	}
 }

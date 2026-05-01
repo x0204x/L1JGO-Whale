@@ -97,6 +97,12 @@ func HandleGMCommand(sess *net.Session, player *world.PlayerInfo, text string, d
 		gmBuff(sess, player, args, deps)
 	case "allbuff":
 		gmAllBuff(sess, player, deps)
+	case "clearbuff":
+		gmClearBuff(sess, player, deps)
+	case "poison":
+		gmPoison(sess, player, args, deps)
+	case "broken":
+		gmBroken(sess, player, args, deps)
 	case "stresstest":
 		gmStressTest(sess, player, args, deps)
 	case "cleartest":
@@ -138,7 +144,7 @@ func gmHelp(sess *net.Session) {
 	gmMsg(sess, ".heal  — 補滿HP/MP")
 	gmMsg(sess, ".stat <str|dex|con|wis|int|cha> <數值>  — 設定屬性")
 	gmMsg(sess, ".move <x> <y> [mapID]  — 傳送到座標")
-	gmMsg(sess, ".item <itemID> [數量] [enchant]  — 給予物品")
+	gmMsg(sess, ".item <itemID|中文名> [數量] [enchant]  — 給予物品(支援中文模糊查詢)")
 	gmMsg(sess, ".gold <數量>  — 給予金幣")
 	gmMsg(sess, ".spell <skillID>  — 學習技能 (0=全部)")
 	gmMsg(sess, ".allskill  — 學習該職業所有技能")
@@ -161,6 +167,9 @@ func gmHelp(sess *net.Session) {
 	gmMsg(sess, ".clearwall  — 清除測試牆壁")
 	gmMsg(sess, ".buff <skillID>  — 強制套用buff(繞過驗證)")
 	gmMsg(sess, ".allbuff  — 套用所有常用buff")
+	gmMsg(sess, ".clearbuff  — 清除身上所有buff")
+	gmMsg(sess, ".poison [damage|silence|para]  — 施加中毒(預設沉默毒/卡司特毒)")
+	gmMsg(sess, ".broken [數值1-127]  — 將裝備武器耐久損壞值設為N(預設127極限損壞)")
 	gmMsg(sess, ".stresstest <npcID> [數量] [半徑]  — 壓力測試(預設10000隻,半徑50)")
 	gmMsg(sess, ".cleartest  — 清除所有壓力測試怪物")
 }
@@ -270,12 +279,7 @@ func gmMove(sess *net.Session, player *world.PlayerInfo, args []string, deps *De
 
 func gmItem(sess *net.Session, player *world.PlayerInfo, args []string, deps *Deps) {
 	if len(args) < 1 {
-		gmMsg(sess, "\\f3用法: .item <itemID> [數量] [enchant]")
-		return
-	}
-	itemID, err := strconv.Atoi(args[0])
-	if err != nil {
-		gmMsg(sess, "\\f3無效的物品ID")
+		gmMsg(sess, "\\f3用法: .item <itemID|中文名> [數量] [enchant]")
 		return
 	}
 	count := int32(1)
@@ -293,9 +297,24 @@ func gmItem(sess *net.Session, player *world.PlayerInfo, args []string, deps *De
 		}
 	}
 
-	itemInfo := deps.Items.Get(int32(itemID))
+	itemInfo := resolveItemArg(deps, args[0])
 	if itemInfo == nil {
-		gmMsgf(sess, "\\f3找不到物品: %d", itemID)
+		// 中文查詢若有多筆候選，列出前 10 筆
+		if _, err := strconv.Atoi(args[0]); err != nil {
+			candidates := deps.Items.FindByName(args[0])
+			if len(candidates) > 1 {
+				gmMsgf(sess, "\\f3找到 %d 筆，請更精確：", len(candidates))
+				limit := len(candidates)
+				if limit > 10 {
+					limit = 10
+				}
+				for i := 0; i < limit; i++ {
+					gmMsgf(sess, "  %s (id=%d)", candidates[i].Name, candidates[i].ItemID)
+				}
+				return
+			}
+		}
+		gmMsgf(sess, "\\f3找不到物品: %s", args[0])
 		return
 	}
 
@@ -304,13 +323,26 @@ func gmItem(sess *net.Session, player *world.PlayerInfo, args []string, deps *De
 		return
 	}
 
-	deps.GMCmd.GiveItem(sess, player, int32(itemID), count, enchant)
+	deps.GMCmd.GiveItem(sess, player, itemInfo.ItemID, count, enchant)
 
 	name := itemInfo.Name
 	if enchant > 0 {
 		name = fmt.Sprintf("+%d %s", enchant, name)
 	}
 	gmMsgf(sess, "已給予 %s x%d", name, count)
+}
+
+// resolveItemArg 將 .item 第一個參數解析為 ItemInfo。
+// 數字 → 直接 Get(id)；非數字 → FindByName 完全相符優先，僅單筆時回傳。
+func resolveItemArg(deps *Deps, arg string) *data.ItemInfo {
+	if id, err := strconv.Atoi(arg); err == nil {
+		return deps.Items.Get(int32(id))
+	}
+	results := deps.Items.FindByName(arg)
+	if len(results) == 1 {
+		return results[0]
+	}
+	return nil
 }
 
 func gmGold(sess *net.Session, player *world.PlayerInfo, args []string, deps *Deps) {
@@ -1443,6 +1475,85 @@ func gmAllBuff(sess *net.Session, player *world.PlayerInfo, deps *Deps) {
 		}
 	}
 	gmMsgf(sess, "\\f=已套用 %d 個常用 buff", count)
+}
+
+// gmClearBuff 清除身上所有 buff（含不可取消的覺醒類）。
+// 用法: .clearbuff
+func gmClearBuff(sess *net.Session, player *world.PlayerInfo, deps *Deps) {
+	if deps.Skill == nil {
+		gmMsg(sess, "\\f3技能系統未初始化")
+		return
+	}
+	before := 0
+	if player.ActiveBuffs != nil {
+		before = len(player.ActiveBuffs)
+	}
+	deps.Skill.GMClearAllStatuses(player)
+	gmMsgf(sess, "\\f=已清除 %d 個 buff（含中毒/詛咒/麻痺/隱身）", before)
+}
+
+// gmPoison 對自己施加中毒（預設沉默毒/卡司特毒）。
+// 用法: .poison              → 沉默毒（卡司特毒）
+//
+//	.poison damage           → 傷害毒
+//	.poison silence          → 沉默毒（同預設）
+//	.poison para             → 麻痺毒延遲
+func gmPoison(sess *net.Session, player *world.PlayerInfo, args []string, deps *Deps) {
+	if deps.GMCmd == nil {
+		gmMsg(sess, "\\f3GM 指令系統未初始化")
+		return
+	}
+	// 注意：ptype 對應 npc.PoisonAtk（不是內部 PoisonType）。
+	// 1=傷害毒、2=沉默毒、4=麻痺毒延遲，與怪物施毒走完全相同的程式路徑。
+	ptype := byte(2) // 預設沉默毒（卡司特毒）
+	label := "沉默毒（卡司特毒）"
+	if len(args) >= 1 {
+		switch strings.ToLower(args[0]) {
+		case "damage", "dmg", "1":
+			ptype = 1
+			label = "傷害毒"
+		case "silence", "mute", "2":
+			ptype = 2
+			label = "沉默毒（卡司特毒）"
+		case "para", "paralysis", "4":
+			ptype = 4
+			label = "麻痺毒"
+		default:
+			gmMsg(sess, "\\f3用法: .poison [damage|silence|para]")
+			return
+		}
+	}
+	if !deps.GMCmd.ApplyPoison(player, ptype) {
+		gmMsg(sess, "\\f3已中毒，請先解毒（.clearbuff）")
+		return
+	}
+	gmMsgf(sess, "\\f=已施加 %s", label)
+}
+
+// gmBroken 將自己當前裝備的武器耐久損壞值設為指定值（預設 127 極限損壞）。
+// 用法: .broken              → Durability = 127
+//
+//	.broken 30               → Durability = 30
+func gmBroken(sess *net.Session, player *world.PlayerInfo, args []string, deps *Deps) {
+	if deps.GMCmd == nil {
+		gmMsg(sess, "\\f3GM 指令系統未初始化")
+		return
+	}
+	amount := int8(127)
+	if len(args) >= 1 {
+		v, err := strconv.Atoi(args[0])
+		if err != nil || v < 1 || v > 127 {
+			gmMsg(sess, "\\f3用法: .broken [數值1-127]")
+			return
+		}
+		amount = int8(v)
+	}
+	name, ok := deps.GMCmd.BreakWeapon(player, amount)
+	if !ok {
+		gmMsg(sess, "\\f3未裝備武器")
+		return
+	}
+	gmMsgf(sess, "\\f=已將 %s 損壞值設為 %d", name, amount)
 }
 
 // gmSlotTest 發送 S_EquipmentWindow 封包到指定的客戶端裝備欄索引。

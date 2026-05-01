@@ -19,6 +19,20 @@ var showNpcID bool
 // SetShowNpcID 設定 NPC 名稱是否顯示 ID 資訊（啟動時呼叫一次）。
 func SetShowNpcID(enabled bool) { showNpcID = enabled }
 
+func playerPoisonStatusBit(p *world.PlayerInfo) byte {
+	if p != nil && p.PoisonType > 0 && p.PoisonType != 4 {
+		return 0x01
+	}
+	return 0
+}
+
+func npcPoisonStatusBit(npc *world.NpcInfo) byte {
+	if npc != nil && npc.PoisonDmgAmt > 0 {
+		return 0x01
+	}
+	return 0
+}
+
 // sendOwnCharPackPlayer sends S_PUT_OBJECT (opcode 87) for the player's OWN character.
 // Uses S_OwnCharPack format (different trailing bytes from S_OtherCharPacks).
 // Must be used when sending the character pack to the player themselves (teleport, map change).
@@ -38,6 +52,7 @@ func sendOwnCharPackPlayer(sess *net.Session, p *world.PlayerInfo) {
 	w.WriteS(p.Name)
 	w.WriteS(p.Title)
 	status := byte(0x04) // PC flag
+	status |= playerPoisonStatusBit(p)
 	status |= p.BraveSpeed * 16
 	w.WriteC(status)
 	w.WriteD(0) // clan emblem ID
@@ -72,31 +87,32 @@ func SendPutObject(viewer *net.Session, p *world.PlayerInfo) {
 	w.WriteH(uint16(p.Y))
 	w.WriteD(p.CharID)
 	w.WriteH(uint16(PlayerGfx(p))) // use polymorph GFX if active
-	w.WriteC(p.CurrentWeapon)    // current weapon visual
+	w.WriteC(p.CurrentWeapon)      // current weapon visual
 	w.WriteC(byte(p.Heading))
-	w.WriteC(p.LightSize)        // light size
-	w.WriteC(p.MoveSpeed)        // move speed: 0=normal, 1=haste
-	w.WriteD(1)                  // unknown (always 1)
+	w.WriteC(p.LightSize) // light size
+	w.WriteC(p.MoveSpeed) // move speed: 0=normal, 1=haste
+	w.WriteD(1)           // unknown (always 1)
 	w.WriteH(uint16(p.Lawful))
 	w.WriteS(p.Name)
 	w.WriteS(p.Title)
-	status := byte(0x04)         // bit 2 = PC flag
-	status |= p.BraveSpeed * 16  // brave speed encoded in bits 4-5
-	w.WriteC(status)             // status flags
-	w.WriteD(0)                  // clan emblem ID
+	status := byte(0x04) // bit 2 = PC flag
+	status |= playerPoisonStatusBit(p)
+	status |= p.BraveSpeed * 16 // brave speed encoded in bits 4-5
+	w.WriteC(status)            // status flags
+	w.WriteD(0)                 // clan emblem ID
 	w.WriteS(p.ClanName)
-	w.WriteS("")                 // null
-	w.WriteC(0)                  // unknown (always 0 for other PCs)
-	partyHP := byte(0xff)        // 0xff = not in party
+	w.WriteS("")          // null
+	w.WriteC(0)           // unknown (always 0 for other PCs)
+	partyHP := byte(0xff) // 0xff = not in party
 	if p.PartyID > 0 {
 		partyHP = world.CalcPartyHP(p.HP, p.MaxHP)
 	}
-	w.WriteC(partyHP)            // party HP bar (0-10, proportional)
-	w.WriteC(0x00)               // third speed
-	w.WriteC(0x00)               // PC = 0, NPC = level
-	w.WriteS("")                 // private shop / null
-	w.WriteC(0xff)               // unknown
-	w.WriteC(0xff)               // unknown
+	w.WriteC(partyHP) // party HP bar (0-10, proportional)
+	w.WriteC(0x00)    // third speed
+	w.WriteC(0x00)    // PC = 0, NPC = level
+	w.WriteS("")      // private shop / null
+	w.WriteC(0xff)    // unknown
+	w.WriteC(0xff)    // unknown
 	viewer.Send(w.Bytes())
 }
 
@@ -226,12 +242,12 @@ func SendNpcPack(viewer *net.Session, npc *world.NpcInfo) {
 	w.WriteH(uint16(npc.Y))
 	w.WriteD(npc.ID)
 	w.WriteH(uint16(npc.GfxID))
-	w.WriteC(0)                   // status (0 = normal)
+	w.WriteC(0) // status (0 = normal)
 	w.WriteC(byte(npc.Heading))
-	w.WriteC(npc.LightSize)       // light
-	w.WriteC(0)                   // move speed
-	w.WriteD(npc.Exp)             // experience reward
-	w.WriteH(0)                   // lawful
+	w.WriteC(npc.LightSize) // light
+	w.WriteC(0)             // move speed
+	w.WriteD(npc.Exp)       // experience reward
+	w.WriteH(0)             // lawful
 
 	// 除錯模式：名稱後附加 NpcID:GfxID
 	if showNpcID {
@@ -239,54 +255,87 @@ func SendNpcPack(viewer *net.Session, npc *world.NpcInfo) {
 	} else {
 		w.WriteS(npc.NameID)
 	}
-	w.WriteS("")                  // title
-	w.WriteC(0x00)                // ext status: NO PC flag
-	w.WriteD(0)                   // reserved
-	w.WriteS("")                  // no clan
-	w.WriteS("")                  // no master
-	w.WriteC(0x00)                // hidden = 0 (normal)
-	w.WriteC(0xFF)                // HP% (0xFF = full for initial)
-	w.WriteC(0x00)                // reserved
-	w.WriteC(byte(npc.Level))     // level
-	w.WriteC(0xFF)                // reserved
-	w.WriteC(0xFF)                // reserved
-	w.WriteC(0x00)                // reserved
+	w.WriteS("")                      // title
+	w.WriteC(npcPoisonStatusBit(npc)) // ext status: poison flag only
+	w.WriteD(0)                       // reserved
+	w.WriteS("")                      // no clan
+	w.WriteS("")                      // no master
+	w.WriteC(0x00)                    // hidden = 0 (normal)
+	w.WriteC(0xFF)                    // HP% (0xFF = full for initial)
+	w.WriteC(0x00)                    // reserved
+	w.WriteC(byte(npc.Level))         // level
+	w.WriteC(0xFF)                    // reserved
+	w.WriteC(0xFF)                    // reserved
+	w.WriteC(0x00)                    // reserved
 	viewer.Send(w.Bytes())
 }
 
 // SendNpcDeadPack 發送 S_PUT_OBJECT（status=8）讓客戶端以屍體姿態顯示死亡 NPC。
 // 只發給「之後進入視野」的新玩家（Java onPerceive 邏輯）。
 // 已在場玩家靠 S_DoActionGFX(8) 維持屍體互動性。
+// SendGroundEffectPack sends the Java S_NPCPack_Eff-compatible char pack for a skill field object.
+func SendGroundEffectPack(viewer *net.Session, effect *world.GroundEffect) {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_PUT_OBJECT)
+	w.WriteH(uint16(effect.X))
+	w.WriteH(uint16(effect.Y))
+	w.WriteD(effect.ID)
+	w.WriteH(uint16(effect.GfxID))
+	w.WriteC(0)
+	w.WriteC(byte(effect.Heading))
+	w.WriteC(effect.LightSize)
+	w.WriteC(0)
+	w.WriteD(0)
+	w.WriteH(uint16(int16(effect.Lawful)))
+	nameID := ""
+	if effect.Type == world.GroundEffectTomb {
+		nameID = effect.OwnerName
+	}
+	w.WriteS(nameID)
+	w.WriteS("")
+	w.WriteC(0)
+	w.WriteD(0)
+	w.WriteS("")
+	w.WriteS("")
+	w.WriteC(0)
+	w.WriteC(0xFF)
+	w.WriteC(0)
+	w.WriteC(0)
+	w.WriteC(0)
+	w.WriteC(0xFF)
+	w.WriteC(0xFF)
+	viewer.Send(w.Bytes())
+}
+
 func SendNpcDeadPack(viewer *net.Session, npc *world.NpcInfo) {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_PUT_OBJECT)
 	w.WriteH(uint16(npc.X))
 	w.WriteH(uint16(npc.Y))
 	w.WriteD(npc.ID)
 	w.WriteH(uint16(npc.GfxID))
-	w.WriteC(8)                   // status = ACTION_Die（屍體姿態）
+	w.WriteC(8) // status = ACTION_Die（屍體姿態）
 	w.WriteC(byte(npc.Heading))
-	w.WriteC(npc.LightSize)       // light
-	w.WriteC(0)                   // move speed
-	w.WriteD(npc.Exp)             // exp（Java: 死亡 NPC 仍發 exp）
-	w.WriteH(0)                   // lawful
+	w.WriteC(npc.LightSize) // light
+	w.WriteC(0)             // move speed
+	w.WriteD(npc.Exp)       // exp（Java: 死亡 NPC 仍發 exp）
+	w.WriteH(0)             // lawful
 
 	if showNpcID {
 		w.WriteS(fmt.Sprintf("%s#%d:%d", npc.NameID, npc.NpcID, npc.GfxID))
 	} else {
 		w.WriteS(npc.NameID)
 	}
-	w.WriteS("")                  // title
-	w.WriteC(0x00)                // ext status
-	w.WriteD(0)                   // reserved
-	w.WriteS("")                  // no clan
-	w.WriteS("")                  // no master
-	w.WriteC(0x00)                // object type
-	w.WriteC(0xFF)                // HP%（Java: NPC 永遠 0xFF，即使死亡）
-	w.WriteC(0x00)                // reserved
-	w.WriteC(byte(npc.Level))     // level
-	w.WriteC(0xFF)                // reserved
-	w.WriteC(0xFF)                // reserved
-	w.WriteC(0x00)                // reserved
+	w.WriteS("")              // title
+	w.WriteC(0x00)            // ext status
+	w.WriteD(0)               // reserved
+	w.WriteS("")              // no clan
+	w.WriteS("")              // no master
+	w.WriteC(0x00)            // object type
+	w.WriteC(0xFF)            // HP%（Java: NPC 永遠 0xFF，即使死亡）
+	w.WriteC(0x00)            // reserved
+	w.WriteC(byte(npc.Level)) // level
+	w.WriteC(0xFF)            // reserved
+	w.WriteC(0xFF)            // reserved
+	w.WriteC(0x00)            // reserved
 	viewer.Send(w.Bytes())
 }
 
@@ -315,19 +364,19 @@ func BuildAttackPacket(attackerID, targetID, damage int32, heading int16) []byte
 func sendArrowAttackPacket(viewer *net.Session, attackerID, targetID, damage int32, heading int16, ax, ay, tx, ty int32) {
 	seq := arrowSeqNum.Add(1)
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_ATTACK)
-	w.WriteC(1)                    // actionId: 1 = PC attack (same as melee per Java)
+	w.WriteC(1) // actionId: 1 = PC attack (same as melee per Java)
 	w.WriteD(attackerID)
 	w.WriteD(targetID)
 	w.WriteH(uint16(damage))
 	w.WriteC(byte(heading))
-	w.WriteD(seq)                  // sequential number (must be non-zero, incrementing)
-	w.WriteH(66)                   // arrowGfxId: 66 = normal arrow projectile
-	w.WriteC(0)                    // use_type: 0 = arrow/projectile
-	w.WriteH(uint16(ax))          // attacker X
-	w.WriteH(uint16(ay))          // attacker Y
-	w.WriteH(uint16(tx))          // target X
-	w.WriteH(uint16(ty))          // target Y
-	w.WriteC(0)                    // effect flags
+	w.WriteD(seq)        // sequential number (must be non-zero, incrementing)
+	w.WriteH(66)         // arrowGfxId: 66 = normal arrow projectile
+	w.WriteC(0)          // use_type: 0 = arrow/projectile
+	w.WriteH(uint16(ax)) // attacker X
+	w.WriteH(uint16(ay)) // attacker Y
+	w.WriteH(uint16(tx)) // target X
+	w.WriteH(uint16(ty)) // target Y
+	w.WriteC(0)          // effect flags
 	w.WriteC(0)
 	w.WriteC(0)
 	viewer.Send(w.Bytes())
@@ -340,21 +389,21 @@ func sendArrowAttackPacket(viewer *net.Session, attackerID, targetID, damage int
 func sendUseAttackSkill(viewer *net.Session, casterID, targetID int32, damage int16, heading int16, gfxID int32, useType byte, cx, cy, tx, ty int32) {
 	seq := arrowSeqNum.Add(1)
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_ATTACK)
-	w.WriteC(18)                   // actionId: 18 = ACTION_SkillAttack
-	w.WriteD(casterID)             // caster char ID (non-zero = show cast motion)
-	w.WriteD(targetID)             // target object ID
-	w.WriteH(uint16(damage))      // damage
-	w.WriteC(byte(heading))        // heading toward target
-	w.WriteD(seq)                  // sequential number
-	w.WriteH(uint16(gfxID))       // spell GFX ID
-	w.WriteC(useType)              // 6=ranged magic, 8=AoE magic
-	w.WriteH(uint16(cx))          // caster X
-	w.WriteH(uint16(cy))          // caster Y
-	w.WriteH(uint16(tx))          // target X
-	w.WriteH(uint16(ty))          // target Y
-	w.WriteC(0)                    // padding
-	w.WriteC(0)                    // padding
-	w.WriteC(0)                    // effect flags
+	w.WriteC(18)             // actionId: 18 = ACTION_SkillAttack
+	w.WriteD(casterID)       // caster char ID (non-zero = show cast motion)
+	w.WriteD(targetID)       // target object ID
+	w.WriteH(uint16(damage)) // damage
+	w.WriteC(byte(heading))  // heading toward target
+	w.WriteD(seq)            // sequential number
+	w.WriteH(uint16(gfxID))  // spell GFX ID
+	w.WriteC(useType)        // 6=ranged magic, 8=AoE magic
+	w.WriteH(uint16(cx))     // caster X
+	w.WriteH(uint16(cy))     // caster Y
+	w.WriteH(uint16(tx))     // target X
+	w.WriteH(uint16(ty))     // target Y
+	w.WriteC(0)              // padding
+	w.WriteC(0)              // padding
+	w.WriteC(0)              // effect flags
 	viewer.Send(w.Bytes())
 }
 
@@ -429,7 +478,7 @@ func sendPlayerStatus(sess *net.Session, p *world.PlayerInfo) {
 	w.WriteC(byte(p.AC))
 
 	gameTime := int32(world.GameTimeNow().Seconds())
-	gameTime = gameTime - (gameTime%300)
+	gameTime = gameTime - (gameTime % 300)
 	w.WriteD(gameTime)
 
 	w.WriteC(byte(p.Food))
@@ -455,6 +504,18 @@ func BuildSkillEffect(objectID int32, gfxID int32) []byte {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EFFECT)
 	w.WriteD(objectID)
 	w.WriteH(uint16(gfxID))
+	return w.Bytes()
+}
+
+// BuildResurrection 建構 S_Resurrection。
+// Java S_Resurrection(L1PcInstance target, L1Character use, int type):
+// [C opcode][D targetID][C type][D useID][D targetClassID]
+func BuildResurrection(target *world.PlayerInfo, useID int32, resType byte) []byte {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_RESURRECTION)
+	w.WriteD(target.CharID)
+	w.WriteC(resType)
+	w.WriteD(useID)
+	w.WriteD(target.ClassID)
 	return w.Bytes()
 }
 
@@ -501,25 +562,25 @@ func SendDropItem(viewer *net.Session, item *world.GroundItem) {
 	w.WriteH(uint16(item.Y))
 	w.WriteD(item.ID)
 	w.WriteH(uint16(item.GrdGfx)) // ground graphic ID
-	w.WriteC(0)                    // status
-	w.WriteC(0)                    // heading
-	w.WriteC(0)                    // light
-	w.WriteC(0)                    // speed
-	w.WriteD(item.Count)           // item count
-	w.WriteH(0)                    // lawful
-	w.WriteS(item.Name)            // item display name
-	w.WriteS("")                   // title
-	w.WriteC(0x00)                 // status flags: 0 = item (not PC)
-	w.WriteD(0)                    // reserved
-	w.WriteS("")                   // no clan
-	w.WriteS("")                   // no master
-	w.WriteC(0x00)                 // hidden
-	w.WriteC(0xFF)                 // reserved
-	w.WriteC(0x00)                 // reserved
-	w.WriteC(0x00)                 // level
-	w.WriteC(0xFF)                 // reserved
-	w.WriteC(0xFF)                 // reserved
-	w.WriteC(0x00)                 // reserved
+	w.WriteC(0)                   // status
+	w.WriteC(0)                   // heading
+	w.WriteC(0)                   // light
+	w.WriteC(0)                   // speed
+	w.WriteD(item.Count)          // item count
+	w.WriteH(0)                   // lawful
+	w.WriteS(item.Name)           // item display name
+	w.WriteS("")                  // title
+	w.WriteC(0x00)                // status flags: 0 = item (not PC)
+	w.WriteD(0)                   // reserved
+	w.WriteS("")                  // no clan
+	w.WriteS("")                  // no master
+	w.WriteC(0x00)                // hidden
+	w.WriteC(0xFF)                // reserved
+	w.WriteC(0x00)                // reserved
+	w.WriteC(0x00)                // level
+	w.WriteC(0xFF)                // reserved
+	w.WriteC(0xFF)                // reserved
+	w.WriteC(0x00)                // reserved
 	viewer.Send(w.Bytes())
 }
 
@@ -809,6 +870,24 @@ func SendIconAura(sess *net.Session, iconID byte, durationSec uint16) {
 	sendIconAura(sess, iconID, durationSec)
 }
 
+// BuildTrueTarget builds S_TrueTarget.
+// Java: [C opcode=11][D targetId][D casterId][S message]
+func BuildTrueTarget(targetID, casterID int32, message string) []byte {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_TRUETARGET)
+	w.WriteD(targetID)
+	w.WriteD(casterID)
+	w.WriteS(message)
+	return w.Bytes()
+}
+
+// SendTrueTarget 發送精準目標封包。
+func SendTrueTarget(sess *net.Session, targetID, casterID int32, message string) {
+	if sess == nil {
+		return
+	}
+	sess.Send(BuildTrueTarget(targetID, casterID, message))
+}
+
 // SendInvisible 發送隱身狀態封包。
 func SendInvisible(sess *net.Session, objectID int32, invisible bool) {
 	sendInvisible(sess, objectID, invisible)
@@ -841,6 +920,22 @@ func SendPacketBoxHpMsg(sess *net.Session) {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EVENT)
 	w.WriteC(31) // MSG_FEEL_GOOD
 	sess.Send(w.Bytes())
+}
+
+// BuildPacketBoxDk 建構龍騎士弱點曝光階段封包。
+// Java: S_PacketBoxDk — [C opcode=250][C 75][C level]，level 0 清除，1-3 顯示階段。
+func BuildPacketBoxDk(level int16) []byte {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EVENT)
+	w.WriteC(75)
+	w.WriteC(byte(level))
+	return w.Bytes()
+}
+
+func SendPacketBoxDk(sess *net.Session, level int16) {
+	if sess == nil {
+		return
+	}
+	sess.Send(BuildPacketBoxDk(level))
 }
 
 // SendWindShackle 發送風之枷鎖 debuff 效果（降低攻擊速度）。
