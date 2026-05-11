@@ -86,12 +86,14 @@ func (s *NpcServiceSystem) NpcWeaponEnchant(sess *net.Session, player *world.Pla
 		return
 	}
 
-	if weapon.DmgByMagic > 0 && weapon.DmgMagicExpiry > 0 {
+	if weapon.DmgMagicExpiry > 0 {
 		weapon.DmgByMagic = 0
+		weapon.HitByMagic = 0
 		weapon.DmgMagicExpiry = 0
 	}
 
 	weapon.DmgByMagic = we.DmgBonus
+	weapon.HitByMagic = 0
 	weapon.DmgMagicExpiry = we.DurationSec * 5
 	player.Dirty = true
 
@@ -325,11 +327,14 @@ func (s *NpcServiceSystem) consumeAdena(sess *net.Session, player *world.PlayerI
 // RepairWeapon 處理武器修理（扣費 + 修復耐久度）。
 func (s *NpcServiceSystem) RepairWeapon(sess *net.Session, player *world.PlayerInfo, weapon *world.InvItem, cost int32) bool {
 	if !s.consumeAdena(sess, player, cost) {
+		handler.SendServerMessage(sess, 189)
 		return false
 	}
 	weapon.Durability = 0
 	player.Dirty = true
-	handler.SendItemCountUpdate(sess, weapon)
+	syncEquippedFlagFromSlots(player, weapon)
+	handler.SendServerMessageArgs(sess, 464, itemLogName(weapon))
+	handler.SendItemStatusUpdate(sess, weapon, s.deps.Items.Get(weapon.ItemID))
 	s.deps.Log.Debug("武器修理完成",
 		zap.String("player", player.Name),
 		zap.String("weapon", weapon.Name),

@@ -263,6 +263,7 @@ func (s *PetSystem) DismissPet(pet *world.PetInfo, player *world.PlayerInfo) {
 			Lawful:     tmpl.Lawful,
 			Size:       tmpl.Size,
 			MR:         tmpl.MR,
+			Hard:       tmpl.Hard,
 			PoisonAtk:  tmpl.PoisonAtk,
 			X:          pet.X,
 			Y:          pet.Y,
@@ -565,15 +566,15 @@ type petHealPotion struct {
 
 // petHealPotions 寵物可使用的治療藥水列表（Java: L1NpcInstance.useItem switch case）。
 var petHealPotions = map[int32]petHealPotion{
-	40012: {80, 197},  // 終極體力恢復劑（白水）
-	40011: {50, 194},  // 強力體力恢復劑（橙水）
-	40010: {20, 189},  // 體力恢復劑（紅水）
-	40021: {80, 197},  // 濃縮終極體力恢復劑
-	40020: {50, 194},  // 濃縮強力體力恢復劑
-	40019: {20, 189},  // 濃縮體力恢復劑
-	40024: {54, 197},  // 古代終極體力恢復劑
-	40023: {48, 194},  // 古代強力體力恢復劑
-	40022: {16, 189},  // 古代體力恢復劑
+	40012: {80, 197}, // 終極體力恢復劑（白水）
+	40011: {50, 194}, // 強力體力恢復劑（橙水）
+	40010: {20, 189}, // 體力恢復劑（紅水）
+	40021: {80, 197}, // 濃縮終極體力恢復劑
+	40020: {50, 194}, // 濃縮強力體力恢復劑
+	40019: {20, 189}, // 濃縮體力恢復劑
+	40024: {54, 197}, // 古代終極體力恢復劑
+	40023: {48, 194}, // 古代強力體力恢復劑
+	40022: {16, 189}, // 古代體力恢復劑
 }
 
 // petHastePotions 寵物可使用的加速藥水列表（value = 持續秒數）。

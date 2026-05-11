@@ -1,12 +1,14 @@
 package system
 
 import (
+	"encoding/binary"
 	stdnet "net"
 	"testing"
 
 	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/handler"
 	l1net "github.com/l1jgo/server/internal/net"
+	"github.com/l1jgo/server/internal/net/packet"
 	"github.com/l1jgo/server/internal/scripting"
 	"github.com/l1jgo/server/internal/world"
 	"go.uber.org/zap"
@@ -54,6 +56,41 @@ func addSkillTestPlayer(ws *world.State, p *world.PlayerInfo) *world.PlayerInfo 
 	}
 	ws.AddPlayer(p)
 	return p
+}
+
+func drainSkillTestPackets(sess *l1net.Session) [][]byte {
+	sess.FlushOutput()
+	var packets [][]byte
+	for {
+		select {
+		case pkt := <-sess.OutQueue:
+			packets = append(packets, pkt)
+		default:
+			return packets
+		}
+	}
+}
+
+func hasOpcodePacket(packets [][]byte, opcode byte) bool {
+	for _, pkt := range packets {
+		if len(pkt) > 0 && pkt[0] == opcode {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSkillEffectPacket(packets [][]byte, objectID int32, gfxID int32) bool {
+	for _, pkt := range packets {
+		if len(pkt) < 7 || pkt[0] != packet.S_OPCODE_EFFECT {
+			continue
+		}
+		if int32(binary.LittleEndian.Uint32(pkt[1:5])) == objectID &&
+			int32(binary.LittleEndian.Uint16(pkt[5:7])) == gfxID {
+			return true
+		}
+	}
+	return false
 }
 
 func TestDeathTombttackSkillDamagesPlayerTarget(t *testing.T) {
@@ -174,6 +211,53 @@ func TestSkillDamageHealSelfAreaAttackDamagesNearbyPlayersAndNpcs(t *testing.T) 
 	}
 	if npc.HP >= 100 {
 		t.Fatalf("範圍攻擊仍應傷害附近 NPC，HP=%d", npc.HP)
+	}
+}
+
+func TestSelfAreaAttackSkillUsesRangeSkillVisualInsteadOfNpcEffect(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	npc := &world.NpcInfo{
+		ID:    2001,
+		Name:  "npc",
+		X:     101,
+		Y:     100,
+		MapID: 4,
+		HP:    100,
+		MaxHP: 100,
+		MR:    0,
+	}
+	ws.AddNpc(npc)
+	s := newSkillTestSystem(t, ws)
+	skill := &data.SkillInfo{
+		SkillID:         53,
+		SkillLevel:      7,
+		Target:          "none",
+		Type:            64,
+		DamageValue:     20,
+		DamageDice:      1,
+		DamageDiceCount: 1,
+		Area:            4,
+		ActionID:        18,
+		CastGfx:         758,
+	}
+
+	s.executeSelfSkill(caster.Session, caster, skill)
+	packets := drainSkillTestPackets(caster.Session)
+
+	if !hasOpcodePacket(packets, packet.S_OPCODE_RANGESKILLS) {
+		t.Fatalf("自體範圍攻擊技能應送出 S_RangeSkill opcode=%d", packet.S_OPCODE_RANGESKILLS)
+	}
+	if hasSkillEffectPacket(packets, npc.ID, skill.CastGfx) {
+		t.Fatalf("自體範圍攻擊技能不應在被打到的 NPC 身上播放 S_SkillSoundGFX")
 	}
 }
 

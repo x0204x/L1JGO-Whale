@@ -53,6 +53,7 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 		MapID:        ch.MapID,
 		Heading:      ch.Heading,
 		ClassID:      ch.ClassID,
+		Sex:          ch.Sex,
 		ClassType:    ch.ClassType,
 		Level:        ch.Level,
 		Lawful:       ch.Lawful,
@@ -131,8 +132,8 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 	// 3. S_STATUS (opcode 8) — 角色狀態（使用 PlayerInfo 即時數據）
 	sendPlayerStatus(sess, player)
 
-	// 4. S_WORLD (opcode 206) — 地圖 ID
-	sendMapID(sess, uint16(ch.MapID), false)
+	// 4. S_WORLD (opcode 206) — 地圖 ID（依 map_list.yaml underwater 設定送水的旗標）
+	sendMapIDForPlayer(sess, player, ch.MapID, deps)
 
 	// 5. S_PUT_OBJECT (opcode 87) — 自己角色外觀（支援變身 GFX）
 	sendOwnCharPack(sess, ch, player.CurrentWeapon, PlayerGfx(player))
@@ -442,6 +443,26 @@ func loadMapTimesFromDB(player *world.PlayerInfo, deps *Deps) {
 // SendMapID 匯出 sendMapID — 供 system 套件發送地圖切換封包。
 func SendMapID(sess *net.Session, mapID uint16, underwater bool) {
 	sendMapID(sess, mapID, underwater)
+}
+
+// sendMapIDForPlayer 從 MapData 查詢 underwater 設定後發送 S_MapID。
+// 若玩家有 WaterOff 旗標則強制不送水的旗標。
+func sendMapIDForPlayer(sess *net.Session, player *world.PlayerInfo, mapID int16, deps *Deps) {
+	underwater := false
+	if deps != nil && deps.MapData != nil {
+		if info := deps.MapData.GetInfo(mapID); info != nil {
+			underwater = info.Underwater
+		}
+	}
+	if player != nil && player.WaterOff {
+		underwater = false
+	}
+	sendMapID(sess, uint16(mapID), underwater)
+}
+
+// SendMapIDForPlayer 匯出版 — 供 system 套件呼叫。
+func SendMapIDForPlayer(sess *net.Session, player *world.PlayerInfo, mapID int16, deps *Deps) {
+	sendMapIDForPlayer(sess, player, mapID, deps)
 }
 
 func sendMapID(sess *net.Session, mapID uint16, underwater bool) {

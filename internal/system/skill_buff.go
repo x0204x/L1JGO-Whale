@@ -801,7 +801,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 	// 玩家 debuff MR 抗性判定：對其他玩家施放 debuff 時必須通過 MR 檢查
 	if target.CharID != player.CharID && playerDebuffSkills[skill.SkillID] {
 		if !s.checkPlayerMRResist(player, target) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			// 仍播放施法動畫（Java: 即使 miss 也會播放動畫）
 			nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 			handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
@@ -957,7 +957,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 			return // 不可對自己施放
 		}
 		if !s.calcArmorBreakProb(player, target) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		// 移除舊的破壞盔甲效果（Java: killSkillEffectTimer + 重新 setSkillEffect）

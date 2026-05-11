@@ -39,10 +39,6 @@ func HandleFixWeaponList(sess *net.Session, _ *packet.Reader, deps *Deps) {
 		})
 	}
 
-	if len(weapons) == 0 {
-		return // no damaged weapons to repair
-	}
-
 	// Build S_FixWeaponList (opcode 83)
 	// Java format: [C opcode][D costPerPoint][H count]{[D objID][C durability]}
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_SELECTLIST)
@@ -73,14 +69,14 @@ func HandleSelectList(sess *net.Session, r *packet.Reader, deps *Deps) {
 		return
 	}
 
-	// Validate NPC exists and is within range (Chebyshev <= 3)
+	// Validate NPC exists and is within range (Java: abs dx/dy <= 5)
 	npc := deps.World.GetNpc(npcObjID)
 	if npc == nil {
 		return
 	}
 	dx := int32(math.Abs(float64(player.X - npc.X)))
 	dy := int32(math.Abs(float64(player.Y - npc.Y)))
-	if dx > 3 || dy > 3 {
+	if dx > 5 || dy > 5 {
 		return
 	}
 
@@ -99,7 +95,6 @@ func HandleSelectList(sess *net.Session, r *packet.Reader, deps *Deps) {
 	// Calculate repair cost
 	cost := int32(item.Durability) * int32(deps.Config.Gameplay.RepairCostPerDurability)
 	if !deps.NpcSvc.RepairWeapon(sess, player, item, cost) {
-		return // insufficient adena (silent fail, matching Java behavior)
+		return
 	}
 }
-

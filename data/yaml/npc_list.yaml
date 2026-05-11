@@ -574,6 +574,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 45027
@@ -1009,6 +1010,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 1280
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45046
@@ -2215,6 +2217,7 @@ npcs:
     atk_speed: 1600
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45097
@@ -2916,6 +2919,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 1280
     undead: false
+    hard: true
     agro: false
     tameable: true
   - npc_id: 45127
@@ -3084,6 +3088,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 1280
     undead: false
+    hard: true
     agro: false
     tameable: true
   - npc_id: 45135
@@ -3254,6 +3259,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 45142
@@ -4122,6 +4128,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 1920
     undead: false
+    hard: true
     agro: false
     tameable: true
   - npc_id: 45183
@@ -5186,6 +5193,7 @@ npcs:
     atk_speed: 1320
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45241
@@ -5644,6 +5652,7 @@ npcs:
     atk_speed: 1320
     passive_speed: 1920
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45263
@@ -6174,6 +6183,7 @@ npcs:
     atk_speed: 1800
     passive_speed: 1440
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45286
@@ -7016,6 +7026,7 @@ npcs:
     atk_speed: 1920
     passive_speed: 1440
     undead: true
+    hard: true
     agro: true
     tameable: true
   - npc_id: 45323
@@ -7354,6 +7365,7 @@ npcs:
     atk_speed: 1600
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 45339
@@ -7522,6 +7534,7 @@ npcs:
     atk_speed: 1760
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45346
@@ -8173,6 +8186,7 @@ npcs:
     atk_speed: 1760
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45373
@@ -8801,6 +8815,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45400
@@ -9355,6 +9370,7 @@ npcs:
     atk_speed: 1320
     passive_speed: 1920
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45423
@@ -9740,6 +9756,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45457
@@ -9932,6 +9949,7 @@ npcs:
     atk_speed: 900
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45465
@@ -9980,6 +9998,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45467
@@ -10053,6 +10072,7 @@ npcs:
     atk_speed: 1600
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45470
@@ -10150,6 +10170,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45474
@@ -10270,6 +10291,7 @@ npcs:
     atk_speed: 900
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45479
@@ -10294,6 +10316,7 @@ npcs:
     atk_speed: 1760
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45480
@@ -10318,6 +10341,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45481
@@ -10462,6 +10486,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45487
@@ -10510,6 +10535,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45489
@@ -10702,6 +10728,7 @@ npcs:
     atk_speed: 1360
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45497
@@ -10726,6 +10753,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45498
@@ -10750,6 +10778,7 @@ npcs:
     atk_speed: 1000
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45499
@@ -10871,6 +10900,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45504
@@ -11184,6 +11214,7 @@ npcs:
     atk_speed: 1640
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45517
@@ -11208,6 +11239,7 @@ npcs:
     atk_speed: 1080
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45518
@@ -11232,6 +11264,7 @@ npcs:
     atk_speed: 1040
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45519
@@ -11328,6 +11361,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45523
@@ -11352,6 +11386,7 @@ npcs:
     atk_speed: 1080
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45524
@@ -11472,6 +11507,7 @@ npcs:
     atk_speed: 960
     passive_speed: 320
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45530
@@ -11496,6 +11532,7 @@ npcs:
     atk_speed: 960
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45531
@@ -11664,6 +11701,7 @@ npcs:
     atk_speed: 1080
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45538
@@ -11760,6 +11798,7 @@ npcs:
     atk_speed: 1200
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45542
@@ -11856,6 +11895,7 @@ npcs:
     atk_speed: 880
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45546
@@ -11880,6 +11920,7 @@ npcs:
     atk_speed: 720
     passive_speed: 693
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45547
@@ -11904,6 +11945,7 @@ npcs:
     atk_speed: 1440
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45548
@@ -11976,6 +12018,7 @@ npcs:
     atk_speed: 900
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45551
@@ -12049,6 +12092,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 1920
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45554
@@ -12265,6 +12309,7 @@ npcs:
     atk_speed: 1640
     passive_speed: 960
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45564
@@ -12409,6 +12454,7 @@ npcs:
     atk_speed: 760
     passive_speed: 480
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45574
@@ -12553,6 +12599,7 @@ npcs:
     atk_speed: 760
     passive_speed: 480
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45580
@@ -12650,6 +12697,7 @@ npcs:
     atk_speed: 760
     passive_speed: 480
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45584
@@ -12674,6 +12722,7 @@ npcs:
     atk_speed: 1520
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45585
@@ -12819,6 +12868,7 @@ npcs:
     atk_speed: 1400
     passive_speed: 480
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45591
@@ -13059,6 +13109,7 @@ npcs:
     atk_speed: 680
     passive_speed: 640
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45601
@@ -13083,6 +13134,7 @@ npcs:
     atk_speed: 600
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45602
@@ -13131,6 +13183,7 @@ npcs:
     atk_speed: 1040
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45604
@@ -13203,6 +13256,7 @@ npcs:
     atk_speed: 1040
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45607
@@ -13299,6 +13353,7 @@ npcs:
     atk_speed: 1880
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45611
@@ -13395,6 +13450,7 @@ npcs:
     atk_speed: 800
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45615
@@ -13467,6 +13523,7 @@ npcs:
     atk_speed: 1600
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45618
@@ -13491,6 +13548,7 @@ npcs:
     atk_speed: 640
     passive_speed: 1360
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45619
@@ -13659,6 +13717,7 @@ npcs:
     atk_speed: 1047
     passive_speed: 1000
     undead: true
+    hard: true
     agro: true
     tameable: false
     poison_atk: 1
@@ -13996,6 +14055,7 @@ npcs:
     atk_speed: 720
     passive_speed: 640
     undead: true
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45647
@@ -14044,6 +14104,7 @@ npcs:
     atk_speed: 800
     passive_speed: 640
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45649
@@ -14068,6 +14129,7 @@ npcs:
     atk_speed: 720
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45650
@@ -14092,6 +14154,7 @@ npcs:
     atk_speed: 1880
     passive_speed: 1440
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45651
@@ -14116,6 +14179,7 @@ npcs:
     atk_speed: 1000
     passive_speed: 480
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45652
@@ -14140,6 +14204,7 @@ npcs:
     atk_speed: 440
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45653
@@ -14164,6 +14229,7 @@ npcs:
     atk_speed: 440
     passive_speed: 1200
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45654
@@ -14188,6 +14254,7 @@ npcs:
     atk_speed: 1400
     passive_speed: 1040
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45655
@@ -14572,6 +14639,7 @@ npcs:
     atk_speed: 1080
     passive_speed: 1920
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45672
@@ -14596,6 +14664,7 @@ npcs:
     atk_speed: 1440
     passive_speed: 1920
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45673
@@ -14620,6 +14689,7 @@ npcs:
     atk_speed: 1440
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45674
@@ -14644,6 +14714,7 @@ npcs:
     atk_speed: 1219
     passive_speed: 1000
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45675
@@ -14668,6 +14739,7 @@ npcs:
     atk_speed: 1400
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45676
@@ -14692,6 +14764,7 @@ npcs:
     atk_speed: 1560
     passive_speed: 1040
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45677
@@ -14764,6 +14837,7 @@ npcs:
     atk_speed: 1240
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45681
@@ -14788,6 +14862,7 @@ npcs:
     atk_speed: 1600
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45682
@@ -14812,6 +14887,7 @@ npcs:
     atk_speed: 2240
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
     poison_atk: 1
@@ -14837,6 +14913,7 @@ npcs:
     atk_speed: 1600
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45684
@@ -14861,6 +14938,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45685
@@ -14885,6 +14963,7 @@ npcs:
     atk_speed: 960
     passive_speed: 720
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45686
@@ -15269,6 +15348,7 @@ npcs:
     atk_speed: 900
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45702
@@ -15293,6 +15373,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45703
@@ -15317,6 +15398,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45704
@@ -15341,6 +15423,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45705
@@ -15461,6 +15544,7 @@ npcs:
     atk_speed: 720
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45710
@@ -15557,6 +15641,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45714
@@ -15581,6 +15666,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 1280
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45715
@@ -15702,6 +15788,7 @@ npcs:
     atk_speed: 1600
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45720
@@ -16042,6 +16129,7 @@ npcs:
     atk_speed: 1800
     passive_speed: 1440
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45734
@@ -16885,6 +16973,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 1280
     undead: false
+    hard: true
     agro: false
     tameable: true
   - npc_id: 45769
@@ -16982,6 +17071,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 1040
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45773
@@ -17537,6 +17627,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
     poison_atk: 1
@@ -17562,6 +17653,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45797
@@ -17610,6 +17702,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45799
@@ -17923,6 +18016,7 @@ npcs:
     atk_speed: 920
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45812
@@ -18190,6 +18284,7 @@ npcs:
     atk_speed: 1320
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45823
@@ -18214,6 +18309,7 @@ npcs:
     atk_speed: 1800
     passive_speed: 1440
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45824
@@ -18334,6 +18430,7 @@ npcs:
     atk_speed: 720
     passive_speed: 693
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45829
@@ -18358,6 +18455,7 @@ npcs:
     atk_speed: 1920
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45830
@@ -18718,6 +18816,7 @@ npcs:
     atk_speed: 1000
     passive_speed: 480
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45845
@@ -19174,6 +19273,7 @@ npcs:
     atk_speed: 1880
     passive_speed: 640
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45864
@@ -19294,6 +19394,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45869
@@ -19390,6 +19491,7 @@ npcs:
     atk_speed: 1040
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 45873
@@ -20956,6 +21058,7 @@ npcs:
     atk_speed: 1320
     passive_speed: 1920
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45938
@@ -21004,6 +21107,7 @@ npcs:
     atk_speed: 1800
     passive_speed: 1440
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 45940
@@ -22468,6 +22572,7 @@ npcs:
     atk_speed: 1080
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46001
@@ -22492,6 +22597,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46002
@@ -22660,6 +22766,7 @@ npcs:
     atk_speed: 1080
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46009
@@ -22684,6 +22791,7 @@ npcs:
     atk_speed: 1200
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46010
@@ -22708,6 +22816,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46011
@@ -22756,6 +22865,7 @@ npcs:
     atk_speed: 1200
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46013
@@ -22804,6 +22914,7 @@ npcs:
     atk_speed: 760
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46015
@@ -23357,6 +23468,7 @@ npcs:
     atk_speed: 1080
     passive_speed: 1080
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46038
@@ -25186,6 +25298,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 1280
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 46114
@@ -25210,6 +25323,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 1280
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 46115
@@ -25474,6 +25588,7 @@ npcs:
     atk_speed: 1760
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46126
@@ -25666,6 +25781,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 46134
@@ -25714,6 +25830,7 @@ npcs:
     atk_speed: 1320
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 46136
@@ -25738,6 +25855,7 @@ npcs:
     atk_speed: 1920
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46137
@@ -25762,6 +25880,7 @@ npcs:
     atk_speed: 1320
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 46138
@@ -25786,6 +25905,7 @@ npcs:
     atk_speed: 1920
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46139
@@ -25810,6 +25930,7 @@ npcs:
     atk_speed: 1920
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46140
@@ -25858,6 +25979,7 @@ npcs:
     atk_speed: 1320
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46142
@@ -25882,6 +26004,7 @@ npcs:
     atk_speed: 720
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46143
@@ -25906,6 +26029,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46144
@@ -25930,6 +26054,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46145
@@ -25954,6 +26079,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46146
@@ -25978,6 +26104,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46147
@@ -26002,6 +26129,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46148
@@ -26026,6 +26154,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46149
@@ -26050,6 +26179,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46150
@@ -26074,6 +26204,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46151
@@ -26098,6 +26229,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46152
@@ -26122,6 +26254,7 @@ npcs:
     atk_speed: 1720
     passive_speed: 0
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 46153
@@ -48898,6 +49031,7 @@ npcs:
     atk_speed: 0
     passive_speed: 0
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 71015
@@ -48922,6 +49056,7 @@ npcs:
     atk_speed: 0
     passive_speed: 0
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 71016
@@ -48946,6 +49081,7 @@ npcs:
     atk_speed: 0
     passive_speed: 0
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 71017
@@ -49186,6 +49322,7 @@ npcs:
     atk_speed: 0
     passive_speed: 0
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 71027
@@ -49210,6 +49347,7 @@ npcs:
     atk_speed: 0
     passive_speed: 0
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 71028
@@ -49234,6 +49372,7 @@ npcs:
     atk_speed: 0
     passive_speed: 0
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 71029
@@ -58402,6 +58541,7 @@ npcs:
     atk_speed: 840
     passive_speed: 480
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 80141
@@ -59819,6 +59959,7 @@ npcs:
     atk_speed: 1440
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 81048
@@ -60351,6 +60492,7 @@ npcs:
     atk_speed: 1000
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 81083
@@ -61673,6 +61815,7 @@ npcs:
     atk_speed: 2180
     passive_speed: 0
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 81164
@@ -61985,6 +62128,7 @@ npcs:
     atk_speed: 900
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 81177
@@ -63479,6 +63623,7 @@ npcs:
     atk_speed: 1440
     passive_speed: 1040
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 81239
@@ -63503,6 +63648,7 @@ npcs:
     atk_speed: 1520
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 81240
@@ -63527,6 +63673,7 @@ npcs:
     atk_speed: 440
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 81241
@@ -65471,6 +65618,7 @@ npcs:
     atk_speed: 680
     passive_speed: 640
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 81322
@@ -72606,6 +72754,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97031
@@ -74890,6 +75039,7 @@ npcs:
     atk_speed: 880
     passive_speed: 680
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 97126
@@ -75106,6 +75256,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 640
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 97135
@@ -75130,6 +75281,7 @@ npcs:
     atk_speed: 1240
     passive_speed: 960
     undead: false
+    hard: true
     agro: false
     tameable: true
   - npc_id: 97136
@@ -76264,6 +76416,7 @@ npcs:
     atk_speed: 1040
     passive_speed: 480
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97183
@@ -76408,6 +76561,7 @@ npcs:
     atk_speed: 1400
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 97189
@@ -76432,6 +76586,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 97190
@@ -76456,6 +76611,7 @@ npcs:
     atk_speed: 1760
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97191
@@ -76480,6 +76636,7 @@ npcs:
     atk_speed: 1360
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 97192
@@ -76504,6 +76661,7 @@ npcs:
     atk_speed: 1200
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: true
   - npc_id: 97193
@@ -76528,6 +76686,7 @@ npcs:
     atk_speed: 1200
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: true
   - npc_id: 97194
@@ -76552,6 +76711,7 @@ npcs:
     atk_speed: 1400
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97195
@@ -76576,6 +76736,7 @@ npcs:
     atk_speed: 1240
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97196
@@ -76600,6 +76761,7 @@ npcs:
     atk_speed: 880
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97197
@@ -76624,6 +76786,7 @@ npcs:
     atk_speed: 1360
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97198
@@ -76648,6 +76811,7 @@ npcs:
     atk_speed: 640
     passive_speed: 720
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97199
@@ -76672,6 +76836,7 @@ npcs:
     atk_speed: 1520
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 97202
@@ -76696,6 +76861,7 @@ npcs:
     atk_speed: 1040
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97203
@@ -76744,6 +76910,7 @@ npcs:
     atk_speed: 1160
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 97205
@@ -76768,6 +76935,7 @@ npcs:
     atk_speed: 1480
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97206
@@ -76792,6 +76960,7 @@ npcs:
     atk_speed: 960
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97207
@@ -76816,6 +76985,7 @@ npcs:
     atk_speed: 960
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97208
@@ -76840,6 +77010,7 @@ npcs:
     atk_speed: 960
     passive_speed: 640
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97209
@@ -76864,6 +77035,7 @@ npcs:
     atk_speed: 840
     passive_speed: 640
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97210
@@ -77034,6 +77206,7 @@ npcs:
     atk_speed: 880
     passive_speed: 640
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 97217
@@ -77058,6 +77231,7 @@ npcs:
     atk_speed: 1360
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
     poison_atk: 2
@@ -77083,6 +77257,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 600
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 97219
@@ -77107,6 +77282,7 @@ npcs:
     atk_speed: 1120
     passive_speed: 600
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 97220
@@ -77927,6 +78103,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 97254
@@ -78048,6 +78225,7 @@ npcs:
     atk_speed: 800
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97259
@@ -78072,6 +78250,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 480
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97260
@@ -78649,6 +78828,7 @@ npcs:
     atk_speed: 1320
     passive_speed: 1920
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 97284
@@ -78867,6 +79047,7 @@ npcs:
     atk_speed: 1840
     passive_speed: 1280
     undead: false
+    hard: true
     agro: true
     tameable: true
   - npc_id: 97293
@@ -79300,6 +79481,7 @@ npcs:
     atk_speed: 960
     passive_speed: 320
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97311
@@ -79324,6 +79506,7 @@ npcs:
     atk_speed: 1360
     passive_speed: 960
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97312
@@ -79348,6 +79531,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 960
     undead: true
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97313
@@ -80336,6 +80520,7 @@ npcs:
     atk_speed: 1920
     passive_speed: 1920
     undead: false
+    hard: true
     agro: true
     tameable: false
   - npc_id: 97201
@@ -80360,6 +80545,7 @@ npcs:
     atk_speed: 1280
     passive_speed: 1040
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 97353
@@ -82088,6 +82274,7 @@ npcs:
     atk_speed: 0
     passive_speed: 0
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 97425
@@ -82112,6 +82299,7 @@ npcs:
     atk_speed: 0
     passive_speed: 0
     undead: false
+    hard: true
     agro: false
     tameable: false
   - npc_id: 97426

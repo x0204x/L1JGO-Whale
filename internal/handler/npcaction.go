@@ -52,6 +52,10 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 		HandleSummonRingSelection(sess, player, action, deps)
 		return
 	}
+	if player.PendingPolySkill && deps.Polymorph != nil {
+		deps.Polymorph.UsePolySkill(sess, player, action)
+		return
+	}
 
 	// --- Companion entity control (summon/pet before NPC lookup) ---
 	if sum := deps.World.GetSummon(objID); sum != nil {
@@ -376,10 +380,10 @@ func handleShopBuy(sess *net.Session, npcID, objID int32, deps *Deps) {
 
 		price := si.SellingPrice
 
-		w.WriteD(int32(i))       // order index
+		w.WriteD(int32(i))      // order index
 		w.WriteH(uint16(gfxID)) // inventory graphic ID
-		w.WriteD(price)          // price
-		w.WriteS(name)           // item name
+		w.WriteD(price)         // price
+		w.WriteS(name)          // item name
 
 		// Status bytes: show item stats (damage, AC, class restrictions) like Java
 		if itemInfo != nil {
@@ -670,8 +674,8 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 		deps.World.TeleportFollower(ownedFollower.ID, x+ox, y+oy, mapID, heading)
 	}
 
-	// 3. S_MapID（即使同地圖也要發——客戶端傳送需要）
-	sendMapID(sess, uint16(mapID), false)
+	// 3. S_MapID（即使同地圖也要發——客戶端傳送需要；依目標地圖 underwater 設定送水的旗標）
+	sendMapIDForPlayer(sess, player, int16(mapID), deps)
 
 	// 重置 Known 集合（傳送 = 完全切換場景）
 	if player.Known == nil {
@@ -884,7 +888,6 @@ func SendAdenaUpdate(sess *net.Session, player *world.PlayerInfo) {
 //  Crafting System (NPC Item Making)
 // ========================================================================
 
-
 // sendInputAmount sends S_OPCODE_INPUTAMOUNT (136) — S_HowManyMake crafting batch dialog.
 // Java: S_HowManyMake(npcObjectId, maxAmount, actionName)
 // The client concatenates the two writeS strings with a space separator when sending back C_Amount.
@@ -913,7 +916,6 @@ func sendInputAmount(sess *net.Session, npcObjID int32, maxSets int32, action st
 func SendInputAmount(sess *net.Session, npcObjID int32, maxSets int32, action string) {
 	sendInputAmount(sess, npcObjID, maxSets, action)
 }
-
 
 // HandleCraftAmount processes C_Amount (opcode 11) when a crafting batch response is pending.
 // Called from HandleHypertextInputResult when player.PendingCraftAction is set.
@@ -1547,18 +1549,18 @@ var guardCastleMap = map[int32]struct {
 	castleID int32
 	htmlID   string
 }{
-	60514: {1, "ktguard7"},               // 肯特
-	60560: {2, "orcguard7"},              // 妖魔
-	60552: {3, "wdguard7"},               // 風木
-	60524: {4, "grguard7"},               // 奇巖
-	60525: {4, "grguard7"},               // 奇巖
-	60529: {4, "grguard7"},               // 奇巖
-	70857: {5, "heguard7"},               // 海音
-	60530: {6, "dcguard7"},               // 侏儒
-	60531: {6, "dcguard7"},               // 侏儒
-	60533: {7, "adguard7"},               // 亞丁
-	60534: {7, "adguard7"},               // 亞丁
-	81156: {8, "dfguard3"},               // 狄亞得
+	60514: {1, "ktguard7"},  // 肯特
+	60560: {2, "orcguard7"}, // 妖魔
+	60552: {3, "wdguard7"},  // 風木
+	60524: {4, "grguard7"},  // 奇巖
+	60525: {4, "grguard7"},  // 奇巖
+	60529: {4, "grguard7"},  // 奇巖
+	70857: {5, "heguard7"},  // 海音
+	60530: {6, "dcguard7"},  // 侏儒
+	60531: {6, "dcguard7"},  // 侏儒
+	60533: {7, "adguard7"},  // 亞丁
+	60534: {7, "adguard7"},  // 亞丁
+	81156: {8, "dfguard3"},  // 狄亞得
 }
 
 // handleAskWarTime 處理 askwartime NPC 動作（查詢攻城戰時間）。

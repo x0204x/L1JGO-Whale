@@ -22,7 +22,7 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 	}
 
 	if s.deps.MapData != nil && !s.deps.MapData.HasLineOfSight(player.MapID, player.X, player.Y, target.X, target.Y) {
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 		return
 	}
 
@@ -73,22 +73,6 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 			}
 			s.applyAreaSkillDamageToNpc(sess, player, skill, npc, nearby)
 		}
-	}
-}
-
-func (s *SkillSystem) applySelfAreaSkillDamageToPlayers(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, nearby []*world.PlayerInfo) {
-	for _, target := range nearby {
-		if target.CharID == player.CharID || target.Dead {
-			continue
-		}
-		if chebyshevDist(player.X, player.Y, target.X, target.Y) > int32(skill.Area) {
-			continue
-		}
-		if s.tryCounterMagic(target, skill.SkillID) {
-			continue
-		}
-		res := s.deps.Scripting.CalcSkillDamage(s.buildPlayerSkillDamageContext(player, target, skill))
-		s.applySkillDamageToPlayer(sess, player, target, skill, int32(res.Damage), nearby)
 	}
 }
 
@@ -327,7 +311,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 	// LOS 檢查（Java: L1SkillUse — glanceCheck）
 	// 攻擊型技能需要視線，buff/heal 技能豁免
 	if s.deps.MapData != nil && !s.deps.MapData.HasLineOfSight(player.MapID, player.X, player.Y, npc.X, npc.Y) {
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 		return
 	}
 
@@ -343,7 +327,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 	if skill.SkillID == 132 {
 		arrow := FindArrow(player, s.deps)
 		if arrow == nil {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		if player.Inv.RemoveItem(arrow.ObjectID, 1) {
@@ -450,7 +434,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		}
 	}
 
-	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := ws.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 
 	if skill.SkillID == skillFoeSlayer {
 		s.executeFoeSlayerOnNpc(sess, player, skill, npc, nearby)
@@ -458,10 +442,32 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 	}
 
 	isPhysicalSkill := skill.DamageValue == 0 && skill.DamageDice == 0
+	directedAreaSkill := skill.Area > 0
+	gfxID := int32(skill.CastGfx)
+	if gfxID <= 0 {
+		gfxID = int32(skill.ActionID)
+	}
 
 	useType := byte(6)
-	if skill.Area > 0 {
-		useType = 8
+	if directedAreaSkill {
+		rangeTargets := make([]handler.RangeSkillTarget, 0, len(hits))
+		for _, t := range hits {
+			rangeTargets = append(rangeTargets, handler.RangeSkillTarget{
+				ObjectID: t.npc.ID,
+				Hit:      t.dmg > 0,
+				Damage:   t.dmg,
+			})
+		}
+		handler.BroadcastToPlayers(nearby, handler.BuildRangeSkill(
+			player.CharID,
+			player.X,
+			player.Y,
+			player.Heading,
+			gfxID,
+			byte(skill.ActionID),
+			handler.RangeSkillTypeDir,
+			rangeTargets,
+		))
 	}
 
 	for i, t := range hits {
@@ -473,7 +479,9 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		for h := 0; h < hitsToApply; h++ {
 			dmg := t.dmg
 
-			if isPhysicalSkill {
+			if directedAreaSkill {
+				// S_RangeSkill 已一次帶出方向範圍攻擊的施法與命中特效。
+			} else if isPhysicalSkill {
 				atkData := handler.BuildAttackPacket(player.CharID, t.npc.ID, dmg, player.Heading)
 				handler.BroadcastToPlayers(nearby, atkData)
 				if skill.CastGfx > 0 {
@@ -481,10 +489,6 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 					handler.BroadcastToPlayers(nearby, effData)
 				}
 			} else {
-				gfxID := int32(skill.CastGfx)
-				if gfxID <= 0 {
-					gfxID = int32(skill.ActionID)
-				}
 				if i == 0 {
 					// 主目標：完整攻擊技能封包（含施法動畫）
 					for _, viewer := range nearby {
@@ -667,7 +671,7 @@ func (s *SkillSystem) executeTurnUndead(sess *net.Session, player *world.PlayerI
 	rnd := world.RandInt(100) + 1 // 1~100
 	if probability < rnd {
 		// 失敗
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 		return
 	}
 

@@ -136,8 +136,8 @@ func (s *DeathSystem) ProcessRestart(sess *net.Session, player *world.PlayerInfo
 		s.deps.MapData.SetImpassable(rmap, rx, ry, true)
 	}
 
-	// 發送地圖 ID
-	handler.SendMapID(sess, uint16(rmap), false)
+	// 發送地圖 ID（依 MapData 查 underwater 設定 + 玩家 WaterOff 偏好）
+	handler.SendMapIDForPlayer(sess, player, rmap, s.deps)
 
 	// 重生後重設限時地圖計時器（Java: Teleportation 中的 isTimingMap 檢查）
 	if s.deps.MapTimer != nil {

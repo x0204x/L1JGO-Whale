@@ -42,6 +42,7 @@ type NpcInfo struct {
 	Size          string // "small" or "large"
 	MR            int16
 	Undead        bool
+	Hard          bool
 	CantResurrect bool
 	Agro          bool  // true = aggressive, attacks players on sight
 	AtkDmg        int32 // damage per attack (simplified: Level + STR/3)

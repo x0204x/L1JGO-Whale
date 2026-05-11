@@ -33,6 +33,7 @@ type NpcTemplate struct {
 	Undead        bool   `yaml:"undead"`
 	Agro          bool   `yaml:"agro"`
 	Tameable      bool   `yaml:"tameable"`
+	Hard          bool   `yaml:"hard"`
 	CantResurrect bool   `yaml:"cant_resurrect"`
 	PoisonAtk     byte   `yaml:"poison_atk"` // 毒攻擊類型: 0=無, 1=傷害毒, 2=沉默毒, 4=麻痺毒
 	FireRes       int16  `yaml:"fire_res"`   // 火抗

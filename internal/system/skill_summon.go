@@ -166,10 +166,10 @@ func (s *SummonSystem) ExecuteSummonMonster(sess *net.Session, player *world.Pla
 		npcID = entry.npcID
 		petCost = entry.chaCost
 	} else if ringEquipped {
-		// 有戒指但尚未選擇（targetID == 0）：顯示 "summonlist" 選擇對話框
-		player.SummonSelectionMode = true
-		handler.SendHypertext(sess, player.CharID, "summonlist")
-		s.deps.Log.Info("summon ring: showing selection dialog")
+		// yiwei 主流程由 3.80C 客戶端在 C_UseSkill 內送出選定 summonId。
+		// 走到這裡代表封包沒有帶選擇結果，不由伺服器補開 summonlist。
+		s.deps.Log.Warn("summon blocked: summon control ring without client summon ID")
+		handler.SendServerMessage(sess, msgSummonCastFail)
 		return
 	} else {
 		// 無戒指路徑：依等級自動選擇 NPC
@@ -222,6 +222,9 @@ func (s *SummonSystem) ExecuteSummonMonster(sess *net.Session, player *world.Pla
 
 	// 清除召喚選擇模式
 	player.SummonSelectionMode = false
+	if ringEquipped && targetID > 0 {
+		handler.SendCloseList(sess, player.CharID)
+	}
 
 	masterName := player.Name
 	for i := 0; i < count; i++ {
@@ -654,6 +657,7 @@ func (s *SummonSystem) liberateSummon(sum *world.SummonInfo) {
 		STR:       sum.STR,
 		DEX:       sum.DEX,
 		MR:        sum.MR,
+		Hard:      tmpl.Hard,
 		PoisonAtk: tmpl.PoisonAtk,
 		Exp:       0, // 釋放的 NPC 不給經驗
 		Lawful:    sum.Lawful,
@@ -686,9 +690,9 @@ func (s *SummonSystem) killSummon(sum *world.SummonInfo) {
 
 // hasSummonRing 檢查玩家是否裝備召喚控制戒指。
 func hasSummonRing(player *world.PlayerInfo) bool {
-	for _, slot := range []world.EquipSlot{world.SlotRing1, world.SlotRing2} {
+	for _, slot := range []world.EquipSlot{world.SlotRing1, world.SlotRing2, world.SlotRing3, world.SlotRing4} {
 		item := player.Equip.Get(slot)
-		if item != nil && (item.ItemID == 20284 || item.ItemID == 120284) {
+		if item != nil && item.Equipped && (item.ItemID == 20284 || item.ItemID == 120284) {
 			return true
 		}
 	}

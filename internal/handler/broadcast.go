@@ -12,6 +12,9 @@ import (
 // arrowSeqNum is a global sequential number for arrow projectile packets (matches Java AtomicInteger).
 var arrowSeqNum atomic.Int32
 
+// rangeSkillSeqNum 是 S_RangeSkill 使用的遞增序號，對齊 Java AtomicInteger 行為。
+var rangeSkillSeqNum atomic.Int32
+
 // showNpcID 控制 NPC 名稱是否附加 NPC ID 和 GFX ID（開發除錯用）。
 // 啟動時由 SetShowNpcID 設定，遊戲迴圈單線程讀取，無需原子操作。
 var showNpcID bool
@@ -405,6 +408,42 @@ func sendUseAttackSkill(viewer *net.Session, casterID, targetID int32, damage in
 	w.WriteC(0)              // padding
 	w.WriteC(0)              // effect flags
 	viewer.Send(w.Bytes())
+}
+
+const (
+	RangeSkillTypeNoDir byte = 0
+	RangeSkillTypeDir   byte = 8
+)
+
+type RangeSkillTarget struct {
+	ObjectID int32
+	Hit      bool
+	Damage   int32
+}
+
+func BuildRangeSkill(casterID int32, casterX, casterY int32, heading int16, gfxID int32, actionID byte, rangeType byte, targets []RangeSkillTarget) []byte {
+	seq := rangeSkillSeqNum.Add(1)
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_RANGESKILLS)
+	w.WriteC(actionID)
+	w.WriteD(casterID)
+	w.WriteH(uint16(casterX))
+	w.WriteH(uint16(casterY))
+	w.WriteC(byte(heading))
+	w.WriteD(seq)
+	w.WriteH(uint16(gfxID))
+	w.WriteC(rangeType)
+	w.WriteH(0)
+	w.WriteH(uint16(len(targets)))
+	for _, target := range targets {
+		w.WriteD(target.ObjectID)
+		if target.Hit {
+			w.WriteH(0x20)
+		} else {
+			w.WriteH(0)
+		}
+		w.WriteD(target.Damage)
+	}
+	return w.Bytes()
 }
 
 // sendHpMeter sends S_HP_METER (opcode 237) — NPC HP bar.
@@ -914,6 +953,47 @@ func SendGreenMessage(sess *net.Session, msg string) {
 	sess.Send(BuildGreenMessage(msg))
 }
 
+const (
+	ShowDropExp   byte = 0
+	ShowDropAdena byte = 1
+)
+
+// BuildItemBoard 建構 S_ItemBoard：左下角道具獲得提示。
+// Java: [C opcode=250][C 190][H gfxid][S msg]。
+func BuildItemBoard(gfxID uint16, msg string) []byte {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EVENT)
+	w.WriteC(190)
+	w.WriteH(gfxID)
+	w.WriteS(msg)
+	return w.Bytes()
+}
+
+// SendItemBoard 發送 S_ItemBoard。
+func SendItemBoard(sess *net.Session, gfxID uint16, msg string) {
+	if sess == nil {
+		return
+	}
+	sess.Send(BuildItemBoard(gfxID, msg))
+}
+
+// BuildShowDrop 建構 S_ShowDrop：左下角經驗值或金幣獲得提示。
+// Java: [C opcode=250][C 192][C type][D amount]。
+func BuildShowDrop(dropType byte, amount int32) []byte {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EVENT)
+	w.WriteC(192)
+	w.WriteC(dropType)
+	w.WriteD(amount)
+	return w.Bytes()
+}
+
+// SendShowDrop 發送 S_ShowDrop。
+func SendShowDrop(sess *net.Session, dropType byte, amount int32) {
+	if sess == nil {
+		return
+	}
+	sess.Send(BuildShowDrop(dropType, amount))
+}
+
 // SendPacketBoxHpMsg 發送 S_PacketBoxHpMsg（「你覺得舒服多了」恢復提示）。
 // Java: S_PacketBoxHpMsg — opcode 250, sub 31 (MSG_FEEL_GOOD)。
 func SendPacketBoxHpMsg(sess *net.Session) {
@@ -924,6 +1004,23 @@ func SendPacketBoxHpMsg(sess *net.Session) {
 
 // BuildPacketBoxDk 建構龍騎士弱點曝光階段封包。
 // Java: S_PacketBoxDk — [C opcode=250][C 75][C level]，level 0 清除，1-3 顯示階段。
+func SendWeaponEnchantIcon(sess *net.Session, iconType int16, durationSec uint16, show bool) {
+	if sess == nil {
+		return
+	}
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EVENT)
+	w.WriteC(154) // S_PacketBox.SKILL_WEAPON_ICON
+	w.WriteH(durationSec)
+	w.WriteH(uint16(iconType))
+	w.WriteH(0)
+	if show {
+		w.WriteH(1)
+	} else {
+		w.WriteH(0)
+	}
+	sess.Send(w.Bytes())
+}
+
 func BuildPacketBoxDk(level int16) []byte {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EVENT)
 	w.WriteC(75)

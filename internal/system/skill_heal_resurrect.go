@@ -36,12 +36,12 @@ func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.Playe
 
 	case 61, 75: // 返生術 / 終極返生術 — 需要目標同意
 		if targetID == 0 {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		if target := s.deps.World.GetByCharID(targetID); target != nil {
 			if !target.Dead {
-				handler.SendServerMessage(sess, skillMsgCastFail)
+				s.sendCastFail(sess)
 				return
 			}
 			if target.MapID != player.MapID {
@@ -62,26 +62,26 @@ func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.Playe
 			if s.resurrectPetWithHP(sess, player, skill, pet, pet.MaxHP/4) {
 				return
 			}
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		if npc := s.deps.World.GetNpc(targetID); npc != nil {
 			if s.resurrectNpcWithHP(npc, npc.MaxHP/4) {
 				return
 			}
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 
 	case 165: // 自然呼喚：玩家目標需送出復活同意視窗，不直接復活。
 		if targetID == 0 {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		if target := s.deps.World.GetByCharID(targetID); target != nil {
 			if !target.Dead {
-				handler.SendServerMessage(sess, skillMsgCastFail)
+				s.sendCastFail(sess)
 				return
 			}
 			if target.MapID != player.MapID {
@@ -101,17 +101,17 @@ func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.Playe
 			if s.callOfNatureResurrectPet(sess, player, skill, pet) {
 				return
 			}
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		if npc := s.deps.World.GetNpc(targetID); npc != nil {
 			if s.callOfNatureResurrectNpc(npc) {
 				return
 			}
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 	}
 
 	// 施法特效

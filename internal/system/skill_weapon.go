@@ -79,41 +79,20 @@ func (s *SkillSystem) executeArmorEnchant(sess *net.Session, player *world.Playe
 		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
 	}
 
-	// 套用 AC-3 buff（簡化：Java 是物品級 enchant，Go 用玩家 buff 代替）
-	s.applyBuffEffect(player, skill)
+	applySkillArmorEnchant(invItem, skill)
+	player.Dirty = true
+	if invItem.Equipped || player.Equip.Get(world.SlotArmor) == invItem {
+		handler.RecalcEquipStats(sess, player, s.deps)
+	}
 
-	// 成功訊息（Java: S_ServerMessage 161 "{item} 的 {效果} 增加了。"）
-	handler.SendServerMessage(sess, 161)
+	handler.SendServerMessageArgs(sess, 161, invItem.Name, "$245", "$247")
 }
 
 // executeWeaponEnchant 處理擬似魔法武器（skill 12）和暗影之牙（skill 107）— 武器強化 buff。
 // Java: targetID = 背包物品 ObjectID。檢查物品是否為武器（type2=1），
 // 是 → 套用武器強化 buff + icon；否 → 訊息 79。
 func (s *SkillSystem) executeWeaponEnchant(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, itemObjID int32) {
-	invItem := player.Inv.FindByObjectID(itemObjID)
-	if invItem == nil {
-		handler.SendServerMessage(sess, 79) // 沒有任何事情發生。
-		return
-	}
-
-	// 查詢物品模板 — 必須為武器（Java: type2==1）
-	itemInfo := s.deps.Items.Get(invItem.ItemID)
-	if itemInfo == nil || itemInfo.Category != data.CategoryWeapon {
-		handler.SendServerMessage(sess, 79)
-		return
-	}
-
-	// 施法動畫 + GFX
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
-	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
-	if skill.CastGfx > 0 {
-		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
-	}
-
-	// 套用 buff 效果
-	s.applyBuffEffect(player, skill)
-
-	handler.SendServerMessage(sess, 161)
+	s.executeTargetedWeaponEnchant(sess, player, skill, itemObjID)
 }
 
 // executeCreateMagicalWeapon 處理創造魔法武器（skill 73）— 武器強化 +1。
@@ -248,4 +227,96 @@ func calcBringStoneRate(p *world.PlayerInfo, itemID int32) (rate int, resultID i
 		return kayser, 40324, "$2478"
 	}
 	return 0, 0, ""
+}
+
+func applySkillWeaponEnchant(weapon *world.InvItem, skill *data.SkillInfo) {
+	if weapon == nil || skill == nil {
+		return
+	}
+	weapon.DmgByMagic = 0
+	weapon.HitByMagic = 0
+	switch skill.SkillID {
+	case 12:
+		weapon.DmgByMagic = 2
+	case 48:
+		weapon.DmgByMagic = 2
+		weapon.HitByMagic = 2
+	case 107:
+		weapon.DmgByMagic = 5
+	}
+	weapon.DmgMagicExpiry = skill.BuffDuration * 5
+}
+
+func applySkillArmorEnchant(armor *world.InvItem, skill *data.SkillInfo) {
+	if armor == nil || skill == nil {
+		return
+	}
+	armor.AcByMagic = 0
+	if skill.SkillID == 21 {
+		armor.AcByMagic = 3
+	}
+	armor.AcMagicExpiry = skill.BuffDuration * 5
+}
+
+func (s *SkillSystem) executeTargetedWeaponEnchant(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, itemObjID int32) {
+	weapon := player.Inv.FindByObjectID(itemObjID)
+	if weapon == nil {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+	itemInfo := s.deps.Items.Get(weapon.ItemID)
+	if itemInfo == nil || itemInfo.Category != data.CategoryWeapon {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	if skill.CastGfx > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+	}
+
+	applySkillWeaponEnchant(weapon, skill)
+	player.Dirty = true
+	handler.RecalcEquipStats(sess, player, s.deps)
+	if skill.SkillID == 12 {
+		handler.SendServerMessageArgs(sess, 161, weapon.Name, "$245", "$247")
+		handler.SendWeaponEnchantIcon(sess, 747, uint16(skill.BuffDuration), true)
+	} else if skill.SkillID == 107 {
+		handler.SendWeaponEnchantIcon(sess, 2951, uint16(skill.BuffDuration), true)
+	}
+}
+
+func (s *SkillSystem) executeBlessWeaponEnchant(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, targetID int32) {
+	targetPlayer := player
+	if targetID != 0 && targetID != player.CharID {
+		other := s.deps.World.GetByCharID(targetID)
+		if other == nil || other.Dead || other.MapID != player.MapID ||
+			chebyshevDist(player.X, player.Y, other.X, other.Y) > 20 {
+			handler.SendServerMessage(sess, 79)
+			return
+		}
+		targetPlayer = other
+	}
+	weapon := targetPlayer.Equip.Weapon()
+	if weapon == nil {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+	itemInfo := s.deps.Items.Get(weapon.ItemID)
+	if itemInfo == nil || itemInfo.Category != data.CategoryWeapon {
+		handler.SendServerMessage(sess, 79)
+		return
+	}
+
+	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	if skill.CastGfx > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(targetPlayer.CharID, skill.CastGfx))
+	}
+
+	applySkillWeaponEnchant(weapon, skill)
+	targetPlayer.Dirty = true
+	handler.RecalcEquipStats(targetPlayer.Session, targetPlayer, s.deps)
+	handler.SendServerMessageArgs(targetPlayer.Session, 161, weapon.Name, "$245", "$247")
 }

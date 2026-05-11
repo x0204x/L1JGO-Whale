@@ -122,14 +122,20 @@ func SendPinkName(sess *net.Session, charID int32, timeSec int32) {
 	sess.Send(w.Bytes())
 }
 
-// SendLawful sends S_Lawful (opcode 34).
+// BuildLawful builds S_Lawful (opcode 34).
 // Format: [D objID][H lawful][D 0]
-func SendLawful(sess *net.Session, charID int32, lawful int32) {
+func BuildLawful(charID int32, lawful int32) []byte {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_LAWFUL)
 	w.WriteD(charID)
 	w.WriteH(uint16(int16(lawful))) // int16 range
 	w.WriteD(0)                     // padding (matches Java)
-	sess.Send(w.Bytes())
+	return w.Bytes()
+}
+
+// SendLawful sends S_Lawful (opcode 34).
+// Format: [D objID][H lawful][D 0]
+func SendLawful(sess *net.Session, charID int32, lawful int32) {
+	sess.Send(BuildLawful(charID, lawful))
 }
 
 // SendDuelNotify 發送 S_PacketBox(MSG_DUEL=5) — 決鬥開始/結束通知。

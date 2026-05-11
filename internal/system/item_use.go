@@ -259,6 +259,120 @@ func (s *ItemUseSystem) UseResurrectionScroll(sess *net.Session, player *world.P
 	return false
 }
 
+// UseDissolution 處理溶解劑。Java: Dissolution.execute / ResolventTable。
+func (s *ItemUseSystem) UseDissolution(sess *net.Session, player *world.PlayerInfo, resolvent *world.InvItem, targetObjID int32) bool {
+	return s.UseDissolutionWithRoll(sess, player, resolvent, targetObjID, rand.Intn(100)+1)
+}
+
+// UseDissolutionWithRoll 以指定 roll 執行溶解，供測試確認 yiwei 機率邊界。
+func (s *ItemUseSystem) UseDissolutionWithRoll(sess *net.Session, player *world.PlayerInfo, resolvent *world.InvItem, targetObjID int32, roll int) bool {
+	if player == nil || player.Inv == nil || resolvent == nil {
+		handler.SendServerMessage(sess, 79) // 沒有任何事情發生。
+		return false
+	}
+	target := player.Inv.FindByObjectID(targetObjID)
+	if target == nil {
+		return false
+	}
+
+	targetInfo := s.deps.Items.Get(target.ItemID)
+	if targetInfo == nil {
+		return false
+	}
+
+	if targetInfo.Category == data.CategoryWeapon || targetInfo.Category == data.CategoryArmor {
+		if target.EnchantLvl != 0 || target.Equipped {
+			handler.SendServerMessage(sess, 1161) // 無法溶解。
+			return false
+		}
+	}
+
+	crystalCount := calcDissolutionCrystalCount(s.deps.Resolvents.CrystalCount(target.ItemID), roll)
+	if crystalCount == 0 {
+		handler.SendServerMessage(sess, 1161) // 無法溶解。
+		return false
+	}
+
+	const crystalItemID int32 = 41246
+	crystalInfo := s.deps.Items.Get(crystalItemID)
+	if crystalInfo != nil {
+		existing := player.Inv.FindByItemID(crystalItemID)
+		wasExisting := existing != nil && crystalInfo.Stackable
+		crystal := player.Inv.AddItem(crystalItemID, crystalCount, crystalInfo.Name,
+			crystalInfo.InvGfx, crystalInfo.Weight, crystalInfo.Stackable, byte(crystalInfo.Bless))
+		crystal.UseType = crystalInfo.UseTypeID
+		crystal.Identified = true
+		if wasExisting {
+			handler.SendItemCountUpdate(sess, crystal)
+		} else {
+			handler.SendAddItem(sess, crystal, crystalInfo)
+		}
+	}
+
+	targetRemoved := player.Inv.RemoveItem(target.ObjectID, 1)
+	if targetRemoved {
+		handler.SendRemoveInventoryItem(sess, target.ObjectID)
+	} else {
+		handler.SendItemCountUpdate(sess, target)
+	}
+
+	resolventRemoved := player.Inv.RemoveItem(resolvent.ObjectID, 1)
+	if resolventRemoved {
+		handler.SendRemoveInventoryItem(sess, resolvent.ObjectID)
+	} else {
+		handler.SendItemCountUpdate(sess, resolvent)
+	}
+	handler.SendWeightUpdate(sess, player)
+	player.Dirty = true
+	return true
+}
+
+func calcDissolutionCrystalCount(base int32, roll int) int32 {
+	if base <= 0 {
+		return 0
+	}
+	if roll <= 50 {
+		return base
+	}
+	if roll <= 90 {
+		return base * 3 / 2
+	}
+	return base * 2
+}
+
+// UseWhetstone 處理磨刀石修復耐久。
+// Java ref: item_etcitem.Hone — 目標不存在不消耗；目標存在但無效則送 79 並消耗。
+func (s *ItemUseSystem) UseWhetstone(sess *net.Session, player *world.PlayerInfo, stone *world.InvItem, targetObjID int32) bool {
+	if player == nil || player.Inv == nil || stone == nil {
+		return false
+	}
+	target := player.Inv.FindByObjectID(targetObjID)
+	if target == nil {
+		return false
+	}
+
+	targetInfo := s.deps.Items.Get(target.ItemID)
+	if targetInfo != nil && targetInfo.Category != data.CategoryEtcItem && target.Durability > 0 {
+		target.Durability--
+		if target.Durability < 0 {
+			target.Durability = 0
+		}
+		syncEquippedFlagFromSlots(player, target)
+		handler.SendItemStatusUpdate(sess, target, targetInfo)
+		if target.Durability == 0 {
+			handler.SendServerMessageArgs(sess, 464, itemLogName(target))
+		} else {
+			handler.SendServerMessageArgs(sess, 463, itemLogName(target))
+		}
+	} else {
+		handler.SendServerMessage(sess, 79)
+	}
+
+	s.consumeUsedItem(sess, player, stone)
+	player.Dirty = true
+	return true
+}
+
 func (s *ItemUseSystem) consumeUsedItem(sess *net.Session, player *world.PlayerInfo, item *world.InvItem) {
 	if player == nil || player.Inv == nil || item == nil {
 		return
@@ -900,6 +1014,7 @@ func (s *ItemUseSystem) giveDropToPlayer(receiver *world.PlayerInfo, drop data.D
 
 	// 通知玩家掉落
 	if drop.ItemID == world.AdenaItemID {
+		handler.SendShowDrop(receiver.Session, handler.ShowDropAdena, qty)
 		msg := fmt.Sprintf("獲得 %d 金幣", qty)
 		handler.SendGlobalChat(receiver.Session, 9, msg)
 	} else {
@@ -909,9 +1024,11 @@ func (s *ItemUseSystem) giveDropToPlayer(receiver *world.PlayerInfo, drop data.D
 		}
 		if qty > 1 {
 			msg := fmt.Sprintf("獲得 %s (%d)", name, qty)
+			handler.SendItemBoard(receiver.Session, uint16(itemInfo.InvGfx), msg)
 			handler.SendGlobalChat(receiver.Session, 9, msg)
 		} else {
 			msg := fmt.Sprintf("獲得 %s", name)
+			handler.SendItemBoard(receiver.Session, uint16(itemInfo.InvGfx), msg)
 			handler.SendGlobalChat(receiver.Session, 9, msg)
 		}
 	}
@@ -1541,6 +1658,7 @@ func (s *ItemUseSystem) useCreateMonsterWand(sess *net.Session, player *world.Pl
 		Size:          tmpl.Size,
 		MR:            tmpl.MR,
 		Undead:        tmpl.Undead,
+		Hard:          tmpl.Hard,
 		CantResurrect: tmpl.CantResurrect,
 		Agro:          tmpl.Agro,
 		AtkDmg:        int32(tmpl.Level) + int32(tmpl.STR)/3,

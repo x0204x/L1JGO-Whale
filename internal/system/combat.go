@@ -233,7 +233,7 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 		}
 
 		// 武器耐久損耗（Java: L1Attack.damageNpcWeaponDurability）
-		damageWeaponDurability(player, s.deps)
+		damageWeaponDurability(player, npc, s.deps)
 
 		// 武器吸血/吸魔（Java: L1AttackPc.commit — dice_hp/sucking_hp/dice_mp/sucking_mp）
 		applyWeaponDrain(player, npc)
@@ -465,7 +465,7 @@ func (s *CombatSystem) processRangedAttack(sessID uint64, targetID int32) *handl
 		}
 
 		// 武器耐久損耗（遠程也會磨損武器）
-		damageWeaponDurability(player, s.deps)
+		damageWeaponDurability(player, npc, s.deps)
 
 		// 武器吸血/吸魔（Java: L1AttackPc.commit）
 		applyWeaponDrain(player, npc)
@@ -712,6 +712,9 @@ func addExp(player *world.PlayerInfo, expGain int32, deps *handler.Deps) {
 
 	// 發送經驗值更新
 	handler.SendExpUpdate(player.Session, player.Level, player.Exp)
+	if expGain > 0 {
+		handler.SendShowDrop(player.Session, handler.ShowDropExp, expGain)
+	}
 
 	if leveledUp {
 		player.Dirty = true
@@ -859,17 +862,40 @@ func BreakNpcSleep(npc *world.NpcInfo, ws *world.State) {
 
 // damageWeaponDurability 武器耐久損耗（Java: L1Attack.damageNpcWeaponDurability）。
 // 透過 Lua 計算損耗機率與最大耐久，在 system 層修改武器狀態。
-func damageWeaponDurability(player *world.PlayerInfo, deps *handler.Deps) {
+func damageWeaponDurability(player *world.PlayerInfo, npc *world.NpcInfo, deps *handler.Deps) {
+	if npc == nil || !npc.Hard {
+		return
+	}
+	damageEquippedWeaponDurability(player, deps, false)
+}
+
+func damagePlayerWeaponDurability(player *world.PlayerInfo, deps *handler.Deps) {
+	damageEquippedWeaponDurability(player, deps, true)
+}
+
+func damageEquippedWeaponDurability(player *world.PlayerInfo, deps *handler.Deps, pvp bool) {
+	if player == nil || deps == nil {
+		return
+	}
 	wpn := player.Equip.Weapon()
 	if wpn == nil {
 		return
 	}
+	itemInfo := deps.Items.Get(wpn.ItemID)
+	if itemInfo == nil || itemInfo.Category != data.CategoryWeapon {
+		return
+	}
+	if !itemInfo.CanBeDamaged {
+		return
+	}
+	if pvp && itemInfo.Type == "bow" {
+		return
+	}
+	if player.HasBuff(175) {
+		return
+	}
 
-	result := deps.Scripting.CalcDurabilityDamage(scripting.DurabilityContext{
-		EnchantLvl:        int(wpn.EnchantLvl),
-		Bless:             int(wpn.Bless),
-		CurrentDurability: int(wpn.Durability),
-	})
+	result := calcEquippedWeaponDurabilityDamage(wpn, deps)
 
 	if !result.ShouldDamage {
 		return
@@ -881,7 +907,41 @@ func damageWeaponDurability(player *world.PlayerInfo, deps *handler.Deps) {
 		wpn.Durability = maxDur
 	}
 
-	handler.SendItemCountUpdate(player.Session, wpn)
+	syncEquippedFlagFromSlots(player, wpn)
+	handler.SendServerMessageArgs(player.Session, 268, itemLogName(wpn))
+	handler.SendItemStatusUpdate(player.Session, wpn, itemInfo)
+	if deps.World != nil {
+		nearby := deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, 10712))
+	}
+	player.Dirty = true
+}
+
+func calcEquippedWeaponDurabilityDamage(wpn *world.InvItem, deps *handler.Deps) scripting.DurabilityResult {
+	ctx := scripting.DurabilityContext{
+		EnchantLvl:        int(wpn.EnchantLvl),
+		Bless:             int(wpn.Bless),
+		CurrentDurability: int(wpn.Durability),
+	}
+	if deps.Scripting != nil {
+		return deps.Scripting.CalcDurabilityDamage(ctx)
+	}
+
+	maxDur := ctx.EnchantLvl + 5
+	if maxDur < 5 {
+		maxDur = 5
+	}
+	if ctx.CurrentDurability >= maxDur {
+		return scripting.DurabilityResult{ShouldDamage: false, MaxDurability: maxDur}
+	}
+	threshold := 10
+	if ctx.Bless == 0 {
+		threshold = 3
+	}
+	return scripting.DurabilityResult{
+		ShouldDamage:  world.RandInt(100)+1 < threshold,
+		MaxDurability: maxDur,
+	}
 }
 
 // applyWeaponDrain 武器吸血/吸魔判定（Java: L1AttackPc.commit — dice_hp/sucking_hp/dice_mp/sucking_mp）。

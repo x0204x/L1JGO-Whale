@@ -99,27 +99,48 @@ func (s *GMCommandSystem) GiveItem(sess *net.Session, player *world.PlayerInfo, 
 	if itemInfo == nil {
 		return
 	}
+	if count <= 0 {
+		return
+	}
 
 	stackable := itemInfo.Stackable || itemID == world.AdenaItemID
-	existing := player.Inv.FindByItemID(itemID)
-	wasExisting := existing != nil && stackable
 
-	invItem := player.Inv.AddItem(
-		itemID, count, itemInfo.Name, itemInfo.InvGfx,
-		itemInfo.Weight, stackable, byte(itemInfo.Bless),
-	)
-	invItem.EnchantLvl = enchant
-	invItem.UseType = itemInfo.UseTypeID
-	if itemInfo.MaxChargeCount > 0 {
-		invItem.ChargeCount = int16(itemInfo.MaxChargeCount)
-	}
-
-	if wasExisting {
-		handler.SendItemCountUpdate(sess, invItem)
+	if stackable {
+		existing := player.Inv.FindByItemID(itemID)
+		wasExisting := existing != nil
+		invItem := player.Inv.AddItem(
+			itemID, count, itemInfo.Name, itemInfo.InvGfx,
+			itemInfo.Weight, true, byte(itemInfo.Bless),
+		)
+		invItem.EnchantLvl = 0
+		invItem.UseType = itemInfo.UseTypeID
+		if itemInfo.MaxChargeCount > 0 {
+			invItem.ChargeCount = int16(itemInfo.MaxChargeCount)
+		}
+		if wasExisting {
+			handler.SendItemCountUpdate(sess, invItem)
+		} else {
+			handler.SendAddItem(sess, invItem)
+		}
 	} else {
-		handler.SendAddItem(sess, invItem)
+		for i := int32(0); i < count; i++ {
+			if player.Inv.IsFull() {
+				break
+			}
+			invItem := player.Inv.AddItem(
+				itemID, 1, itemInfo.Name, itemInfo.InvGfx,
+				itemInfo.Weight, false, byte(itemInfo.Bless),
+			)
+			invItem.EnchantLvl = enchant
+			invItem.UseType = itemInfo.UseTypeID
+			if itemInfo.MaxChargeCount > 0 {
+				invItem.ChargeCount = int16(itemInfo.MaxChargeCount)
+			}
+			handler.SendAddItem(sess, invItem)
+		}
 	}
 	handler.SendWeightUpdate(sess, player)
+	player.Dirty = true
 }
 
 // ApplyPoison GM 強制施加中毒。委派給 GMApplyPoison（system/poison.go）。
@@ -172,6 +193,35 @@ func (s *GMCommandSystem) GiveGold(sess *net.Session, player *world.PlayerInfo, 
 		handler.SendAddItem(sess, invItem)
 	}
 	handler.SendWeightUpdate(sess, player)
+}
+
+// AdjustLawful 以 signed delta 調整玩家正義值，並送出 Java S_Lawful 相同格式。
+func (s *GMCommandSystem) AdjustLawful(sess *net.Session, player *world.PlayerInfo, delta int32) {
+	if player == nil {
+		return
+	}
+	next := int64(player.Lawful) + int64(delta)
+	switch {
+	case next > 32767:
+		player.Lawful = 32767
+	case next < -32768:
+		player.Lawful = -32768
+	default:
+		player.Lawful = int32(next)
+	}
+	player.Dirty = true
+
+	data := handler.BuildLawful(player.CharID, player.Lawful)
+	if s.deps != nil && s.deps.World != nil {
+		nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		if len(nearby) > 0 {
+			handler.BroadcastToPlayers(nearby, data)
+			return
+		}
+	}
+	if sess != nil {
+		sess.Send(data)
+	}
 }
 
 // calcBaseHPMP 計算指定等級的基礎 HP/MP（透過 Lua 重複升級計算）。

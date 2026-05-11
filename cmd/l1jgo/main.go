@@ -39,7 +39,7 @@ func main() {
 func printBanner(serverName string, serverID int) {
 	fmt.Println()
 	fmt.Println("\033[36;1m  ┌───────────────────────────────────────────┐\033[0m")
-	fmt.Println("\033[36;1m  │\033[0m           L1JGO-Whale  v0.3.17           \033[36;1m│\033[0m")
+	fmt.Println("\033[36;1m  │\033[0m           L1JGO-Whale  v0.3.18           \033[36;1m│\033[0m")
 	fmt.Println("\033[36;1m  │\033[0m      天堂 3.80C · Go 遊戲伺服器           \033[36;1m│\033[0m")
 	fmt.Println("\033[36;1m  └───────────────────────────────────────────┘\033[0m")
 	fmt.Println()
@@ -299,6 +299,12 @@ func run() error {
 	}
 	printStat("火結晶表", fireCrystalTable.Count())
 
+	resolventTable, err := data.LoadResolventTable("data/yaml/resolvent_list.yaml")
+	if err != nil {
+		return fmt.Errorf("load resolvent table: %w", err)
+	}
+	printStat("溶解表", resolventTable.Count())
+
 	spellbookReqs, err := data.LoadSpellbookReqTable("data/yaml/spellbook_level_req.yaml")
 	if err != nil {
 		return fmt.Errorf("load spellbook reqs: %w", err)
@@ -466,38 +472,39 @@ func run() error {
 	// 6. Create packet handler registry and register handlers
 	pktReg := packet.NewRegistry(log)
 	deps := &handler.Deps{
-		AccountRepo: accountRepo,
-		CharRepo:    charRepo,
-		ItemRepo:    itemRepo,
-		Config:      cfg,
-		Log:         log,
-		World:       worldState,
-		Scripting:   luaEngine,
-		NpcActions:  npcActionTable,
-		Items:       itemTable,
-		Shops:       shopTable,
-		Drops:        dropTable,
-		Teleports:    teleportTable,
-		TeleportHtml: teleportHtmlTable,
-		Portals:      portalTable,
+		AccountRepo:   accountRepo,
+		CharRepo:      charRepo,
+		ItemRepo:      itemRepo,
+		Config:        cfg,
+		Log:           log,
+		World:         worldState,
+		Scripting:     luaEngine,
+		NpcActions:    npcActionTable,
+		Items:         itemTable,
+		Shops:         shopTable,
+		Drops:         dropTable,
+		Teleports:     teleportTable,
+		TeleportHtml:  teleportHtmlTable,
+		Portals:       portalTable,
 		RandomPortals: randomPortalTable,
-		Skills:       skillTable,
-		Npcs:         npcTable,
-		MobSkills:      mobSkillTable,
-		MapData:        mapDataTable,
-		Polys:          polymorphTable,
-		ArmorSets:      armorSetTable,
-		SprTable:       sprTable,
-		WarehouseRepo:  warehouseRepo,
-		WALRepo:        walRepo,
-		ClanRepo:       clanRepo,
-		BuffRepo:       buffRepo,
-		Doors:          doorTable,
-		ItemMaking:     itemMakingTable,
-		FireCrystals:   fireCrystalTable,
-		SpellbookReqs:  spellbookReqs,
-		BuffIcons:      buffIconTable,
-		NpcServices:    npcServiceTable,
+		Skills:        skillTable,
+		Npcs:          npcTable,
+		MobSkills:     mobSkillTable,
+		MapData:       mapDataTable,
+		Polys:         polymorphTable,
+		ArmorSets:     armorSetTable,
+		SprTable:      sprTable,
+		WarehouseRepo: warehouseRepo,
+		WALRepo:       walRepo,
+		ClanRepo:      clanRepo,
+		BuffRepo:      buffRepo,
+		Doors:         doorTable,
+		ItemMaking:    itemMakingTable,
+		FireCrystals:  fireCrystalTable,
+		Resolvents:    resolventTable,
+		SpellbookReqs: spellbookReqs,
+		BuffIcons:     buffIconTable,
+		NpcServices:   npcServiceTable,
 		QuestRepo:     questRepo,
 		BuddyRepo:     buddyRepo,
 		ExcludeRepo:   excludeRepo,
@@ -915,6 +922,7 @@ func createNpcFromTemplate(tmpl *data.NpcTemplate, x, y int32, mapID, heading in
 		Size:         tmpl.Size,
 		MR:           tmpl.MR,
 		Undead:       tmpl.Undead,
+		Hard:         tmpl.Hard,
 		Agro:         tmpl.Agro,
 		AtkDmg:       int32(tmpl.Level) + int32(tmpl.STR)/3,
 		Ranged:       tmpl.Ranged,
@@ -957,7 +965,7 @@ func spawnMobGroup(ws *world.State, leader *world.NpcInfo, group *data.MobGroup,
 			my := leader.Y + int32(rand.Intn(5)) - 2
 
 			mob := createNpcFromTemplate(mTmpl, mx, my, leader.MapID, leader.Heading, 0, sprTable)
-			mob.IsMinion = true      // 隊員不獨立重生
+			mob.IsMinion = true       // 隊員不獨立重生
 			mob.GroupInfo = groupInfo // 回指群體資訊
 			mob.SpawnX = leader.SpawnX
 			mob.SpawnY = leader.SpawnY

@@ -19710,6 +19710,29 @@ items:
     delay_id: 5
     delay_time: 0
     food_volume: 0
+  - item_id: 40882
+    name: 魔法卷軸 (祝福魔法武器)
+    item_type: scroll
+    use_type: spell_buff
+    material: paper
+    weight: 630
+    inv_gfx: 6046
+    grd_gfx: 22
+    itemdesc_id: 0
+    stackable: true
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: true
+    delay_id: 5
+    delay_time: 500
+    food_volume: 0
   - item_id: 40883
     name: 魔法卷軸 (燃燒的火球)
     item_type: scroll

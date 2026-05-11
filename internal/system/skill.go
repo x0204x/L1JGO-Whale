@@ -47,13 +47,21 @@ func calcMagicLevel(classType, level int) int {
 // SkillSystem processes queued skill requests in Phase 2.
 // 管理技能執行、buff 套用/到期、NPC debuff。
 type SkillSystem struct {
-	deps     *handler.Deps
-	requests []handler.SkillRequest
+	deps                    *handler.Deps
+	requests                []handler.SkillRequest
+	suppressCastFailMessage bool
 }
 
 // NewSkillSystem 建立 SkillSystem。
 func NewSkillSystem(deps *handler.Deps) *SkillSystem {
 	return &SkillSystem{deps: deps}
+}
+
+func (s *SkillSystem) sendCastFail(sess *net.Session) {
+	if s != nil && s.suppressCastFailMessage {
+		return
+	}
+	handler.SendServerMessage(sess, skillMsgCastFail)
 }
 
 // Phase 回傳系統執行階段。
@@ -285,7 +293,7 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 
 	// 檢查是否已學會此法術
 	if !s.playerKnowsSpell(player, skillID) {
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 		return
 	}
 
@@ -312,7 +320,7 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 	}
 
 	if skillID == 147 && player.ElfAttr == 0 {
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 		return
 	}
 
@@ -438,8 +446,11 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 	case 21: // BLESSED_ARMOR（鎧甲護持）— 鎧甲 AC-3
 		s.executeArmorEnchant(sess, player, skill, targetID)
 		return
-	case 12, 107: // ENCHANT_WEAPON（擬似魔法武器）/ SHADOW_FANG（暗影之牙）— 武器強化 buff
-		s.executeWeaponEnchant(sess, player, skill, targetID)
+	case 48:
+		s.executeBlessWeaponEnchant(sess, player, skill, targetID)
+		return
+	case 12, 107: // ENCHANT_WEAPON / SHADOW_FANG：武器附魔
+		s.executeTargetedWeaponEnchant(sess, player, skill, targetID)
 		return
 	case 73: // CREATE_MAGICAL_WEAPON（創造魔法武器）— 武器強化 +1
 		s.executeCreateMagicalWeapon(sess, player, skill, targetID)

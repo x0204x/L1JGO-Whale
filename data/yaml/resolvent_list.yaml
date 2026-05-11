@@ -1,0 +1,847 @@
+items:
+  - item_id: 1
+    note: "歐西斯匕首"
+    crystal_count: 1
+  - item_id: 2
+    note: "骰子匕首"
+    crystal_count: 20
+  - item_id: 21
+    note: "歐西斯短劍"
+    crystal_count: 1
+  - item_id: 23
+    note: "闊劍"
+    crystal_count: 1
+  - item_id: 25
+    note: "銀劍"
+    crystal_count: 36
+  - item_id: 26
+    note: "小侏儒短劍"
+    crystal_count: 6
+  - item_id: 27
+    note: "彎刀"
+    crystal_count: 20
+  - item_id: 31
+    note: "長劍"
+    crystal_count: 60
+  - item_id: 32
+    note: "侵略者之劍"
+    crystal_count: 50
+  - item_id: 52
+    note: "雙手劍"
+    crystal_count: 360
+  - item_id: 91
+    note: "歐西斯之矛"
+    crystal_count: 1
+  - item_id: 93
+    note: "三叉戟"
+    crystal_count: 1
+  - item_id: 94
+    note: "帕提森"
+    crystal_count: 10
+  - item_id: 95
+    note: "矛"
+    crystal_count: 1
+  - item_id: 96
+    note: "矛"
+    crystal_count: 1
+  - item_id: 102
+    note: "露西錘"
+    crystal_count: 200
+  - item_id: 104
+    note: "法丘"
+    crystal_count: 160
+  - item_id: 107
+    note: "深紅長矛"
+    crystal_count: 400
+  - item_id: 126
+    note: "瑪那魔杖"
+    crystal_count: 300
+  - item_id: 128
+    note: "橡木魔法杖"
+    crystal_count: 6
+  - item_id: 132
+    note: "神官魔杖"
+    crystal_count: 500
+  - item_id: 136
+    note: "斧"
+    crystal_count: 1
+  - item_id: 137
+    note: "亞連"
+    crystal_count: 1
+  - item_id: 138
+    note: "木棒"
+    crystal_count: 1
+  - item_id: 139
+    note: "弗萊爾"
+    crystal_count: 1
+  - item_id: 140
+    note: "釘錘"
+    crystal_count: 1
+  - item_id: 142
+    note: "銀斧"
+    crystal_count: 160
+  - item_id: 143
+    note: "戰斧"
+    crystal_count: 14
+  - item_id: 145
+    note: "狂戰士斧"
+    crystal_count: 20
+  - item_id: 146
+    note: "流星錘"
+    crystal_count: 70
+  - item_id: 148
+    note: "巨斧"
+    crystal_count: 260
+  - item_id: 149
+    note: "牛人斧頭"
+    crystal_count: 300
+  - item_id: 151
+    note: "惡魔斧頭"
+    crystal_count: 2000
+  - item_id: 169
+    note: "獵人之弓"
+    crystal_count: 100
+  - item_id: 171
+    note: "歐西斯弓"
+    crystal_count: 1
+  - item_id: 172
+    note: "弓"
+    crystal_count: 1
+  - item_id: 20007
+    note: "侏儒鐵盔"
+    crystal_count: 24
+  - item_id: 20011
+    note: "抗魔法頭盔"
+    crystal_count: 60
+  - item_id: 20034
+    note: "歐西斯頭盔"
+    crystal_count: 3
+  - item_id: 20043
+    note: "鋼盔"
+    crystal_count: 4
+  - item_id: 20052
+    note: "侏儒斗篷"
+    crystal_count: 2
+  - item_id: 20056
+    note: "抗魔法斗篷"
+    crystal_count: 72
+  - item_id: 20072
+    note: "歐西斯斗篷"
+    crystal_count: 1
+  - item_id: 20089
+    note: "小籐甲"
+    crystal_count: 2
+  - item_id: 20096
+    note: "環甲"
+    crystal_count: 10
+  - item_id: 20101
+    note: "皮甲"
+    crystal_count: 460
+  - item_id: 20114
+    note: "綿質長袍"
+    crystal_count: 20
+  - item_id: 20115
+    note: "籐甲"
+    crystal_count: 400
+  - item_id: 20122
+    note: "鱗甲"
+    crystal_count: 40
+  - item_id: 20124
+    note: "骷髏盔甲"
+    crystal_count: 84
+  - item_id: 20135
+    note: "歐西斯環甲"
+    crystal_count: 4
+  - item_id: 20136
+    note: "歐西斯鏈甲"
+    crystal_count: 16
+  - item_id: 20139
+    note: "精靈護胸金屬板"
+    crystal_count: 14
+  - item_id: 20140
+    note: "被遺忘的皮盔甲"
+    crystal_count: 100
+  - item_id: 20141
+    note: "被遺忘的長袍"
+    crystal_count: 100
+  - item_id: 20142
+    note: "被遺忘的鱗甲"
+    crystal_count: 100
+  - item_id: 20143
+    note: "被遺忘的金屬盔甲"
+    crystal_count: 100
+  - item_id: 20147
+    note: "銀釘皮甲"
+    crystal_count: 6
+  - item_id: 20149
+    note: "青銅盔甲"
+    crystal_count: 320
+  - item_id: 20162
+    note: "皮手套"
+    crystal_count: 1
+  - item_id: 20172
+    note: "水靈手套"
+    crystal_count: 2400
+  - item_id: 20177
+    note: "地靈手套"
+    crystal_count: 2400
+  - item_id: 20181
+    note: "火靈手套"
+    crystal_count: 2400
+  - item_id: 20182
+    note: "手套"
+    crystal_count: 80
+  - item_id: 20188
+    note: "藍海賊手套"
+    crystal_count: 2000
+  - item_id: 20189
+    note: "風靈手套"
+    crystal_count: 2400
+  - item_id: 20205
+    note: "長靴"
+    crystal_count: 40
+  - item_id: 20217
+    note: "藍海賊長靴"
+    crystal_count: 2000
+  - item_id: 20263
+    note: "妖魔戰士護身符"
+    crystal_count: 1000
+  - item_id: 20266
+    note: "智力項鏈"
+    crystal_count: 2000
+  - item_id: 20284
+    note: "召喚控制戒指"
+    crystal_count: 4000
+  - item_id: 20306
+    note: "小型身體腰帶"
+    crystal_count: 200
+  - item_id: 20307
+    note: "小型靈魂腰帶"
+    crystal_count: 200
+  - item_id: 20308
+    note: "小型精神腰帶"
+    crystal_count: 200
+  - item_id: 20312
+    note: "身體腰帶"
+    crystal_count: 400
+  - item_id: 20316
+    note: "靈魂腰帶"
+    crystal_count: 400
+  - item_id: 20319
+    note: "精神腰帶"
+    crystal_count: 400
+  - item_id: 20321
+    note: "多羅皮帶"
+    crystal_count: 1000
+  - item_id: 40006
+    note: "創造怪物魔杖"
+    crystal_count: 40
+  - item_id: 40007
+    note: "閃電魔杖"
+    crystal_count: 6
+  - item_id: 40008
+    note: "變形魔杖"
+    crystal_count: 80
+  - item_id: 40010
+    note: "治癒藥水"
+    crystal_count: 1
+  - item_id: 40011
+    note: "強力治癒藥水"
+    crystal_count: 4
+  - item_id: 40012
+    note: "終極治癒藥水"
+    crystal_count: 12
+  - item_id: 40013
+    note: "自我加速藥水"
+    crystal_count: 4
+  - item_id: 40014
+    note: "勇敢藥水"
+    crystal_count: 16
+  - item_id: 40015
+    note: "加速魔力恢復藥水"
+    crystal_count: 15
+  - item_id: 40016
+    note: "慎重藥水"
+    crystal_count: 12
+  - item_id: 40017
+    note: "解毒藥水"
+    crystal_count: 1
+  - item_id: 40018
+    note: "強化自我加速藥水"
+    crystal_count: 30
+  - item_id: 40019
+    note: "濃縮體力恢復劑"
+    crystal_count: 1
+  - item_id: 40020
+    note: "濃縮強力體力恢復劑"
+    crystal_count: 6
+  - item_id: 40021
+    note: "濃縮終極體力恢復劑"
+    crystal_count: 18
+  - item_id: 40041
+    note: "人魚之鱗"
+    crystal_count: 2
+  - item_id: 40044
+    note: "鑽石"
+    crystal_count: 28
+  - item_id: 40045
+    note: "紅寶石"
+    crystal_count: 28
+  - item_id: 40046
+    note: "藍寶石"
+    crystal_count: 28
+  - item_id: 40047
+    note: "綠寶石"
+    crystal_count: 28
+  - item_id: 40048
+    note: "品質鑽石"
+    crystal_count: 90
+  - item_id: 40049
+    note: "品質紅寶石"
+    crystal_count: 90
+  - item_id: 40050
+    note: "品質藍寶石"
+    crystal_count: 90
+  - item_id: 40051
+    note: "品質綠寶石"
+    crystal_count: 90
+  - item_id: 40068
+    note: "精靈餅乾"
+    crystal_count: 25
+  - item_id: 40079
+    note: "傳送回家的卷軸"
+    crystal_count: 2
+  - item_id: 40088
+    note: "變形卷軸"
+    crystal_count: 26
+  - item_id: 40089
+    note: "復活卷軸"
+    crystal_count: 20
+  - item_id: 40090
+    note: "空的魔法卷軸(等級1)"
+    crystal_count: 2
+  - item_id: 40091
+    note: "空的魔法卷軸(等級2)"
+    crystal_count: 8
+  - item_id: 40092
+    note: "空的魔法卷軸(等級3)"
+    crystal_count: 20
+  - item_id: 40093
+    note: "空的魔法卷軸(等級4)"
+    crystal_count: 40
+  - item_id: 40094
+    note: "空的魔法卷軸(等級5)"
+    crystal_count: 60
+  - item_id: 40100
+    note: "瞬間移動卷軸"
+    crystal_count: 1
+  - item_id: 40119
+    note: "解除咀咒的卷軸"
+    crystal_count: 2
+  - item_id: 40126
+    note: "鑒定卷軸"
+    crystal_count: 1
+  - item_id: 40164
+    note: "技術書(衝擊之暈)"
+    crystal_count: 4000
+  - item_id: 40170
+    note: "魔法書(燃燒的火球)"
+    crystal_count: 40
+  - item_id: 40171
+    note: "魔法書(通暢氣脈術)"
+    crystal_count: 40
+  - item_id: 40172
+    note: "魔法書(壞物術)"
+    crystal_count: 40
+  - item_id: 40173
+    note: "魔法書(吸血鬼之吻)"
+    crystal_count: 40
+  - item_id: 40174
+    note: "魔法書(緩速術)"
+    crystal_count: 40
+  - item_id: 40175
+    note: "魔法書(魔法屏障)"
+    crystal_count: 40
+  - item_id: 40176
+    note: "魔法書(冥想術)"
+    crystal_count: 40
+  - item_id: 40177
+    note: "魔法書(巖牢)"
+    crystal_count: 40
+  - item_id: 40178
+    note: "魔法書(木乃伊的詛咒)"
+    crystal_count: 100
+  - item_id: 40179
+    note: "魔法書(極道落雷)"
+    crystal_count: 100
+  - item_id: 40180
+    note: "魔法書(高級治癒術)"
+    crystal_count: 100
+  - item_id: 40181
+    note: "魔法書(迷魅術)"
+    crystal_count: 100
+  - item_id: 40182
+    note: "魔法書(聖潔之光)"
+    crystal_count: 100
+  - item_id: 40183
+    note: "魔法書(冰錐)"
+    crystal_count: 100
+  - item_id: 40184
+    note: "魔法書(魔力奪取)"
+    crystal_count: 100
+  - item_id: 40185
+    note: "魔法書(黑闇之影)"
+    crystal_count: 100
+  - item_id: 40186
+    note: "魔法書(造屍術)"
+    crystal_count: 200
+  - item_id: 40187
+    note: "魔法書(體魄強健術)"
+    crystal_count: 200
+  - item_id: 40188
+    note: "魔法書(加速術)"
+    crystal_count: 200
+  - item_id: 40189
+    note: "魔法書(魔法相消術)"
+    crystal_count: 200
+  - item_id: 40190
+    note: "魔法書(地裂術)"
+    crystal_count: 200
+  - item_id: 40191
+    note: "魔法書(烈炎術)"
+    crystal_count: 200
+  - item_id: 40192
+    note: "魔法書(弱化術)"
+    crystal_count: 200
+  - item_id: 40193
+    note: "魔法書(祝福魔法武器)"
+    crystal_count: 200
+  - item_id: 40210
+    note: "魔法書(雷霆風暴)"
+    crystal_count: 2400
+  - item_id: 40211
+    note: "魔法書(沉睡之霧)"
+    crystal_count: 2400
+  - item_id: 40212
+    note: "魔法書(變形術)"
+    crystal_count: 2400
+  - item_id: 40213
+    note: "魔法書(聖結界)"
+    crystal_count: 2400
+  - item_id: 40214
+    note: "魔法書(集體傳送術)"
+    crystal_count: 2400
+  - item_id: 40215
+    note: "魔法書(火風暴)"
+    crystal_count: 2400
+  - item_id: 40216
+    note: "魔法書(藥水霜化術)"
+    crystal_count: 2400
+  - item_id: 40217
+    note: "魔法書(強力無所遁形術)"
+    crystal_count: 2400
+  - item_id: 40265
+    note: "黑暗精靈水晶(暗隱術)"
+    crystal_count: 100
+  - item_id: 40266
+    note: "黑暗精靈水晶(附加劇毒)"
+    crystal_count: 100
+  - item_id: 40267
+    note: "黑暗精靈水晶(影之防護)"
+    crystal_count: 100
+  - item_id: 40268
+    note: "黑暗精靈水晶(提煉魔石)"
+    crystal_count: 300
+  - item_id: 40269
+    note: "黑暗精靈水晶(力量提升)"
+    crystal_count: 100
+  - item_id: 40270
+    note: "黑暗精靈水晶(行走加速)"
+    crystal_count: 200
+  - item_id: 40271
+    note: "黑暗精靈水晶(燃燒鬥志)"
+    crystal_count: 200
+  - item_id: 40272
+    note: "黑暗精靈水晶(暗黑盲咒)"
+    crystal_count: 200
+  - item_id: 40273
+    note: "黑暗精靈水晶(毒性抵抗)"
+    crystal_count: 200
+  - item_id: 40274
+    note: "黑暗精靈水晶(敏捷提升)"
+    crystal_count: 200
+  - item_id: 40275
+    note: "黑暗精靈水晶(雙重破壞)"
+    crystal_count: 2720
+  - item_id: 40276
+    note: "黑暗精靈水晶(暗影閃避)"
+    crystal_count: 2400
+  - item_id: 40277
+    note: "黑暗精靈水晶(暗影之牙)"
+    crystal_count: 720
+  - item_id: 40278
+    note: "黑暗精靈水晶(會心一擊)"
+    crystal_count: 2720
+  - item_id: 40279
+    note: "黑暗精靈水晶(閃避提升)"
+    crystal_count: 2720
+  - item_id: 40317
+    note: "磨刀石"
+    crystal_count: 3
+  - item_id: 40329
+    note: "原住民圖騰"
+    crystal_count: 50
+  - item_id: 40397
+    note: "奇美拉之皮(龍)"
+    crystal_count: 2
+  - item_id: 40398
+    note: "奇美拉之皮(山羊)"
+    crystal_count: 2
+  - item_id: 40399
+    note: "奇美拉之皮(獅子)"
+    crystal_count: 2
+  - item_id: 40400
+    note: "奇美拉之皮(蛇)"
+    crystal_count: 2
+  - item_id: 40407
+    note: "骨頭碎片"
+    crystal_count: 2
+  - item_id: 40408
+    note: "金屬塊"
+    crystal_count: 2
+  - item_id: 40419
+    note: "巨大莫妮亞蜘蛛絲"
+    crystal_count: 9
+  - item_id: 40424
+    note: "狼皮"
+    crystal_count: 6
+  - item_id: 40431
+    note: "鼴鼠的皮"
+    crystal_count: 2
+  - item_id: 40432
+    note: "大洞穴卷軸碎片"
+    crystal_count: 1
+  - item_id: 40434
+    note: "犰狳的尾巴"
+    crystal_count: 1
+  - item_id: 40437
+    note: "深淵花枝條"
+    crystal_count: 1
+  - item_id: 40438
+    note: "蝙蝠之牙"
+    crystal_count: 4
+  - item_id: 40442
+    note: "布拉伯的胃液"
+    crystal_count: 4
+  - item_id: 40443
+    note: "黑色米索莉"
+    crystal_count: 9
+  - item_id: 40444
+    note: "黑色米索莉原石"
+    crystal_count: 10
+  - item_id: 40459
+    note: "毒蠍之皮"
+    crystal_count: 1
+  - item_id: 40472
+    note: "地獄犬之皮"
+    crystal_count: 1
+  - item_id: 40483
+    note: "金屬蜈蚣的皮"
+    crystal_count: 5
+  - item_id: 40486
+    note: "火山灰"
+    crystal_count: 7
+  - item_id: 40490
+    note: "黑暗元素石"
+    crystal_count: 17
+  - item_id: 40496
+    note: "粗糙的米索莉塊"
+    crystal_count: 2
+  - item_id: 40499
+    note: "蘑菇汁"
+    crystal_count: 2
+  - item_id: 40510
+    note: "污濁安特的樹皮"
+    crystal_count: 1
+  - item_id: 40511
+    note: "污濁安特的水果"
+    crystal_count: 12
+  - item_id: 40512
+    note: "污濁安特的樹枝"
+    crystal_count: 1
+  - item_id: 40514
+    note: "精靈之淚"
+    crystal_count: 20
+  - item_id: 40515
+    note: "元素石"
+    crystal_count: 2
+  - item_id: 40524
+    note: "黑色血痕"
+    crystal_count: 15
+  - item_id: 40609
+    note: "甘地妖魔魔法書"
+    crystal_count: 2
+  - item_id: 40610
+    note: "那魯加妖魔魔法書"
+    crystal_count: 2
+  - item_id: 40611
+    note: "都達瑪拉妖魔魔法書"
+    crystal_count: 2
+  - item_id: 40612
+    note: "阿吐巴妖魔魔法書"
+    crystal_count: 2
+  - item_id: 40678
+    note: "靈魂石碎片"
+    crystal_count: 100
+  - item_id: 40718
+    note: "血石碎片"
+    crystal_count: 100
+  - item_id: 40899
+    note: "鋼鐵原石"
+    crystal_count: 2
+  - item_id: 40978
+    note: "地之守護者的尾巴"
+    crystal_count: 100
+  - item_id: 40979
+    note: "水之守護者的尾巴"
+    crystal_count: 100
+  - item_id: 40980
+    note: "火之守護者的尾巴"
+    crystal_count: 100
+  - item_id: 40981
+    note: "風之守護者的尾巴"
+    crystal_count: 100
+  - item_id: 40982
+    note: "地之守護者的皮"
+    crystal_count: 100
+  - item_id: 40983
+    note: "水之守護者的皮"
+    crystal_count: 100
+  - item_id: 40984
+    note: "火之守護者的皮"
+    crystal_count: 100
+  - item_id: 40985
+    note: "風之守護者的皮"
+    crystal_count: 100
+  - item_id: 40986
+    note: "守護者之牙"
+    crystal_count: 100
+  - item_id: 40999
+    note: "黑暗妖精士兵徽章"
+    crystal_count: 100
+  - item_id: 41038
+    note: "航海日誌第1頁"
+    crystal_count: 100
+  - item_id: 41039
+    note: "航海日誌第2頁"
+    crystal_count: 100
+  - item_id: 41040
+    note: "航海日誌第3頁"
+    crystal_count: 100
+  - item_id: 41041
+    note: "航海日誌第4頁"
+    crystal_count: 100
+  - item_id: 41042
+    note: "航海日誌第5頁"
+    crystal_count: 100
+  - item_id: 41043
+    note: "航海日誌第6頁"
+    crystal_count: 100
+  - item_id: 41044
+    note: "航海日誌第7頁"
+    crystal_count: 100
+  - item_id: 41045
+    note: "航海日誌第8頁"
+    crystal_count: 100
+  - item_id: 41046
+    note: "航海日誌第9頁"
+    crystal_count: 100
+  - item_id: 41047
+    note: "航海日誌第10頁"
+    crystal_count: 100
+  - item_id: 41206
+    note: "少了刀刃的武器"
+    crystal_count: 100
+  - item_id: 41342
+    note: "梅杜莎之血"
+    crystal_count: 200
+  - item_id: 41343
+    note: "法利昂的血痕"
+    crystal_count: 2
+  - item_id: 100025
+    note: "銀劍"
+    crystal_count: 36
+  - item_id: 100027
+    note: "彎刀"
+    crystal_count: 20
+  - item_id: 100052
+    note: "雙手劍"
+    crystal_count: 360
+  - item_id: 100095
+    note: "矛"
+    crystal_count: 1
+  - item_id: 100102
+    note: "露西錘"
+    crystal_count: 200
+  - item_id: 100107
+    note: "深紅長矛"
+    crystal_count: 2000
+  - item_id: 100132
+    note: "神官魔杖"
+    crystal_count: 500
+  - item_id: 100143
+    note: "戰斧"
+    crystal_count: 14
+  - item_id: 100146
+    note: "流星錘"
+    crystal_count: 100
+  - item_id: 100151
+    note: "惡魔斧頭"
+    crystal_count: 20000
+  - item_id: 100169
+    note: "獵人之弓"
+    crystal_count: 100
+  - item_id: 100172
+    note: "弓"
+    crystal_count: 1
+  - item_id: 120011
+    note: "抗魔法頭盔"
+    crystal_count: 60
+  - item_id: 120043
+    note: "鋼盔"
+    crystal_count: 4
+  - item_id: 120056
+    note: "抗魔法斗篷"
+    crystal_count: 72
+  - item_id: 120101
+    note: "皮甲"
+    crystal_count: 460
+  - item_id: 120149
+    note: "青銅盔甲"
+    crystal_count: 320
+  - item_id: 120182
+    note: "手套"
+    crystal_count: 80
+  - item_id: 120266
+    note: "智力項鏈"
+    crystal_count: 2000
+  - item_id: 120306
+    note: "小型身體腰帶"
+    crystal_count: 2000
+  - item_id: 120307
+    note: "小型靈魂腰帶"
+    crystal_count: 2000
+  - item_id: 120308
+    note: "小型精神腰帶"
+    crystal_count: 2000
+  - item_id: 120312
+    note: "身體腰帶"
+    crystal_count: 400
+  - item_id: 120316
+    note: "靈魂腰帶"
+    crystal_count: 400
+  - item_id: 120319
+    note: "精神腰帶"
+    crystal_count: 400
+  - item_id: 120321
+    note: "多羅皮帶"
+    crystal_count: 1000
+  - item_id: 140006
+    note: "創造怪物魔杖"
+    crystal_count: 400
+  - item_id: 140008
+    note: "變身魔杖"
+    crystal_count: 2000
+  - item_id: 140010
+    note: "治癒藥水"
+    crystal_count: 1
+  - item_id: 140011
+    note: "強力治癒藥水"
+    crystal_count: 4
+  - item_id: 140012
+    note: "終極治癒藥水"
+    crystal_count: 12
+  - item_id: 140013
+    note: "自我加速藥水"
+    crystal_count: 4
+  - item_id: 140014
+    note: "勇敢藥水"
+    crystal_count: 16
+  - item_id: 140015
+    note: "加速魔力恢復藥水"
+    crystal_count: 15
+  - item_id: 140016
+    note: "慎重藥水"
+    crystal_count: 12
+  - item_id: 140018
+    note: "強化自我加速藥水"
+    crystal_count: 30
+  - item_id: 140068
+    note: "精靈餅乾"
+    crystal_count: 25
+  - item_id: 140088
+    note: "變形卷軸"
+    crystal_count: 26
+  - item_id: 140089
+    note: "復活卷軸"
+    crystal_count: 20
+  - item_id: 140100
+    note: "瞬間移動卷軸"
+    crystal_count: 1
+  - item_id: 140119
+    note: "解除咀咒的卷軸"
+    crystal_count: 2
+  - item_id: 140329
+    note: "原住民のトーテム"
+    crystal_count: 10
+  - item_id: 200001
+    note: "歐西斯匕首"
+    crystal_count: 1
+  - item_id: 200002
+    note: "骰子匕首"
+    crystal_count: 20
+  - item_id: 200027
+    note: "彎刀"
+    crystal_count: 20
+  - item_id: 200032
+    note: "侵略者之劍"
+    crystal_count: 55
+  - item_id: 200052
+    note: "雙手劍"
+    crystal_count: 360
+  - item_id: 200171
+    note: "歐西斯弓"
+    crystal_count: 1
+  - item_id: 220034
+    note: "歐西斯頭盔"
+    crystal_count: 3
+  - item_id: 220043
+    note: "鋼盔"
+    crystal_count: 4
+  - item_id: 220056
+    note: "抗魔法斗篷"
+    crystal_count: 72
+  - item_id: 220101
+    note: "皮甲"
+    crystal_count: 460
+  - item_id: 220115
+    note: "籐甲"
+    crystal_count: 400
+  - item_id: 220122
+    note: "鱗甲"
+    crystal_count: 40
+  - item_id: 220135
+    note: "歐西斯環甲"
+    crystal_count: 4
+  - item_id: 220136
+    note: "歐西斯鏈甲"
+    crystal_count: 16
+  - item_id: 220147
+    note: "銀釘皮甲"
+    crystal_count: 6
+  - item_id: 240010
+    note: "治癒藥水"
+    crystal_count: 1
+  - item_id: 86011
+    note: "咒術石板碎片"
+    crystal_count: 50

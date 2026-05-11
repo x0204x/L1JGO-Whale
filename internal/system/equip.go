@@ -528,6 +528,9 @@ func calcEquipStats(player *world.PlayerInfo, items *data.ItemTable, armorSets *
 		if invItem.DmgByMagic > 0 && invItem.DmgMagicExpiry > 0 {
 			stats.DmgMod += int(invItem.DmgByMagic)
 		}
+		if invItem.HitByMagic > 0 && invItem.DmgMagicExpiry > 0 {
+			stats.HitMod += int(invItem.HitByMagic)
+		}
 		if invItem.AcByMagic > 0 && invItem.AcMagicExpiry > 0 {
 			stats.AC -= int(invItem.AcByMagic)
 		}

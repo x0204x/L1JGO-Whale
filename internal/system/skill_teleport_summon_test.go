@@ -82,6 +82,21 @@ func TestSkillTeleportSummonSummonMonsterUsesParsedSummonID(t *testing.T) {
 	}
 }
 
+func TestSkillTeleportSummonControlRingChecksAllRingSlots(t *testing.T) {
+	player := &world.PlayerInfo{Inv: world.NewInventory()}
+	ring := &world.InvItem{ObjectID: 7001, ItemID: 20284, Equipped: true}
+	player.Equip.Set(world.SlotRing3, ring)
+
+	if !hasSummonRing(player) {
+		t.Fatal("召喚控制戒指在 Ring3/Ring4 欄位也應被視為已裝備")
+	}
+
+	ring.Equipped = false
+	if hasSummonRing(player) {
+		t.Fatal("戒指欄物品未標記 Equipped 時不應視為已裝備")
+	}
+}
+
 func TestSkillTeleportSummonTeleportUsesParsedBookmarkID(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{

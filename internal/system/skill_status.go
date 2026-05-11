@@ -144,7 +144,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 			return
 		}
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := skill.BuffDuration
@@ -159,7 +159,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 27: // 壞物術 — Owner: skill_weapon.go；NPC 近戰傷害減半，直到相消術清除
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		npc.WeaponBroken = true
@@ -174,7 +174,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 			return
 		}
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := shockStunDurationSeconds()
@@ -187,7 +187,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 157: // 大地屏障 — 凍結 + 灰色色調
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := 1 + world.RandInt(12)
@@ -201,7 +201,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 103: // 暗黑盲咒
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := skill.BuffDuration
@@ -217,7 +217,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 66: // 沉睡之霧
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := skill.BuffDuration
@@ -233,7 +233,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 33: // 木乃伊詛咒（NPC 版）— 階段一：灰色延遲
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		if npc.Paralyzed || npc.HasDebuff(33) || npc.HasDebuff(4001) {
@@ -248,7 +248,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 11: // 毒咒 — 對 NPC 施加傷害毒（Java: L1DamagePoison.doInfection, 3000ms, 5dmg）
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		npc.PoisonDmgAmt = 5
@@ -264,7 +264,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 29, 76, 152: // 緩速系列
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := skill.BuffDuration
@@ -282,7 +282,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 			break // 已被凍結
 		}
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := skill.BuffDuration
@@ -318,7 +318,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 47: // 弱化術 — NPC debuff（Java: DMG-5, HIT-1）
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := skill.BuffDuration
@@ -333,7 +333,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 56: // 疾病術 — NPC debuff（Java: DMG-6, AC+12）
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := skill.BuffDuration
@@ -348,7 +348,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 112: // 破壞盔甲（NPC debuff）— Java: ARMOR_BREAK.java 對怪物/召喚/寵物
 		if !s.calcArmorBreakProbNpc(player, npc) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 		dur := skill.BuffDuration

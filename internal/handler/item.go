@@ -212,6 +212,16 @@ func HandleUseItem(sess *net.Session, r *packet.Reader, deps *Deps) {
 		return
 	}
 
+	if IsDirectPolyScroll(invItem.ItemID) {
+		if !checkLevelRestriction(sess, player.Level, itemInfo) {
+			return
+		}
+		if deps.Polymorph != nil {
+			deps.Polymorph.UseDirectPolyScroll(sess, player, invItem)
+		}
+		return
+	}
+
 	switch itemInfo.Category {
 	case data.CategoryWeapon:
 		if deps.Equip != nil {
@@ -344,6 +354,34 @@ func handleUseEtcItem(sess *net.Session, r *packet.Reader, player *world.PlayerI
 		return
 	}
 
+	if IsBlankMagicScroll(invItem.ItemID) {
+		selectedSkillIndex := int(r.ReadC())
+		if deps.ItemUse != nil {
+			deps.ItemUse.UseBlankMagicScroll(sess, player, invItem, selectedSkillIndex)
+		}
+		return
+	}
+
+	if IsMagicScroll(invItem.ItemID) {
+		var targetObjID int32
+		var targetX, targetY int16
+		switch itemInfo.UseType {
+		case "spell_long", "spell_short":
+			targetObjID = r.ReadD()
+			targetX = int16(r.ReadH())
+			targetY = int16(r.ReadH())
+		case "spell_buff", "dai", "zel":
+			targetObjID = r.ReadD()
+		}
+		if deps.ItemUse != nil {
+			used := deps.ItemUse.UseMagicScroll(sess, player, invItem, itemInfo, targetObjID, targetX, targetY)
+			if used && itemInfo.DelayID != 0 && itemInfo.DelayTime != 0 {
+				setItemDelay(player, itemInfo.DelayID, itemInfo.DelayTime)
+			}
+		}
+		return
+	}
+
 	// Enchant scrolls: use_type "dai" (weapon) or "zel" (armor)
 	if itemInfo.UseType == "dai" || itemInfo.UseType == "zel" {
 		if deps.ItemUse != nil {
@@ -365,6 +403,24 @@ func handleUseEtcItem(sess *net.Session, r *packet.Reader, player *world.PlayerI
 		targetObjID := r.ReadD()
 		if deps.ItemUse != nil {
 			deps.ItemUse.UseResurrectionScroll(sess, player, invItem, targetObjID)
+		}
+		return
+	}
+
+	// 磨刀石: Java Hone.execute reads [D targetObjID] from use_type=choice.
+	if invItem.ItemID == 40317 {
+		targetObjID := r.ReadD()
+		if deps.ItemUse != nil {
+			deps.ItemUse.UseWhetstone(sess, player, invItem, targetObjID)
+		}
+		return
+	}
+
+	// 溶解劑: Java Dissolution.execute reads [D targetObjID] from use_type=choice.
+	if invItem.ItemID == 41245 {
+		targetObjID := r.ReadD()
+		if deps.ItemUse != nil {
+			deps.ItemUse.UseDissolution(sess, player, invItem, targetObjID)
 		}
 		return
 	}
@@ -822,6 +878,17 @@ func isTeleportScroll(itemID int32) bool {
 		return true
 	}
 	return false
+}
+
+func IsBlankMagicScroll(itemID int32) bool {
+	return itemID >= 40090 && itemID <= 40094
+}
+
+func IsMagicScroll(itemID int32) bool {
+	if itemID >= 40859 && itemID <= 40898 && itemID != teleportScrollSpecial {
+		return true
+	}
+	return itemID >= 49281 && itemID <= 49286
 }
 
 // Home scroll item IDs (Java: 回家卷軸)

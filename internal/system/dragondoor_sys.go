@@ -211,6 +211,7 @@ func (s *DragonDoorSystem) SpawnKeeper(sess *net.Session, player *world.PlayerIn
 		Size:          tmpl.Size,
 		MR:            tmpl.MR,
 		Undead:        tmpl.Undead,
+		Hard:          tmpl.Hard,
 		CantResurrect: tmpl.CantResurrect,
 		Agro:          false, // 門衛不主動攻擊
 		AtkDmg:        int32(tmpl.Level) + int32(tmpl.STR)/3,

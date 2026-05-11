@@ -51,6 +51,8 @@ func HandleGMCommand(sess *net.Session, player *world.PlayerInfo, text string, d
 		gmItem(sess, player, args, deps)
 	case "gold", "adena":
 		gmGold(sess, player, args, deps)
+	case "lawful", "law", "l":
+		gmLawful(sess, player, args, deps)
 	case "spell":
 		gmSpell(sess, player, args, deps)
 	case "allskill":
@@ -103,6 +105,8 @@ func HandleGMCommand(sess *net.Session, player *world.PlayerInfo, text string, d
 		gmPoison(sess, player, args, deps)
 	case "broken":
 		gmBroken(sess, player, args, deps)
+	case "water":
+		gmWater(sess, player, args, deps)
 	case "stresstest":
 		gmStressTest(sess, player, args, deps)
 	case "cleartest":
@@ -144,8 +148,9 @@ func gmHelp(sess *net.Session) {
 	gmMsg(sess, ".heal  — 補滿HP/MP")
 	gmMsg(sess, ".stat <str|dex|con|wis|int|cha> <數值>  — 設定屬性")
 	gmMsg(sess, ".move <x> <y> [mapID]  — 傳送到座標")
-	gmMsg(sess, ".item <itemID|中文名> [數量] [enchant]  — 給予物品(支援中文模糊查詢)")
+	gmMsg(sess, ".item <itemID|中文名> [數量] 或 .item <物品> +強化 [數量]  — 給予物品")
 	gmMsg(sess, ".gold <數量>  — 給予金幣")
+	gmMsg(sess, ".lawful <+/-數值> [角色名稱]  — 調整正義值")
 	gmMsg(sess, ".spell <skillID>  — 學習技能 (0=全部)")
 	gmMsg(sess, ".allskill  — 學習該職業所有技能")
 	gmMsg(sess, ".spawn <npcID> [數量]  — 召喚NPC")
@@ -170,6 +175,7 @@ func gmHelp(sess *net.Session) {
 	gmMsg(sess, ".clearbuff  — 清除身上所有buff")
 	gmMsg(sess, ".poison [damage|silence|para]  — 施加中毒(預設沉默毒/卡司特毒)")
 	gmMsg(sess, ".broken [數值1-127]  — 將裝備武器耐久損壞值設為N(預設127極限損壞)")
+	gmMsg(sess, ".water [on|off]  — 切換海底地圖的水顯示(預設依地圖設定)")
 	gmMsg(sess, ".stresstest <npcID> [數量] [半徑]  — 壓力測試(預設10000隻,半徑50)")
 	gmMsg(sess, ".cleartest  — 清除所有壓力測試怪物")
 }
@@ -279,29 +285,20 @@ func gmMove(sess *net.Session, player *world.PlayerInfo, args []string, deps *De
 
 func gmItem(sess *net.Session, player *world.PlayerInfo, args []string, deps *Deps) {
 	if len(args) < 1 {
-		gmMsg(sess, "\\f3用法: .item <itemID|中文名> [數量] [enchant]")
+		gmMsg(sess, "\\f3用法: .item <itemID|中文名> [數量] 或 .item <物品> +強化 [數量]")
 		return
 	}
-	count := int32(1)
-	if len(args) >= 2 {
-		c, err := strconv.Atoi(args[1])
-		if err == nil && c > 0 {
-			count = int32(c)
-		}
-	}
-	enchant := int8(0)
-	if len(args) >= 3 {
-		e, err := strconv.Atoi(args[2])
-		if err == nil && e >= -7 && e <= 15 {
-			enchant = int8(e)
-		}
+	itemArg, count, enchant, enchantSpecified, parseErr := parseGMItemArgs(args)
+	if parseErr != "" {
+		gmMsg(sess, "\\f3"+parseErr)
+		return
 	}
 
-	itemInfo := resolveItemArg(deps, args[0])
+	itemInfo := resolveItemArg(deps, itemArg)
 	if itemInfo == nil {
 		// 中文查詢若有多筆候選，列出前 10 筆
-		if _, err := strconv.Atoi(args[0]); err != nil {
-			candidates := deps.Items.FindByName(args[0])
+		if _, err := strconv.Atoi(itemArg); err != nil {
+			candidates := deps.Items.FindByName(itemArg)
 			if len(candidates) > 1 {
 				gmMsgf(sess, "\\f3找到 %d 筆，請更精確：", len(candidates))
 				limit := len(candidates)
@@ -314,7 +311,20 @@ func gmItem(sess *net.Session, player *world.PlayerInfo, args []string, deps *De
 				return
 			}
 		}
-		gmMsgf(sess, "\\f3找不到物品: %s", args[0])
+		gmMsgf(sess, "\\f3找不到物品: %s", itemArg)
+		return
+	}
+
+	canEnchant := itemInfo.Category == data.CategoryWeapon || itemInfo.Category == data.CategoryArmor
+	if enchantSpecified && !canEnchant {
+		gmMsg(sess, "\\f3只有武器或防具可以指定強化值")
+		return
+	}
+	if !canEnchant {
+		enchant = 0
+	}
+	if !itemInfo.Stackable && itemInfo.ItemID != world.AdenaItemID && count > 10 {
+		gmMsg(sess, "\\f3不可以堆疊的物品一次創造數量禁止超過10")
 		return
 	}
 
@@ -330,6 +340,100 @@ func gmItem(sess *net.Session, player *world.PlayerInfo, args []string, deps *De
 		name = fmt.Sprintf("+%d %s", enchant, name)
 	}
 	gmMsgf(sess, "已給予 %s x%d", name, count)
+}
+
+func parseGMItemArgs(args []string) (itemArg string, count int32, enchant int8, enchantSpecified bool, errMsg string) {
+	count = 1
+	itemEnd := len(args)
+
+	switch {
+	case len(args) >= 3 && isGMItemSignedInt(args[len(args)-2]) && isGMItemPositiveInt(args[len(args)-1]):
+		e, ok := parseGMItemEnchant(args[len(args)-2])
+		if !ok {
+			return "", 0, 0, false, "無效的強化值"
+		}
+		c, _ := strconv.Atoi(args[len(args)-1])
+		enchant = e
+		count = int32(c)
+		enchantSpecified = true
+		itemEnd = len(args) - 2
+
+	case len(args) >= 3 && isGMItemPositiveInt(args[len(args)-2]) && isGMItemSignedInt(args[len(args)-1]):
+		c, _ := strconv.Atoi(args[len(args)-2])
+		e, ok := parseGMItemEnchant(args[len(args)-1])
+		if !ok {
+			return "", 0, 0, false, "無效的強化值"
+		}
+		count = int32(c)
+		enchant = e
+		enchantSpecified = true
+		itemEnd = len(args) - 2
+
+	case len(args) >= 3 && isGMItemPositiveInt(args[len(args)-2]) && isGMItemPlainInt(args[len(args)-1]):
+		c, _ := strconv.Atoi(args[len(args)-2])
+		e, ok := parseGMItemEnchant(args[len(args)-1])
+		if !ok {
+			return "", 0, 0, false, "無效的強化值"
+		}
+		count = int32(c)
+		enchant = e
+		enchantSpecified = true
+		itemEnd = len(args) - 2
+
+	case len(args) >= 2 && isGMItemSignedInt(args[len(args)-1]):
+		e, ok := parseGMItemEnchant(args[len(args)-1])
+		if !ok {
+			return "", 0, 0, false, "無效的強化值"
+		}
+		enchant = e
+		enchantSpecified = true
+		itemEnd = len(args) - 1
+
+	case len(args) >= 2 && isGMItemPositiveInt(args[len(args)-1]):
+		c, _ := strconv.Atoi(args[len(args)-1])
+		count = int32(c)
+		itemEnd = len(args) - 1
+	}
+
+	if itemEnd <= 0 {
+		return "", 0, 0, false, "缺少物品名稱或 ID"
+	}
+	if count <= 0 {
+		return "", 0, 0, false, "無效的物品數量"
+	}
+	return strings.Join(args[:itemEnd], " "), count, enchant, enchantSpecified, ""
+}
+
+func parseGMItemEnchant(s string) (int8, bool) {
+	v, err := strconv.Atoi(s)
+	if err != nil || v < -127 || v > 127 {
+		return 0, false
+	}
+	return int8(v), true
+}
+
+func isGMItemSignedInt(s string) bool {
+	if len(s) < 2 || (s[0] != '+' && s[0] != '-') {
+		return false
+	}
+	_, err := strconv.Atoi(s)
+	return err == nil
+}
+
+func isGMItemPositiveInt(s string) bool {
+	if !isGMItemPlainInt(s) {
+		return false
+	}
+	v, _ := strconv.Atoi(s)
+	return v > 0
+}
+
+func isGMItemPlainInt(s string) bool {
+	if s == "" || s[0] == '+' || s[0] == '-' {
+		return false
+	}
+	_, err := strconv.Atoi(s)
+	return err == nil
 }
 
 // resolveItemArg 將 .item 第一個參數解析為 ItemInfo。
@@ -359,6 +463,47 @@ func gmGold(sess *net.Session, player *world.PlayerInfo, args []string, deps *De
 	deps.GMCmd.GiveGold(sess, player, int32(amount))
 
 	gmMsgf(sess, "已給予 %d 金幣 (持有: %d)", amount, player.Inv.GetAdena())
+}
+
+func gmLawful(sess *net.Session, player *world.PlayerInfo, args []string, deps *Deps) {
+	if deps == nil || deps.GMCmd == nil {
+		gmMsg(sess, "\\f3GM 指令系統未初始化")
+		return
+	}
+	if len(args) < 1 || len(args) > 2 {
+		gmMsg(sess, "\\f3用法: .lawful <+/-數值> [角色名稱]")
+		return
+	}
+	arg := args[0]
+	if len(arg) < 2 || (arg[0] != '+' && arg[0] != '-') {
+		gmMsg(sess, "\\f3用法: .lawful <+/-數值> [角色名稱]")
+		return
+	}
+	delta64, err := strconv.ParseInt(arg, 10, 32)
+	if err != nil {
+		gmMsg(sess, "\\f3正義值調整量必須是 -2147483648 到 2147483647 之間的整數")
+		return
+	}
+
+	target := player
+	if len(args) == 2 && !strings.EqualFold(args[1], "me") {
+		if deps.World == nil {
+			gmMsg(sess, "\\f3世界狀態尚未初始化，無法指定角色")
+			return
+		}
+		target = deps.World.GetByName(args[1])
+		if target == nil {
+			gmMsgf(sess, "\\f3找不到線上角色: %s", args[1])
+			return
+		}
+	}
+
+	targetSess := sess
+	if target.Session != nil {
+		targetSess = target.Session
+	}
+	deps.GMCmd.AdjustLawful(targetSess, target, int32(delta64))
+	gmMsgf(sess, "%s 正義值已調整 %+d，目前 %d", target.Name, int32(delta64), target.Lawful)
 }
 
 func gmSpell(sess *net.Session, player *world.PlayerInfo, args []string, deps *Deps) {
@@ -436,18 +581,19 @@ func sendAllSpells(sess *net.Session, player *world.PlayerInfo, deps *Deps) {
 
 // classSkillLevels maps ClassType → SkillLevel ranges for that class.
 // L1J skill_level groups:
-//   1-10  = Wizard    11-12 = Royal(Prince)
-//   13-14 = Dark Elf  15    = Knight
-//   17-22 = Elf       23-25 = Dragon Knight
-//   26-28 = Illusionist
+//
+//	1-10  = Wizard    11-12 = Royal(Prince)
+//	13-14 = Dark Elf  15    = Knight
+//	17-22 = Elf       23-25 = Dragon Knight
+//	26-28 = Illusionist
 var classSkillLevels = map[int16][]int{
-	0: {11, 12},             // Prince/Royal
-	1: {15},                 // Knight
-	2: {17, 18, 19, 20, 21, 22}, // Elf
+	0: {11, 12},                        // Prince/Royal
+	1: {15},                            // Knight
+	2: {17, 18, 19, 20, 21, 22},        // Elf
 	3: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, // Wizard
-	4: {13, 14},             // Dark Elf
-	5: {23, 24, 25},         // Dragon Knight
-	6: {26, 27, 28},         // Illusionist
+	4: {13, 14},                        // Dark Elf
+	5: {23, 24, 25},                    // Dragon Knight
+	6: {26, 27, 28},                    // Illusionist
 }
 
 func gmAllSkill(sess *net.Session, player *world.PlayerInfo, deps *Deps) {
@@ -564,6 +710,7 @@ func gmSpawn(sess *net.Session, player *world.PlayerInfo, args []string, deps *D
 			Size:         tmpl.Size,
 			MR:           tmpl.MR,
 			Undead:       tmpl.Undead,
+			Hard:         tmpl.Hard,
 			Agro:         tmpl.Agro,
 			AtkDmg:       int32(tmpl.Level) + int32(tmpl.STR)/3,
 			Ranged:       tmpl.Ranged,
@@ -671,7 +818,7 @@ func gmSpeed(sess *net.Session, player *world.PlayerInfo, args []string, deps *D
 	player.HasteTicks = 0
 	player.BraveTicks = 0
 
-	const dur = 3600      // 封包中的秒數
+	const dur = 3600       // 封包中的秒數
 	const ticks = 3600 * 5 // 內部 tick 數（1小時）
 
 	switch spd {
@@ -1088,9 +1235,10 @@ func gmLoc(sess *net.Session, player *world.PlayerInfo, args []string, deps *Dep
 
 // gmWall creates a collision wall (door) at the facing tile for testing.
 // Usage: .wall [mode]
-//   mode 1 (default): S_DoorPack(GfxId=0) + S_CHANGE_ATTR + S_REMOVE_OBJECT (invisible test)
-//   mode 2: S_CHANGE_ATTR only (no door object)
-//   mode 3: S_DoorPack(GfxId=0) + S_CHANGE_ATTR, keep visible (no remove)
+//
+//	mode 1 (default): S_DoorPack(GfxId=0) + S_CHANGE_ATTR + S_REMOVE_OBJECT (invisible test)
+//	mode 2: S_CHANGE_ATTR only (no door object)
+//	mode 3: S_DoorPack(GfxId=0) + S_CHANGE_ATTR, keep visible (no remove)
 func gmWall(sess *net.Session, player *world.PlayerInfo, args []string, deps *Deps) {
 	mode := 1
 	if len(args) > 0 {
@@ -1167,14 +1315,14 @@ func gmWall(sess *net.Session, player *world.PlayerInfo, args []string, deps *De
 		sendDoorAttr(sess, tx, ty, 0, false)
 		sendDoorAttr(sess, tx, ty, 1, false)
 		// Block all 4 adjacent tiles' edges pointing toward (tx, ty)
-		sendDoorAttr(sess, tx, ty+1, 0, false)  // south tile "/" edge
-		sendDoorAttr(sess, tx, ty+1, 1, false)  // south tile "\" edge
-		sendDoorAttr(sess, tx-1, ty, 0, false)  // west tile "/" edge
-		sendDoorAttr(sess, tx-1, ty, 1, false)   // west tile "\" edge
-		sendDoorAttr(sess, tx, ty-1, 0, false)  // north tile "/" edge
-		sendDoorAttr(sess, tx, ty-1, 1, false)  // north tile "\" edge
-		sendDoorAttr(sess, tx+1, ty, 0, false)  // east tile "/" edge
-		sendDoorAttr(sess, tx+1, ty, 1, false)   // east tile "\" edge
+		sendDoorAttr(sess, tx, ty+1, 0, false) // south tile "/" edge
+		sendDoorAttr(sess, tx, ty+1, 1, false) // south tile "\" edge
+		sendDoorAttr(sess, tx-1, ty, 0, false) // west tile "/" edge
+		sendDoorAttr(sess, tx-1, ty, 1, false) // west tile "\" edge
+		sendDoorAttr(sess, tx, ty-1, 0, false) // north tile "/" edge
+		sendDoorAttr(sess, tx, ty-1, 1, false) // north tile "\" edge
+		sendDoorAttr(sess, tx+1, ty, 0, false) // east tile "/" edge
+		sendDoorAttr(sess, tx+1, ty, 1, false) // east tile "\" edge
 		gmMsgf(sess, "模式5: 全方位S_CHANGE_ATTR (%d,%d) + 4鄰居", tx, ty)
 
 	case 6:
@@ -1384,6 +1532,7 @@ func gmStressTest(sess *net.Session, player *world.PlayerInfo, args []string, de
 			Size:         tmpl.Size,
 			MR:           tmpl.MR,
 			Undead:       tmpl.Undead,
+			Hard:         tmpl.Hard,
 			Agro:         tmpl.Agro,
 			AtkDmg:       int32(tmpl.Level) + int32(tmpl.STR)/3,
 			Ranged:       tmpl.Ranged,
@@ -1528,6 +1677,35 @@ func gmPoison(sess *net.Session, player *world.PlayerInfo, args []string, deps *
 		return
 	}
 	gmMsgf(sess, "\\f=已施加 %s", label)
+}
+
+// gmWater 切換目前玩家是否在海底地圖看到水（不影響地圖實際 underwater 屬性與其他玩家）。
+// 用法: .water           → 切換 on/off
+//
+//	.water on        → 強制顯示水（依地圖設定）
+//	.water off       → 海底地圖也不顯示水
+//
+// 切換後立即重送 S_MapID 讓客戶端套用新狀態。
+func gmWater(sess *net.Session, player *world.PlayerInfo, args []string, deps *Deps) {
+	if len(args) >= 1 {
+		switch strings.ToLower(args[0]) {
+		case "on", "1", "true":
+			player.WaterOff = false
+		case "off", "0", "false":
+			player.WaterOff = true
+		default:
+			gmMsg(sess, "\\f3用法: .water [on|off]")
+			return
+		}
+	} else {
+		player.WaterOff = !player.WaterOff
+	}
+	sendMapIDForPlayer(sess, player, player.MapID, deps)
+	if player.WaterOff {
+		gmMsg(sess, "\\f=已關閉水的顯示（海底地圖不再顯示水）")
+	} else {
+		gmMsg(sess, "\\f=已開啟水的顯示（依地圖設定）")
+	}
 }
 
 // gmBroken 將自己當前裝備的武器耐久損壞值設為指定值（預設 127 極限損壞）。
@@ -1693,7 +1871,7 @@ func gmSlotExpand(sess *net.Session, args []string) {
 	}
 
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_CHARSYNACK)
-	w.WriteC(67)           // sub-type: 擴充欄位
+	w.WriteC(67) // sub-type: 擴充欄位
 	w.WriteD(int32(subType))
 	w.WriteC(byte(value))
 	for i := 0; i < 6; i++ {
@@ -1726,13 +1904,13 @@ func gmSlotExpand2(sess *net.Session, args []string) {
 
 	// 琮善 S_EquipmentWindow 第二建構函式格式
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_CHARSYNACK)
-	w.WriteC(0x43)        // sub-type 67 (0x43)
-	w.WriteD(int32(t))    // type: 2=符文
-	w.WriteD(int32(v))    // value: 3=三個欄位（writeD, 非 writeC）
-	w.WriteD(0)           // padding
-	w.WriteD(0)           // padding
-	w.WriteD(0)           // padding
-	w.WriteC(0)           // padding
+	w.WriteC(0x43)     // sub-type 67 (0x43)
+	w.WriteD(int32(t)) // type: 2=符文
+	w.WriteD(int32(v)) // value: 3=三個欄位（writeD, 非 writeC）
+	w.WriteD(0)        // padding
+	w.WriteD(0)        // padding
+	w.WriteD(0)        // padding
+	w.WriteC(0)        // padding
 	sess.Send(w.Bytes())
 	gmMsgf(sess, "已發送 S_EquipmentWindow(0x43, %d, %d) — writeD 格式", t, v)
 }

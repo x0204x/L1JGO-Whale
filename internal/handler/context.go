@@ -198,6 +198,8 @@ type PolymorphManager interface {
 	UndoPoly(player *world.PlayerInfo)
 	// UsePolyScroll 處理變身卷軸使用。monsterName="" 表示取消變身。
 	UsePolyScroll(sess *net.Session, player *world.PlayerInfo, invItem *world.InvItem, monsterName string)
+	// UseDirectPolyScroll 處理使用後不開清單、直接變身的特殊卷軸。
+	UseDirectPolyScroll(sess *net.Session, player *world.PlayerInfo, invItem *world.InvItem)
 	// UsePolySkill 處理變形術技能選擇對話框結果。
 	UsePolySkill(sess *net.Session, player *world.PlayerInfo, monsterName string)
 }
@@ -370,6 +372,14 @@ type ItemUseManager interface {
 	UseSpellBook(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, itemInfo *data.ItemInfo)
 	// UseResurrectionScroll 處理復活卷軸使用。
 	UseResurrectionScroll(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, targetObjID int32) bool
+	// UseBlankMagicScroll 處理空白魔法卷軸寫入技能。
+	UseBlankMagicScroll(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, selectedSkillIndex int) bool
+	// UseMagicScroll 處理封入魔法的卷軸施放。
+	UseMagicScroll(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, itemInfo *data.ItemInfo, targetObjID int32, targetX, targetY int16) bool
+	// UseDissolution 處理溶解劑。
+	UseDissolution(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, targetObjID int32) bool
+	// UseWhetstone 處理磨刀石修復武器/防具耐久。
+	UseWhetstone(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, targetObjID int32) bool
 	// UseTeleportScroll 處理傳送卷軸使用。
 	UseTeleportScroll(sess *net.Session, r *packet.Reader, player *world.PlayerInfo, item *world.InvItem)
 	// UseHomeScroll 處理回家卷軸使用。
@@ -478,6 +488,8 @@ type GMCommandManager interface {
 	GiveItem(sess *net.Session, player *world.PlayerInfo, itemID, count int32, enchant int8)
 	// GiveGold 給予金幣。
 	GiveGold(sess *net.Session, player *world.PlayerInfo, amount int32)
+	// AdjustLawful 以 signed delta 調整玩家正義值，並同步 S_Lawful。
+	AdjustLawful(sess *net.Session, player *world.PlayerInfo, delta int32)
 	// ApplyPoison GM 強制施加中毒（1=傷害毒、2=沉默毒/卡司特毒、3=麻痺毒延遲）。回傳是否成功（已中毒或未知類型回傳 false）。
 	ApplyPoison(player *world.PlayerInfo, ptype byte) bool
 	// BreakWeapon GM 強制將玩家當前裝備武器的耐久損壞值設為 amount（1-127）。回傳武器名稱與是否成功（無裝備武器回傳 false）。
@@ -743,6 +755,7 @@ type Deps struct {
 	Bus           *event.Bus          // event bus for emitting game events (EntityKilled, etc.)
 	WeaponSkills  *data.WeaponSkillTable
 	FireCrystals  *data.FireCrystalTable
+	Resolvents    *data.ResolventTable
 	Ranking       RankingChecker // filled after RankingSystem is created
 	ItemBoxes     *data.ItemBoxTable
 	ItemUpgrades  *data.ItemUpgradeTable

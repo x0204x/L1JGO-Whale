@@ -40,16 +40,16 @@ func SetItemObjIDStart(v int32) {
 
 // InvItem represents a single item instance in a player's inventory.
 type InvItem struct {
-	ObjectID   int32  // unique per instance
-	ItemID     int32  // template ID
-	Name       string // display name
-	InvGfx     int32  // inventory graphic ID
-	Count      int32  // stack count (1 for non-stackable)
-	Identified bool
-	EnchantLvl int8
-	Bless      byte   // 0=normal, 1=blessed, 2=cursed, >=128=sealed
-	Stackable  bool
-	Weight     int32  // per-unit weight
+	ObjectID    int32  // unique per instance
+	ItemID      int32  // template ID
+	Name        string // display name
+	InvGfx      int32  // inventory graphic ID
+	Count       int32  // stack count (1 for non-stackable)
+	Identified  bool
+	EnchantLvl  int8
+	Bless       byte // 0=normal, 1=blessed, 2=cursed, >=128=sealed
+	Stackable   bool
+	Weight      int32 // per-unit weight
 	UseType     byte
 	ChargeCount int16 // 魔杖充能次數（0=無限制或不適用；>0=剩餘使用次數）
 	Equipped    bool  // true if currently worn/wielded
@@ -61,7 +61,8 @@ type InvItem struct {
 
 	// NPC enchant spell temporary bonuses (item-level, not character-level).
 	// Java: L1ItemInstance.setSkillWeaponEnchant / setSkillArmorEnchant
-	DmgByMagic     int16 // +damage from ENCHANT_WEAPON (skill 12), typically +2
+	DmgByMagic     int16 // +damage from weapon enchant magic
+	HitByMagic     int16 // +hit from weapon enchant magic
 	DmgMagicExpiry int   // ticks remaining (0 = no effect)
 	AcByMagic      int16 // AC bonus from BLESSED_ARMOR (skill 21), typically 3 (applied as -3 AC)
 	AcMagicExpiry  int   // ticks remaining (0 = no effect)
@@ -73,10 +74,10 @@ type InvItem struct {
 	AttrEnchantLevel int8
 
 	// 旅館鑰匙額外欄位（Java: L1ItemInstance.keyId / innNpcId / isHall / dueTime）
-	InnKeyID  int32     // 鑰匙 ID（= 物品 ObjectID，用於匹配房間）
-	InnNpcID  int32     // 旅館 NPC 模板 ID
-	InnHall   bool      // 是否為會議室鑰匙
-	InnDueTime int64    // 租約到期時間（Unix 秒，0=非旅館鑰匙）
+	InnKeyID   int32 // 鑰匙 ID（= 物品 ObjectID，用於匹配房間）
+	InnNpcID   int32 // 旅館 NPC 模板 ID
+	InnHall    bool  // 是否為會議室鑰匙
+	InnDueTime int64 // 租約到期時間（Unix 秒，0=非旅館鑰匙）
 }
 
 // Inventory holds a player's in-memory item list.

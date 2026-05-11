@@ -19,6 +19,7 @@ const (
 	S_OPCODE_MAGIC_STATUS           byte = 37 // S_SPMR
 	S_OPCODE_HYPERTEXT              byte = 39
 	S_OPCODE_CHANGE_LIGHT           byte = 40
+	S_OPCODE_RANGESKILLS            byte = 42 // S_RangeSkill
 	S_OPCODE_EFFECT                 byte = 55 // S_SkillSoundGFX
 	S_OPCODE_REMOVE_INVENTORY       byte = 57
 	S_OPCODE_CHARSYNACK             byte = 64 // 多用途: 裝備欄/盟徽/角色重置/角色資訊同步

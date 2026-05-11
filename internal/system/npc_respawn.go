@@ -198,6 +198,7 @@ func (s *NpcRespawnSystem) createMinion(tmpl *data.NpcTemplate, x, y int32, lead
 		Size:          tmpl.Size,
 		MR:            tmpl.MR,
 		Undead:        tmpl.Undead,
+		Hard:          tmpl.Hard,
 		CantResurrect: tmpl.CantResurrect,
 		Agro:          tmpl.Agro,
 		AtkDmg:        int32(tmpl.Level) + int32(tmpl.STR)/3,

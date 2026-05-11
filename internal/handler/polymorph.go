@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"math/rand/v2"
-
 	"github.com/l1jgo/server/internal/net"
 	"github.com/l1jgo/server/internal/net/packet"
 	"github.com/l1jgo/server/internal/world"
@@ -11,18 +9,37 @@ import (
 // SkillShapeChange is the skill ID for the Shape Change spell (變形術).
 const SkillShapeChange int32 = 67
 
-// Polymorph scroll / potion item IDs (Java: C_ItemUSe lines 678-684)
+// Polymorph scroll item IDs aligned with yiwei Sosc_PolyReel.
 const (
 	ItemPolyScroll        int32 = 40088  // 變形卷軸 (30 min)
 	ItemIvoryTowerPoly    int32 = 40096  // 象牙塔變身卷軸 (30 min)
-	ItemWelfarePolyPotion int32 = 49308  // 福利變形藥水 (random 40-80 min)
 	ItemBlessedPolyScroll int32 = 140088 // 受祝福的變形卷軸 (35 min)
+
+	ItemSharnaPolyLevel30     int32 = 49149 // 夏納的變身卷軸(等級30)
+	ItemSharnaPolyLevel40     int32 = 49150 // 夏納的變身卷軸(等級40)
+	ItemSharnaPolyLevel52     int32 = 49151 // 夏納的變身卷軸(等級52)
+	ItemSharnaPolyLevel55     int32 = 49152 // 夏納的變身卷軸(等級55)
+	ItemSharnaPolyLevel60     int32 = 49153 // 夏納的變身卷軸(等級60)
+	ItemSharnaPolyLevel65     int32 = 49154 // 夏納的變身卷軸(等級65)
+	ItemSharnaPolyLevel70     int32 = 49155 // 夏納的變身卷軸(等級70)
+	ItemOrcEmissaryPolyScroll int32 = 49220 // 妖魔密使變形卷軸
 )
 
-// IsPolyScroll returns true if the item is a polymorph scroll/potion.
+// IsPolyScroll 判斷是否為義維 Sosc_PolyReel 選單型變形卷軸。
 func IsPolyScroll(itemID int32) bool {
 	switch itemID {
-	case ItemPolyScroll, ItemIvoryTowerPoly, ItemWelfarePolyPotion, ItemBlessedPolyScroll:
+	case ItemPolyScroll, ItemIvoryTowerPoly, ItemBlessedPolyScroll:
+		return true
+	}
+	return false
+}
+
+// IsDirectPolyScroll returns true for special scrolls that transform immediately without monlist selection.
+func IsDirectPolyScroll(itemID int32) bool {
+	switch itemID {
+	case ItemSharnaPolyLevel30, ItemSharnaPolyLevel40, ItemSharnaPolyLevel52,
+		ItemSharnaPolyLevel55, ItemSharnaPolyLevel60, ItemSharnaPolyLevel65,
+		ItemSharnaPolyLevel70, ItemOrcEmissaryPolyScroll:
 		return true
 	}
 	return false
@@ -76,8 +93,6 @@ func sendShowPolyList(sess *net.Session, charID int32) {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_HYPERTEXT)
 	w.WriteD(charID)
 	w.WriteS("monlist")
-	w.WriteH(0)
-	w.WriteH(0)
 	sess.Send(w.Bytes())
 }
 
@@ -89,7 +104,7 @@ func SendShowPolyList(sess *net.Session, charID int32) {
 // ==================== 變身卷軸處理 ====================
 
 // handlePolyScroll processes polymorph scroll/potion usage.
-// Called from HandleUseItem when the item is a polymorph scroll (40088, 40096, 49308, 140088).
+// HandleUseItem 遇到義維 Sosc_PolyReel 卷軸時呼叫，支援 40088、40096、140088。
 // Java: C_ItemUSe.usePolyScroll()
 // Packet continuation: [S monsterName] — client shows monlist dialog, sends selected name.
 func handlePolyScroll(sess *net.Session, r *packet.Reader, player *world.PlayerInfo, invItem *world.InvItem, deps *Deps) {
@@ -143,7 +158,7 @@ func HandleHypertextInputResult(sess *net.Session, r *packet.Reader, deps *Deps)
 
 // ==================== 輔助函式 ====================
 
-// PolyScrollDuration returns the polymorph duration in seconds for the given scroll type.
+// PolyScrollDuration 回傳選單型變形卷軸的變身秒數。
 // Java: C_ItemUSe.usePolyScroll() lines 3166-3174
 // Exported for system package usage.
 func PolyScrollDuration(itemID int32) int {
@@ -152,8 +167,6 @@ func PolyScrollDuration(itemID int32) int {
 		return 1800 // 30 minutes
 	case ItemBlessedPolyScroll:
 		return 2100 // 35 minutes
-	case ItemWelfarePolyPotion:
-		return 2401 + rand.IntN(2400) // 2401-4800 seconds (40-80 min)
 	}
 	return 1800
 }

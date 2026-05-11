@@ -977,6 +977,7 @@ func (s *NpcAISystem) executeNpcSummon(npc *world.NpcInfo, summonID int32, summo
 			Size:         tmpl.Size,
 			MR:           tmpl.MR,
 			Undead:       tmpl.Undead,
+			Hard:         tmpl.Hard,
 			Agro:         tmpl.Agro,
 			AtkDmg:       int32(tmpl.Level) + int32(tmpl.STR)/3,
 			Ranged:       tmpl.Ranged,

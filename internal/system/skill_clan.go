@@ -123,7 +123,7 @@ func (s *SkillSystem) executeClanTargetSkill(sess *net.Session, player *world.Pl
 			handler.SendServerMessageArgs(sess, 73, targetName)
 			return
 		}
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 		return
 	}
 	if target.CharID == player.CharID || player.ClanID == 0 || player.ClanID != target.ClanID {

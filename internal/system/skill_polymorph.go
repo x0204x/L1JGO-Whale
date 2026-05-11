@@ -34,7 +34,7 @@ func (s *SkillSystem) executeShapeChangePlayer(sess *net.Session, caster, target
 		return
 	}
 	if !sameClan(caster, target) && !shapeChangeProbability(caster, target.Level, target.MR) {
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 		return
 	}
 	if hasPolymorphControlRing(target) {
@@ -58,7 +58,7 @@ func (s *SkillSystem) executeShapeChangeNpc(sess *net.Session, caster *world.Pla
 		return
 	}
 	if !shapeChangeProbability(caster, npc.Level, npc.MR) {
-		handler.SendServerMessage(sess, skillMsgCastFail)
+		s.sendCastFail(sess)
 		return
 	}
 	applyShapeChangeToNpc(npc, randomShapeChangePolyID(), shapeChangeDuration(skill))

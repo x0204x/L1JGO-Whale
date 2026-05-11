@@ -21,57 +21,57 @@ const (
 // useTypeMap maps YAML use_type / armor type strings to the integer values
 // the 3.80C client expects in inventory packets. Java: ItemTable._useTypes
 var useTypeMap = map[string]byte{
-	"none":        0xFF, // Java: -1 (signed) = 0xFF (unsigned). Client treats 0xFF as not usable.
-	"weapon":      1,
-	"armor":       2,
-	"spell_1":     3,  // 創造怪物魔杖（無須選取目標）— Java: C_ItemUSe case 3
-	"spell_long":  5,
-	"ntele":       6,
-	"identify":    7,
-	"res":         8,
-	"letter":      12,
-	"letter_w":    13,
-	"choice":      14,
-	"instrument":  15,
-	"sosc":        16,
-	"spell_short": 17,
-	"T":           18,
-	"cloak":       19,
-	"glove":       20,
-	"boots":       21,
-	"helm":        22,
-	"amulet":      24,
-	"shield":      25,
-	"guarder":     25,
-	"dai":         26,
-	"zel":         27,
-	"blank":       28,
-	"btele":       29,
-	"spell_buff":  30,
-	"ccard":       31,
-	"ccard_w":     32,
-	"vcard":       33,
-	"vcard_w":     34,
-	"wcard":       35,
-	"wcard_w":     36,
-	"belt":        37,
-	"earring":     40,
-	"fishing_rod": 42,
-	"runeword_left":   43, // 符石（左）
-	"rune2":       43, // 第二符石（同符石）
-	"earring2":    40, // 第二耳環（同耳環）
-	"pants":       21, // 褲子（同靴子類防具）
-	"expand1":     24, // 擴展欄1（同飾品類）
-	"expand2":     24, // 擴展欄2（同飾品類）
-	"expand3":     24, // 擴展欄3（同飾品類）
-	"expand4":     24, // 擴展欄4（同飾品類）
-	"badge":       24, // 徽章（同飾品類）
-	"pauldron":    25, // 盾甲（同盾牌類）
-	"del":         46,
-	"normal":      51,
-	"ring":        57,
-	"food":        38,
-	"other":       0xF5, // Java: -11 (signed byte). Used for magic dolls.
+	"none":          0xFF, // Java: -1 (signed) = 0xFF (unsigned). Client treats 0xFF as not usable.
+	"weapon":        1,
+	"armor":         2,
+	"spell_1":       3, // 創造怪物魔杖（無須選取目標）— Java: C_ItemUSe case 3
+	"spell_long":    5,
+	"ntele":         6,
+	"identify":      7,
+	"res":           8,
+	"letter":        12,
+	"letter_w":      13,
+	"choice":        14,
+	"instrument":    15,
+	"sosc":          16,
+	"spell_short":   17,
+	"T":             18,
+	"cloak":         19,
+	"glove":         20,
+	"boots":         21,
+	"helm":          22,
+	"amulet":        24,
+	"shield":        25,
+	"guarder":       25,
+	"dai":           26,
+	"zel":           27,
+	"blank":         28,
+	"btele":         29,
+	"spell_buff":    30,
+	"ccard":         31,
+	"ccard_w":       32,
+	"vcard":         33,
+	"vcard_w":       34,
+	"wcard":         35,
+	"wcard_w":       36,
+	"belt":          37,
+	"earring":       40,
+	"fishing_rod":   42,
+	"runeword_left": 43, // 符石（左）
+	"rune2":         43, // 第二符石（同符石）
+	"earring2":      40, // 第二耳環（同耳環）
+	"pants":         21, // 褲子（同靴子類防具）
+	"expand1":       24, // 擴展欄1（同飾品類）
+	"expand2":       24, // 擴展欄2（同飾品類）
+	"expand3":       24, // 擴展欄3（同飾品類）
+	"expand4":       24, // 擴展欄4（同飾品類）
+	"badge":         24, // 徽章（同飾品類）
+	"pauldron":      25, // 盾甲（同盾牌類）
+	"del":           46,
+	"normal":        51,
+	"ring":          57,
+	"food":          38,
+	"other":         0xF5, // Java: -11 (signed byte). Used for magic dolls.
 }
 
 // UseTypeToID converts a YAML use_type string to the client integer byte.
@@ -184,20 +184,21 @@ type ItemInfo struct {
 	SuckingMP int // 每次觸發吸取的 MP 量
 
 	// Meta
-	SafeEnchant int
-	Bless       int
-	Tradeable   bool
-	MinLevel    int
-	MaxLevel    int
+	SafeEnchant  int
+	CanBeDamaged bool
+	Bless        int
+	Tradeable    bool
+	MinLevel     int
+	MaxLevel     int
 
 	// Class restrictions
-	UseRoyal       bool
-	UseKnight      bool
-	UseMage        bool
-	UseElf         bool
-	UseDarkElf     bool
+	UseRoyal        bool
+	UseKnight       bool
+	UseMage         bool
+	UseElf          bool
+	UseDarkElf      bool
 	UseDragonKnight bool
-	UseIllusionist bool
+	UseIllusionist  bool
 
 	// Etcitem specific
 	Stackable      bool
@@ -296,6 +297,7 @@ type weaponEntry struct {
 	DmgLarge        int    `yaml:"dmg_large"`
 	Range           int    `yaml:"range"`
 	SafeEnchant     int    `yaml:"safe_enchant"`
+	CanBeDamaged    *bool  `yaml:"can_be_damaged"`
 	UseRoyal        bool   `yaml:"use_royal"`
 	UseKnight       bool   `yaml:"use_knight"`
 	UseMage         bool   `yaml:"use_mage"`
@@ -327,15 +329,15 @@ type weaponEntry struct {
 	RegistFreeze    int    `yaml:"regist_freeze"`
 	RegistSustain   int    `yaml:"regist_sustain"`
 	RegistBlind     int    `yaml:"regist_blind"`
-	DoubleDmgChance int `yaml:"double_dmg_chance"`
-	DiceHP          int `yaml:"dice_hp"`
-	SuckingHP       int `yaml:"sucking_hp"`
-	DiceMP          int `yaml:"dice_mp"`
-	SuckingMP       int `yaml:"sucking_mp"`
-	Bless           int  `yaml:"bless"`
-	Tradeable       bool `yaml:"tradeable"`
-	MinLevel        int  `yaml:"min_level"`
-	MaxLevel        int  `yaml:"max_level"`
+	DoubleDmgChance int    `yaml:"double_dmg_chance"`
+	DiceHP          int    `yaml:"dice_hp"`
+	SuckingHP       int    `yaml:"sucking_hp"`
+	DiceMP          int    `yaml:"dice_mp"`
+	SuckingMP       int    `yaml:"sucking_mp"`
+	Bless           int    `yaml:"bless"`
+	Tradeable       bool   `yaml:"tradeable"`
+	MinLevel        int    `yaml:"min_level"`
+	MaxLevel        int    `yaml:"max_level"`
 }
 
 type weaponListFile struct {
@@ -353,6 +355,10 @@ func loadWeapons(t *ItemTable, path string) error {
 	}
 	for i := range f.Weapons {
 		w := &f.Weapons[i]
+		canBeDamaged := false
+		if w.CanBeDamaged != nil {
+			canBeDamaged = *w.CanBeDamaged
+		}
 		t.items[w.ItemID] = &ItemInfo{
 			ItemID:          w.ItemID,
 			Name:            w.Name,
@@ -370,6 +376,7 @@ func loadWeapons(t *ItemTable, path string) error {
 			HitMod:          w.HitModifier,
 			DmgMod:          w.DmgModifier,
 			SafeEnchant:     w.SafeEnchant,
+			CanBeDamaged:    canBeDamaged,
 			Bless:           w.Bless,
 			Tradeable:       w.Tradeable,
 			MinLevel:        w.MinLevel,

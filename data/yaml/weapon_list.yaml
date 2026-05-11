@@ -11,6 +11,7 @@ weapons:
     dmg_large: 3
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -48,6 +49,7 @@ weapons:
     dmg_large: 3
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -85,6 +87,7 @@ weapons:
     dmg_large: 2
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -122,6 +125,7 @@ weapons:
     dmg_large: 2
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -159,6 +163,7 @@ weapons:
     dmg_large: 3
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -196,6 +201,7 @@ weapons:
     dmg_large: 3
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -233,6 +239,7 @@ weapons:
     dmg_large: 4
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -270,6 +277,7 @@ weapons:
     dmg_large: 5
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -344,6 +352,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -381,6 +390,7 @@ weapons:
     dmg_large: 4
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -455,6 +465,7 @@ weapons:
     dmg_large: 4
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -492,6 +503,7 @@ weapons:
     dmg_large: 2
     range: 1
     safe_enchant: 0
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -529,6 +541,7 @@ weapons:
     dmg_large: 0
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -566,6 +579,7 @@ weapons:
     dmg_large: 36
     range: 1
     safe_enchant: 0
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -603,6 +617,7 @@ weapons:
     dmg_large: 6
     range: 1
     safe_enchant: 0
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -640,6 +655,7 @@ weapons:
     dmg_large: 2
     range: 1
     safe_enchant: 0
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -677,6 +693,7 @@ weapons:
     dmg_large: 3
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -714,6 +731,7 @@ weapons:
     dmg_large: 4
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -751,6 +769,7 @@ weapons:
     dmg_large: 4
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -788,6 +807,7 @@ weapons:
     dmg_large: 5
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -825,6 +845,7 @@ weapons:
     dmg_large: 6
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -862,6 +883,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -899,6 +921,7 @@ weapons:
     dmg_large: 7
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -936,6 +959,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -973,6 +997,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -1010,6 +1035,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -1047,6 +1073,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -1084,6 +1111,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -1121,6 +1149,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -1158,6 +1187,7 @@ weapons:
     dmg_large: 11
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -1195,6 +1225,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -1232,6 +1263,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -1269,6 +1301,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -1306,6 +1339,7 @@ weapons:
     dmg_large: 10
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -1380,6 +1414,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -1454,6 +1489,7 @@ weapons:
     dmg_large: 15
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -1491,6 +1527,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -1528,6 +1565,7 @@ weapons:
     dmg_large: 6
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -1565,6 +1603,7 @@ weapons:
     dmg_large: 6
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -1639,6 +1678,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 9
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -1676,6 +1716,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 9
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -1713,6 +1754,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -1750,6 +1792,7 @@ weapons:
     dmg_large: 15
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -1787,6 +1830,7 @@ weapons:
     dmg_large: 10
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -1824,6 +1868,7 @@ weapons:
     dmg_large: 6
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -1898,6 +1943,7 @@ weapons:
     dmg_large: 19
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -1935,6 +1981,7 @@ weapons:
     dmg_large: 21
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -2009,6 +2056,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -2083,6 +2131,7 @@ weapons:
     dmg_large: 10
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -2268,6 +2317,7 @@ weapons:
     dmg_large: 23
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -2342,6 +2392,7 @@ weapons:
     dmg_large: 17
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -2379,6 +2430,7 @@ weapons:
     dmg_large: 19
     range: 1
     safe_enchant: -1
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -2416,6 +2468,7 @@ weapons:
     dmg_large: 33
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -2527,6 +2580,7 @@ weapons:
     dmg_large: 6
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -2601,6 +2655,7 @@ weapons:
     dmg_large: 7
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -2638,6 +2693,7 @@ weapons:
     dmg_large: 7
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -2675,6 +2731,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -2712,6 +2769,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -2823,6 +2881,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -3193,6 +3252,7 @@ weapons:
     dmg_large: 0
     range: 2
     safe_enchant: 0
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -3230,6 +3290,7 @@ weapons:
     dmg_large: 2
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -3267,6 +3328,7 @@ weapons:
     dmg_large: 4
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -3304,6 +3366,7 @@ weapons:
     dmg_large: 12
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -3341,6 +3404,7 @@ weapons:
     dmg_large: 6
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -3378,6 +3442,7 @@ weapons:
     dmg_large: 17
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -3415,6 +3480,7 @@ weapons:
     dmg_large: 4
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -3452,6 +3518,7 @@ weapons:
     dmg_large: 6
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -3489,6 +3556,7 @@ weapons:
     dmg_large: 8
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -3526,6 +3594,7 @@ weapons:
     dmg_large: 8
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -3563,6 +3632,7 @@ weapons:
     dmg_large: 14
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -3600,6 +3670,7 @@ weapons:
     dmg_large: 16
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -3637,6 +3708,7 @@ weapons:
     dmg_large: 8
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -3674,6 +3746,7 @@ weapons:
     dmg_large: 8
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -3711,6 +3784,7 @@ weapons:
     dmg_large: 8
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -6157,6 +6231,7 @@ weapons:
     dmg_large: 1
     range: -1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -7600,6 +7675,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 0
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -7674,6 +7750,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -7711,6 +7788,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -7785,6 +7863,7 @@ weapons:
     dmg_large: 12
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: false
     use_mage: false
@@ -8229,6 +8308,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 0
+    can_be_damaged: true
     use_royal: true
     use_knight: false
     use_mage: false
@@ -8266,6 +8346,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 0
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -8340,6 +8421,7 @@ weapons:
     dmg_large: 6
     range: 1
     safe_enchant: -1
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -8377,6 +8459,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: -1
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -8414,6 +8497,7 @@ weapons:
     dmg_large: 20
     range: 1
     safe_enchant: -1
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -8451,6 +8535,7 @@ weapons:
     dmg_large: 14
     range: 2
     safe_enchant: -1
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -8488,6 +8573,7 @@ weapons:
     dmg_large: 10
     range: 1
     safe_enchant: -1
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -9302,6 +9388,7 @@ weapons:
     dmg_large: 10
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -9376,6 +9463,7 @@ weapons:
     dmg_large: 4
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -9487,6 +9575,7 @@ weapons:
     dmg_large: 18
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -9524,6 +9613,7 @@ weapons:
     dmg_large: 15
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -9561,6 +9651,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -9635,6 +9726,7 @@ weapons:
     dmg_large: 26
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -9968,6 +10060,7 @@ weapons:
     dmg_large: 17
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -10449,6 +10542,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -11263,6 +11357,7 @@ weapons:
     dmg_large: 2
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -11300,6 +11395,7 @@ weapons:
     dmg_large: 3
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -11337,6 +11433,7 @@ weapons:
     dmg_large: 5
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -11411,6 +11508,7 @@ weapons:
     dmg_large: 7
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -11448,6 +11546,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -11485,6 +11584,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -11522,6 +11622,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -11633,6 +11734,7 @@ weapons:
     dmg_large: 6
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: true
     use_mage: false
@@ -11670,6 +11772,7 @@ weapons:
     dmg_large: 10
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -11707,6 +11810,7 @@ weapons:
     dmg_large: 21
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -11818,6 +11922,7 @@ weapons:
     dmg_large: 17
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -11855,6 +11960,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: false
     use_knight: false
     use_mage: false
@@ -11929,6 +12035,7 @@ weapons:
     dmg_large: 8
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -11966,6 +12073,7 @@ weapons:
     dmg_large: 16
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -12003,6 +12111,7 @@ weapons:
     dmg_large: 8
     range: 2
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -12743,6 +12852,7 @@ weapons:
     dmg_large: 3
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -12780,6 +12890,7 @@ weapons:
     dmg_large: 3
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -12817,6 +12928,7 @@ weapons:
     dmg_large: 8
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -12854,6 +12966,7 @@ weapons:
     dmg_large: 11
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: true
@@ -12891,6 +13004,7 @@ weapons:
     dmg_large: 12
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false
@@ -12928,6 +13042,7 @@ weapons:
     dmg_large: 21
     range: 1
     safe_enchant: 6
+    can_be_damaged: true
     use_royal: true
     use_knight: true
     use_mage: false

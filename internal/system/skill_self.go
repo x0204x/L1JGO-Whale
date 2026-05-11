@@ -4,7 +4,6 @@ import (
 	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/handler"
 	"github.com/l1jgo/server/internal/net"
-	"github.com/l1jgo/server/internal/scripting"
 	"github.com/l1jgo/server/internal/world"
 )
 
@@ -100,7 +99,7 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 
 	case 90: // 堅固防護 — Java 需要盾牌/臂甲，效果為 ER +15
 		if !s.validateSolidCarriage(player) {
-			handler.SendServerMessage(sess, skillMsgCastFail)
+			s.sendCastFail(sess)
 			return
 		}
 
@@ -155,7 +154,9 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 	}
 
 	// 廣播施法動畫
-	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	if !isSelfAreaAttackSkill(skill) {
+		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	}
 
 	// 自身範圍治療
 	if skill.Type == 16 && (skill.DamageValue > 0 || skill.DamageDice > 0) {
@@ -200,76 +201,9 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 	}
 
 	// 自身範圍 AoE 傷害（龍捲風 53、震裂術 62、冰雪颶風 80 等）
-	if skill.Type == 64 && skill.Area > 0 && (skill.DamageValue > 0 || skill.DamageDice > 0) {
-		s.applySelfAreaSkillDamageToPlayers(sess, player, skill, nearby)
-		nearbyNpcs := s.deps.World.GetNearbyNpcs(player.X, player.Y, player.MapID)
-		for _, npc := range nearbyNpcs {
-			if npc.Dead {
-				continue
-			}
-			if chebyshevDist(player.X, player.Y, npc.X, npc.Y) > int32(skill.Area) {
-				continue
-			}
-			ctx := scripting.SkillDamageContext{
-				SkillID:            int(skill.SkillID),
-				DamageValue:        skill.DamageValue,
-				DamageDice:         skill.DamageDice,
-				DamageDiceCount:    skill.DamageDiceCount,
-				SkillLevel:         skill.SkillLevel,
-				Attr:               skill.Attr,
-				AttackerLevel:      int(player.Level),
-				AttackerSTR:        int(player.Str),
-				AttackerDEX:        int(player.Dex),
-				AttackerINT:        int(player.Intel),
-				AttackerWIS:        int(player.Wis),
-				AttackerSP:         int(player.SP),
-				AttackerDmgMod:     int(player.DmgMod),
-				AttackerHitMod:     int(player.HitMod),
-				AttackerMagicLevel: calcMagicLevel(int(player.ClassType), int(player.Level)),
-				TargetAC:           int(npc.AC),
-				TargetLevel:        int(npc.Level),
-				TargetMR:           int(npc.MR),
-				TargetFireRes:      int(npc.FireRes),
-				TargetWaterRes:     int(npc.WaterRes),
-				TargetWindRes:      int(npc.WindRes),
-				TargetEarthRes:     int(npc.EarthRes),
-			}
-			res := s.deps.Scripting.CalcSkillDamage(ctx)
-			dmg := int32(res.Damage)
-			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
-			// 浮動傷害數字（自我範圍攻擊技能，魔防抵抗時顯示 MISS）
-			if player.AttackView {
-				handler.SendDamageNumbers(sess, npc.ID, dmg)
-			}
-			npc.HP -= dmg
-			if npc.HP < 0 {
-				npc.HP = 0
-			}
-			// 攻擊技能傷害累加仇恨
-			AddHate(npc, sess.ID, dmg)
-			hpRatio := int16(0)
-			if npc.MaxHP > 0 {
-				hpRatio = int16((npc.HP * 100) / npc.MaxHP)
-			}
-			handler.BroadcastToPlayers(nearby, handler.BuildHpMeter(npc.ID, hpRatio))
-			if npc.HP <= 0 {
-				handleNpcDeath(npc, player, nearby, s.deps)
-				continue
-			}
-
-			// 冰雪颶風：傷害後凍結判定（Java: calcProbabilityMagic → setFrozen + S_Poison 灰色）
-			if skill.SkillID == 80 && !npc.Paralyzed && !npc.HasDebuff(50) && !npc.HasDebuff(80) {
-				if s.checkNpcMRResist(player, npc, skill.SkillID) {
-					dur := skill.BuffDuration
-					if dur <= 0 {
-						dur = 16
-					}
-					npc.Paralyzed = true
-					npc.AddDebuff(80, (dur+1)*5)
-					handler.BroadcastToPlayers(nearby, handler.BuildPoison(npc.ID, 2))
-				}
-			}
-		}
+	if isSelfAreaAttackSkill(skill) {
+		s.executeSelfAreaAttackSkill(sess, player, skill, nearby)
+		return
 	}
 
 	// Owner: skill_clan.go

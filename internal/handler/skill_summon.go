@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/l1jgo/server/internal/net"
+	"github.com/l1jgo/server/internal/net/packet"
 	"github.com/l1jgo/server/internal/world"
 )
 
@@ -50,6 +51,15 @@ func HandleSummonRingSelection(sess *net.Session, player *world.PlayerInfo, summ
 
 	// Delegate to SummonSystem.ExecuteSummonMonster with the selected summon ID as targetID.
 	deps.Summon.ExecuteSummonMonster(sess, player, skill, summonID)
+}
+
+// SendShowSummonList 開啟召喚控制戒指選單。
+// Java: S_ShowSummonList → [opcode][D objid][S "summonlist"]。
+func SendShowSummonList(sess *net.Session, charID int32) {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_HYPERTEXT)
+	w.WriteD(charID)
+	w.WriteS("summonlist")
+	sess.Send(w.Bytes())
 }
 
 // DismissSummon handles voluntary summon dismissal (from NPC action menu).

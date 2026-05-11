@@ -47,6 +47,7 @@ func tickItemMagicEnchants(p *world.PlayerInfo, deps *handler.Deps) {
 		weapon.DmgMagicExpiry--
 		if weapon.DmgMagicExpiry <= 0 {
 			weapon.DmgByMagic = 0
+			weapon.HitByMagic = 0
 			weapon.DmgMagicExpiry = 0
 			changed = true
 		}
