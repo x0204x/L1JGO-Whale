@@ -163,8 +163,7 @@ BUFF_DEFS = {
 
     [201] = { dodge = 5 },                                                    -- Mirror Image
 
-    [204] = { dmg_mod = 4, hit_mod = 4, bow_dmg = 4, bow_hit = 4,           -- Illusion Ogre
-              exclusions = {209, 214, 219} },
+    [204] = { dmg_mod = 4, hit_mod = 4 },                                     -- 幻覺：歐吉 ILLUSION_OGRE（Java L1SkillUse:2660-2664 only addDmgup(+4)+addHitup(+4)；無 bow 修正、無 REPEATEDSKILLS 互斥群——Java 允許四個 illusion buff 並存）
     [206] = { mpr = 2 },                                                      -- Concentration
 
     [209] = { sp = 2, exclusions = {204, 214, 219} },                        -- Illusion Lich
