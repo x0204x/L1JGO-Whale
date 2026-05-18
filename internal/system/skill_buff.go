@@ -514,12 +514,14 @@ func (s *SkillSystem) revertBuffStats(target *world.PlayerInfo, buff *world.Acti
 	target.WindRes -= buff.DeltaWindRes
 	target.EarthRes -= buff.DeltaEarthRes
 	target.Dodge -= buff.DeltaDodge
-	// Dodge 減少通知（龍之眼解除等）
+	// Dodge buff 過期：對齊 Java skillmode（MIRROR_IMAGE/DRAGONEYE_*/UNCANNY_DODGE）stop()
+	// 一律送 `S_PacketBoxIcon1(true, get_dodge())` = 0x58 + 當前 dodge 總值。
+	// 0x65（_dodge_down）是另一個 dodge_down 計數器（RESIST_FEAR 專用），不可混用。
 	if buff.DeltaDodge > 0 && target.Session != nil {
 		if buff.SkillID == 111 {
 			handler.SendUpdateER(target.Session, target.Dodge)
 		} else {
-			handler.SendDodgeIcon(target.Session, target.Dodge, false)
+			handler.SendDodgeIcon(target.Session, target.Dodge, true)
 		}
 	}
 	target.RegistSustain -= buff.DeltaRegistSustain
