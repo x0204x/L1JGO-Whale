@@ -270,6 +270,20 @@
 
 - 審計 `153 ERASE_MAGIC`：發現 Go 對 153 採用「buff 全消」語義（`skill_buff.go:1110-1111 cancelAllBuffs(target)`），與 Java 真實 mechanic 不一致。Java `L1Character.java:1767-1769` 揭示 ERASE_MAGIC 真實效果：`if (hasSkillEffect(153)) { return mr >> 2; }`——目標持有此 buff 期間，有效 MR 被除以 4（魔抗大幅下降）。Java 完整流程：a) **施放** `L1SkillUse.java:1357-1359` 走無 skillmode 預設路徑 `setSkillEffect(_skillId, _getBuffDuration)` 對目標套用 32s buff（不消除任何 buff）；b) **作用期間** 目標 `getMr() = mr >> 2`，所有後續魔法判定使用降低後的 MR；c) **消耗時機** 目標受到任何非 ERASE_MAGIC 概率/詛咒/魔法攻擊（L1SkillUse.java:1940-1942, 1953-1955）會自動移除此 buff；d) **成功率** 等級比較 5/10/15（`ConfigElfSkill.ERASE_MAGIC_1/2/3`，INT/MR 修正預設 0）；e) **目標限制** monster `isErase==false` 模板免疫；f) **圖示** stop 送 `S_PacketBoxIconAura(152, 0)`（`L1SkillStop.java:492-496`）；g) **武器分流** 多個 `W_SK0010-15` weapon special 也會對目標套 ERASE_MAGIC 32s。Go 現況偏離為「重複 CANCELLATION(44) 語義」——`cancelAllBuffs(target)` 對目標移除所有可取消 buff，玩家體感變成「buff 移除工具」而非「魔抗削減工具」。屬「broader skill semantics gap」依停損標準需要整個技能重做：a) 改 case 153 從 cancelAllBuffs 變成 applyBuffEffect 套 buff；b) 在 Go 的 MR 計算路徑（含 Lua `calcProbabilityMagic`、`applyBuffEffect` MR delta）加入「持 153 時 MR/=4」乘法路徑（Go 目前 MR 走加法 Delta，乘法路徑需重構）；c) 在每個概率/詛咒/攻擊魔法 skill 套用流程加入「移除目標 153 buff」hook；d) 圖示 emission 修正。涉及多個系統（system/scripting/handler 三層），無法在單一 153 子項內完整實作。**本步無代碼變更**，純文件審計；先標記為已知 Java vs Go semantic divergence，留待使用者決定是否觸發 broader rework。既有 SHOCK_STUN→ERASE_MAGIC 移除已部分實作（`skill_status.go:131,173,486` 在 87 路徑），但僅限 87 並非 Java 對齊的「所有非-153 概率技能」全 catch。`44 CANCELLATION` 的 cancelAllBuffs 用法不受此審計影響（Java 44 確實是 buff 全消語義）。
 
+## 立方：燃燒（CUBE_IGNITION / 205）
+
+- 補齊 `205 CUBE_IGNITION` 對 PC/NPC 週期傷害的 Java immune buff 檢查。Java `L1Cube.java:79-93` `case STATUS_CUBE_IGNITION_TO_ENEMY` 在 `giveEffect` 內每 4 秒觸發 `receiveDamage(10)` 前，依序檢查 `hasSkillEffect`：STATUS_FREEZE(4000)、ABSOLUTE_BARRIER(78)、ICE_LANCE(50)、EARTH_BIND(157)、FREEZING_BLIZZARD(80)——任一存在則跳過該次傷害。設計動機：目標已被凍結／屏障保護時不應再被立方燃燒傷害。Go `ground_effect.go applyCubeEnemy` 原本只檢查 `target.AbsoluteBarrier`（在 `damagePlayerByCube`），缺其餘四項；`applyCubeEnemyNpc` 完全無免疫檢查。
+- 本步新增兩個 helper：
+  - `playerCubeIgnitionImmune(target)`：檢查 `AbsoluteBarrier` flag 或 `HasBuff` 4000/50/157/80
+  - `npcCubeIgnitionImmune(npc)`：檢查 `HasDebuff` 4000/78/50/157/80（NPC 使用 debuff 表）
+- 在 `applyCubeEnemy` 與 `applyCubeEnemyNpc` 的 `GroundEffectCubeIgnition` 分支於 `DamageTickAcc%cubeEffectIntervalTicks==0` 條件後新增 immune guard。註解標明 Java 來源。
+- 其他既有 Go 行為已對齊 Java：a) PC ally/enemy 區分（self/clan/party→ally，其他→enemy）；b) NPC 永遠走 enemy 路徑；c) safezone 跳過敵方傷害；d) ally 路徑 FireRes +30 + `SendPlayerStatus`（對齊 Java `addFire(30) + S_OwnCharAttrDef`）；e) `BuildActionGfx(charID, 2)` = ACTION_Damage 廣播（對齊 Java `S_DoActionGFX(ACTION_Damage)`）；f) 4 秒週期（Go cubeEffectIntervalTicks=20 ÷ 5 ticks/sec = 4s）；g) 立方持續期間每秒透過 `applyCubePulse` 掃描範圍。
+- **broader gap（不改）**：
+  - **副本 showId 檢查**：Java `EffectCubeExecutor:64 effect.get_showId() != pc.get_showId() continue`——僅同副本 instance 內生效。Go 無 instance 系統，與其他副本系統同源 broader gap。
+  - **Castle war 區內豁免**：Java `EffectCubeExecutor:84-93` 對 `isSafetyZone` 玩家額外檢查 `isNowWar`（攻城戰期間允許敵方傷害）。Go 簡化為 `IsSafetyZone` 跳過。屬「攻城戰場規則」結構性缺口。
+  - **L1EffectInstance 角色一致性**：Java 用 `L1EffectInstance` 作為立方實體（可被互動）；Go 用 `GroundEffect` 純資料結構。屬「世界物件統一」架構差異。
+- 不另寫測試（純 guard 加入，邏輯小），依停損標準避免「鎖實作」回歸。驗證：`go build ./...` 通過、`go test -count=1 ./internal/system`（18.1s 全綠）。
+
 ## 幻覺：歐吉（ILLUSION_OGRE / 204）
 
 - 修正 `204 ILLUSION_OGRE` buffs.lua 兩項 Java 對齊偏差。Java `L1SkillUse.java:2660-2664` 在 PC 自身目標分支內聯：`pc.addDmgup(4) + pc.addHitup(4)`，**僅** DmgMod 與 HitMod 兩個一般武器修正欄位；`L1SkillStop.java:603-609 case 204`：反向 `addDmgup(-4) + addHitup(-4)`。Java 無 ILLUSION_OGRE skillmode 檔案（純內聯）、無 `L1MagicPc/L1MagicNpc` case 204、無 `case 204` 在 L1WeaponSkill。Java `L1SkillUse.java:1741-1762 REPEATEDSKILLS`：illusion 系列（204/209/214/219）**不在任何互斥群**（與 MIRROR_IMAGE+UNCANNY_DODGE、AWAKEN_ANTHARAS+FAFURION+VALAKAS 等明確互斥群不同）；只有 `EXCEPT_COUNTER_MAGIC` 列表把 204+209+214+219 全部標為「不可被魔法屏障抵擋」。

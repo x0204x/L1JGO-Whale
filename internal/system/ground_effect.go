@@ -72,6 +72,28 @@ func isCubeGroundEffect(typ world.GroundEffectType) bool {
 	}
 }
 
+// playerCubeIgnitionImmune 對齊 Java `L1Cube.giveEffect:79-93`：玩家持有
+// STATUS_FREEZE(4000) / ABSOLUTE_BARRIER(78) / ICE_LANCE(50) / EARTH_BIND(157) /
+// FREEZING_BLIZZARD(80) 任一時，CUBE_IGNITION 對玩家的週期傷害跳過。
+func playerCubeIgnitionImmune(target *world.PlayerInfo) bool {
+	if target == nil {
+		return false
+	}
+	if target.AbsoluteBarrier {
+		return true
+	}
+	return target.HasBuff(4000) || target.HasBuff(50) || target.HasBuff(157) || target.HasBuff(80)
+}
+
+// npcCubeIgnitionImmune 對齊 Java `L1Cube.giveEffect:79-93`：NPC 透過 hasDebuff
+// 持有對應 status 時，CUBE_IGNITION 對 NPC 的週期傷害跳過。
+func npcCubeIgnitionImmune(npc *world.NpcInfo) bool {
+	if npc == nil {
+		return false
+	}
+	return npc.HasDebuff(4000) || npc.HasDebuff(78) || npc.HasDebuff(50) || npc.HasDebuff(157) || npc.HasDebuff(80)
+}
+
 func (s *GroundEffectSystem) applyCubePulse(effect *world.GroundEffect) {
 	nearby := s.world.GetNearbyPlayersAt(effect.X, effect.Y, effect.MapID)
 	for _, target := range nearby {
@@ -139,7 +161,10 @@ func (s *GroundEffectSystem) applyCubeEnemy(effect *world.GroundEffect, target *
 		if s.addPlayerCubeBuff(target, cubeStatusIgnitionEnemy, cubeStatusTicks, 0, 0, 0, 0) {
 			s.broadcastCubeGfx(effect, target.CharID, effect.SkillID, true, nearby)
 		}
-		if effect.DamageTickAcc%cubeEffectIntervalTicks == 0 {
+		// Java `L1Cube.giveEffect:79-93 case STATUS_CUBE_IGNITION_TO_ENEMY`：
+		// STATUS_FREEZE(4000) / ABSOLUTE_BARRIER(78) / ICE_LANCE(50) /
+		// EARTH_BIND(157) / FREEZING_BLIZZARD(80) 任一持有時跳過傷害。
+		if effect.DamageTickAcc%cubeEffectIntervalTicks == 0 && !playerCubeIgnitionImmune(target) {
 			s.damagePlayerByCube(effect, target, 10, nearby)
 		}
 	case world.GroundEffectCubeQuake:
@@ -169,7 +194,10 @@ func (s *GroundEffectSystem) applyCubeEnemy(effect *world.GroundEffect, target *
 func (s *GroundEffectSystem) applyCubeEnemyNpc(effect *world.GroundEffect, npc *world.NpcInfo, nearby []*world.PlayerInfo) {
 	switch effect.Type {
 	case world.GroundEffectCubeIgnition:
-		if effect.DamageTickAcc%cubeEffectIntervalTicks == 0 {
+		// Java `L1Cube.giveEffect:79-93 case STATUS_CUBE_IGNITION_TO_ENEMY`：對 NPC 同樣套用
+		// STATUS_FREEZE(4000) / ABSOLUTE_BARRIER(78) / ICE_LANCE(50) / EARTH_BIND(157) /
+		// FREEZING_BLIZZARD(80) 免疫檢查（Java `hasSkillEffect` 對 cha 不分 PC/NPC）。
+		if effect.DamageTickAcc%cubeEffectIntervalTicks == 0 && !npcCubeIgnitionImmune(npc) {
 			handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(npc.ID, 2))
 			npc.HP -= 10
 			s.finishNpcCubeDamage(effect, npc, nearby)
