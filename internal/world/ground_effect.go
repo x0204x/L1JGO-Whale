@@ -14,6 +14,7 @@ const (
 	GroundEffectTomb         GroundEffectType = 7
 	GroundEffectShockStun    GroundEffectType = 8
 	GroundEffectThunderGrab  GroundEffectType = 9
+	GroundEffectFreezingBreath GroundEffectType = 10
 )
 
 const (

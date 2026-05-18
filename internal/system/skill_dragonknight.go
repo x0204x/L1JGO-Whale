@@ -110,6 +110,7 @@ func (s *SkillSystem) spawnThunderGrabGroundEffect(caster *world.PlayerInfo, x, 
 const thunderGrabEffectNpcID = int32(81182)
 
 const skillFreezingBreath = int32(194)
+const freezingBreathEffectNpcID = int32(81168)
 
 func (s *SkillSystem) applyDragonKnightFreezeAttackEffect(caster, target *world.PlayerInfo, skill *data.SkillInfo) {
 	if caster == nil || target == nil || skill == nil || target.Dead {
@@ -119,12 +120,12 @@ func (s *SkillSystem) applyDragonKnightFreezeAttackEffect(caster, target *world.
 		return
 	}
 	if checkDragonKnightDebuffSuccess(caster, target, skill) {
-		s.applyFreezingBreathFreeze(target, skill)
+		s.applyFreezingBreathFreeze(caster, target, skill)
 	}
 	s.revealInvisibleTarget(target)
 }
 
-func (s *SkillSystem) applyFreezingBreathFreeze(target *world.PlayerInfo, skill *data.SkillInfo) {
+func (s *SkillSystem) applyFreezingBreathFreeze(caster, target *world.PlayerInfo, skill *data.SkillInfo) {
 	if target.Paralyzed || target.HasBuff(50) || target.HasBuff(80) || target.HasBuff(30) || target.HasBuff(157) || target.HasBuff(skillFreezingBreath) {
 		return
 	}
@@ -145,8 +146,44 @@ func (s *SkillSystem) applyFreezingBreathFreeze(target *world.PlayerInfo, skill 
 	handler.SendParalysis(target.Session, handler.FreezeApply)
 	broadcastPlayerPoison(target, 2, s.deps)
 
-	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
-	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, 81168))
+	// Java `L1SkillUse:2225 spawnEffect(81168, time, pc.X, pc.Y, mapId, _user, 0)` —
+	// 在目標位置生成 81168 視覺地面效果（冰矛圍籬）存活 dur 秒，非單純 S_SkillSound。
+	if caster != nil {
+		s.spawnFreezingBreathGroundEffect(caster, target.X, target.Y, target.MapID, int(dur))
+	}
+}
+
+// spawnFreezingBreathGroundEffect 在指定位置生成 81168 視覺地面效果，存活時間 = durSec 秒。
+// 對齊 Java `L1SpawnUtil.spawnEffect(81168, time, x, y, mapId, _user, 0)`。
+func (s *SkillSystem) spawnFreezingBreathGroundEffect(caster *world.PlayerInfo, x, y int32, mapID int16, durSec int) {
+	if s.deps == nil || s.deps.Npcs == nil || s.deps.World == nil {
+		return
+	}
+	tpl := s.deps.Npcs.Get(freezingBreathEffectNpcID)
+	if tpl == nil {
+		return
+	}
+	effect := &world.GroundEffect{
+		ID:           world.NextGroundEffectID(),
+		SkillID:      skillFreezingBreath,
+		NpcID:        freezingBreathEffectNpcID,
+		GfxID:        tpl.GfxID,
+		Type:         world.GroundEffectFreezingBreath,
+		X:            x,
+		Y:            y,
+		MapID:        mapID,
+		OwnerCharID:  caster.CharID,
+		OwnerSession: caster.SessionID,
+		OwnerName:    caster.Name,
+		OwnerIntel:   caster.Intel,
+		OwnerClanID:  caster.ClanID,
+		TicksLeft:    durSec * groundEffectTickSec,
+	}
+	if effect.TicksLeft <= 0 {
+		effect.TicksLeft = groundEffectTickSec
+	}
+	s.deps.World.AddGroundEffect(effect)
+	s.broadcastGroundEffect(effect)
 }
 
 const (

@@ -669,7 +669,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 	}
 
 	// 凍結類攻擊技能：傷害後 MR 判定凍結（Java: setFrozen + S_Poison 灰色）
-	// 50=冰矛圍籬, 30=岩牢, 80=冰雪颶風（Java: skill 22 寒冰氣息無凍結效果）
+	// 50=冰矛圍籬, 30=岩牢, 80=冰雪颶風, 194=寒冰噴吐（Java: skill 22 寒冰氣息無凍結效果）
 	if skill.SkillID == 50 || skill.SkillID == 30 || skill.SkillID == 80 || skill.SkillID == 194 {
 		for _, t := range hits {
 			if t.npc.Dead || t.npc.Paralyzed || t.npc.HasDebuff(22) || t.npc.HasDebuff(30) || t.npc.HasDebuff(50) || t.npc.HasDebuff(80) || t.npc.HasDebuff(194) {
@@ -692,6 +692,11 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 				t.npc.Paralyzed = true
 				t.npc.AddDebuff(skill.SkillID, (dur+1)*5)
 				handler.BroadcastToPlayers(nearby, handler.BuildPoison(t.npc.ID, 2))
+				// Java `L1SkillUse:2234 spawnEffect(81168, time, npc.X, npc.Y, mapId, _user, 0)` —
+				// 194 寒冰噴吐對 NPC 命中時也需生成 81168 冰矛圍籬視覺地面效果。
+				if skill.SkillID == 194 {
+					s.spawnFreezingBreathGroundEffect(player, t.npc.X, t.npc.Y, t.npc.MapID, int(dur+1))
+				}
 			}
 		}
 	}
