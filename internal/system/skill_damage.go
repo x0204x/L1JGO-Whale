@@ -745,17 +745,20 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		}
 	}
 
-	// 混亂（202）：傷害後沉默 NPC（Java: CONFUSION.java — 設定 SILENCE 效果）
+	// 混亂（202）：傷害後沉默 NPC。
+	// Java `skillmode/CONFUSION.java:22-30`：對 cha 設 `L1SkillId.SILENCE (=64), integer*1000ms`，
+	// 並非設 CONFUSION(202) 本身。Go 原本 `AddDebuff(202)` 是符號性的——其他系統檢查 silence
+	// 都看 skillSilence(64)，202 不會啟動沉默語義。本步改為 64 對齊 Java；保留「已沉默不刷新」守衛。
 	if skill.SkillID == 202 {
 		for _, t := range hits {
-			if t.npc.Dead || t.npc.HasDebuff(202) {
+			if t.npc.Dead || t.npc.HasDebuff(64) {
 				continue
 			}
 			dur := skill.BuffDuration
 			if dur <= 0 {
 				dur = 8
 			}
-			t.npc.AddDebuff(202, dur*5)
+			t.npc.AddDebuff(64, dur*5)
 		}
 	}
 }
