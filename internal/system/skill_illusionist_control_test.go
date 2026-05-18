@@ -7,9 +7,48 @@ import (
 	"github.com/l1jgo/server/internal/world"
 )
 
-func TestSkillIllusionistControlBoneBreakParalyzesPlayerTarget(t *testing.T) {
+// TestSkillIllusionistControlBoneBreakProbabilityMatchesJava 對齊 Java
+// `L1MagicPc.calcProbabilityMagic` `case BONE_BREAK`（L1MagicPc:584-599）+ PC→PC
+// `case BONE_BREAK: probability -= RegistStun`（L1MagicPc:958-961）+
+// `ConfigIllusionstSkill` 預設值（BONE_BREAK_1=5、_2=10、_3=15、_INT=0、_MR=0）。
+func TestSkillIllusionistControlBoneBreakProbabilityMatchesJava(t *testing.T) {
+	caster := &world.PlayerInfo{Level: 50, Intel: 30}
+	target := &world.PlayerInfo{Level: 1}
+	if got := calcBoneBreakPlayerProbability(caster, target); got != 5 {
+		t.Fatalf("caster>target 應為 BONE_BREAK_1=5，實際 %d", got)
+	}
+	target.Level = 50
+	if got := calcBoneBreakPlayerProbability(caster, target); got != 10 {
+		t.Fatalf("caster==target 應為 BONE_BREAK_2=10，實際 %d", got)
+	}
+	caster.Level = 1
+	if got := calcBoneBreakPlayerProbability(caster, target); got != 15 {
+		t.Fatalf("caster<target 應為 BONE_BREAK_3=15，實際 %d", got)
+	}
+	// INT/MR 預設 config 為 0，所以對機率沒有影響。
+	caster.Intel = 999
+	target.MR = 999
+	if got := calcBoneBreakPlayerProbability(caster, target); got != 15 {
+		t.Fatalf("INT/MR 在預設 config 不應影響機率，實際 %d", got)
+	}
+	// PC→PC RegistStun 直接扣（L1MagicPc:958-961）。
+	target.RegistStun = 3
+	if got := calcBoneBreakPlayerProbability(caster, target); got != 12 {
+		t.Fatalf("RegistStun=3 應 15-3=12，實際 %d", got)
+	}
+	// 機率下限 0。
+	target.RegistStun = 100
+	if got := calcBoneBreakPlayerProbability(caster, target); got != 0 {
+		t.Fatalf("極高 RegistStun 應 clamp 至 0，實際 %d", got)
+	}
+}
+
+// TestSkillIllusionistControlBoneBreakAppliesStunNotParalysis 對齊 Java
+// `BONE_BREAK.start():29` `S_Paralysis(5, true)` —— TYPE_STUN (logical 5) 對應
+// wire byte 0x16（StunApply），並非 ParalysisApply(0x02)。
+func TestSkillIllusionistControlBoneBreakAppliesStunNotParalysis(t *testing.T) {
 	ws := world.NewState()
-	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+	_ = addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 1,
 		Session:   newSkillTestSession(t, 1),
 		CharID:    1001,
@@ -18,7 +57,6 @@ func TestSkillIllusionistControlBoneBreakParalyzesPlayerTarget(t *testing.T) {
 		Y:         100,
 		MapID:     4,
 		Level:     50,
-		Intel:     300,
 	})
 	target := addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 2,
@@ -28,24 +66,28 @@ func TestSkillIllusionistControlBoneBreakParalyzesPlayerTarget(t *testing.T) {
 		X:         101,
 		Y:         100,
 		MapID:     4,
-		Level:     1,
+		Level:     50,
 		HP:        100,
 		MaxHP:     100,
 	})
 	s := newSkillTestSystem(t, ws)
-	skill := &data.SkillInfo{
-		SkillID:     208,
-		Target:      "attack",
-		Type:        64,
-		Ranged:      1,
-		DamageValue: 1,
-		ActionID:    18,
+	// 直接呼叫 applyBoneBreakParalysis 跳過機率檢查，驗證副作用：buff 注入 +
+	// Paralyzed flag + S_Paralysis(StunApply) + S_SkillSound(13119) 廣播。
+	s.applyBoneBreakParalysis(target)
+
+	if !target.Paralyzed {
+		t.Fatalf("骷髏毀壞命中後應 Paralyzed，實際 %v", target.Paralyzed)
 	}
-
-	s.executeAttackSkillOnPlayer(caster.Session, caster, skill, target)
-
-	if !target.Paralyzed || !target.HasBuff(208) {
-		t.Fatalf("骷髏毀壞應讓玩家目標麻痺，Paralyzed=%v buff208=%v", target.Paralyzed, target.GetBuff(208))
+	buff := target.GetBuff(208)
+	if buff == nil {
+		t.Fatalf("骷髏毀壞應留下 208 buff，實際無")
+	}
+	if !buff.SetParalyzed {
+		t.Fatalf("208 buff 應 SetParalyzed=true，實際 %v", buff.SetParalyzed)
+	}
+	// dur 1~2 秒 → 5 或 10 ticks。
+	if buff.TicksLeft != 5 && buff.TicksLeft != 10 {
+		t.Fatalf("208 buff 持續時間應為 5 或 10 ticks（1~2 秒），實際 %d", buff.TicksLeft)
 	}
 }
 

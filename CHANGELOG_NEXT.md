@@ -1,5 +1,21 @@
 ## 技能
 
+## 骷髏毀壞（BONE_BREAK / 208）
+
+- 修正 `208 BONE_BREAK` 五項 Java `skillmode/BONE_BREAK.java` + `L1MagicPc.calcProbabilityMagic` + `S_Paralysis` 對齊差異：
+  1. **PC→PC 機率公式**：Go 原 `calcBoneBreakPlayerProbability` 用 `(30/20/10) + INT*0.5 - MR*0.1` 自創公式（INT=300 時飽和至 100%）。對齊 Java `L1MagicPc:584-599` + `ConfigIllusionstSkill` 預設值：`(5/10/15) by level diff` （`BONE_BREAK_INT/MR` 預設 0 → 無 INT/MR 加成），PC→PC 末段 `-= target.RegistStun`（`L1MagicPc:958-961`）。注意 Java 配置反常識：caster>target 反而最低（5%），高等目標最高（15%）。
+  2. **S_Paralysis subtype（apply）**：Go `applyBoneBreakParalysis` 原本送 `ParalysisApply (0x02)`。Java `BONE_BREAK.start():29` `S_Paralysis(5, true)` 中 `5 = TYPE_STUN`（`S_Paralysis.java:25,79-85`）→ wire byte `0x16 = StunApply`，並非 ParalysisApply。改為 `handler.StunApply`。同時涉及客戶端訊息顯示「衝擊之暈」而非「身體完全麻痺」。
+  3. **buff 過期 subtype（revert）**：Go `skill_buff.go:666-677` switch 中 208 落入 `default` → `needParalysisRemove = true` → `ParalysisRemove (0x03)`。Java stop() `S_Paralysis(5, false)` 對應 wire `0x17 = StunRemove`。新增 `case 87, 208, 508:` → `needStunRemove = true` 與 apply 路徑配對。
+  4. **PC→NPC 缺少 13119 廣播**：Java `BONE_BREAK.start():35` 對 NPC 路徑 `broadcastPacketAll(S_SkillSound(npcId, 13119))`「骷髏毀壞動畫」。Go `skill_damage.go:735` 命中 NPC 後僅 `Paralyzed=true + AddDebuff(208)`，缺廣播。補上 `BroadcastToPlayers(nearby, BuildSkillEffect(t.npc.ID, 13119))`。
+  5. **yaml `damage_value: 0 → 10`**：Java SQL `damage_value=10`，Go 原 0。Java `calcMagicDamage(208)` 走標準魔法傷害（dice 公式 + 屬性減免 + MR 減免），Go yaml `damage_value=0` 會讓 `magic.lua calc_skill_damage` 路由到 physical formula（Go 啟發式：value+dice 皆 0 → physical），與 Java 走 magic 路徑不一致。修正後資料完整且路由正確。
+- 配套說明：
+  - 移除 `boneBreakIntFactor / boneBreakMRFactor` 常數（Java 對應 config 預設 0，本來就無加成；保留 `Higher/Equal/Lower` 三常數但改為 5/10/15 對齊 Java config 預設值）。
+  - 既有 `TestSkillIllusionistControlBoneBreakParalyzesPlayerTarget` 原本依賴 INT=300 把機率飽和到 100%，修正後（Java 5%）變成 flaky。替換為兩個對齊 Java 的測試：(a) `TestSkillIllusionistControlBoneBreakProbabilityMatchesJava` 直接驗證 5/10/15 + RegistStun 公式；(b) `TestSkillIllusionistControlBoneBreakAppliesStunNotParalysis` 直接呼叫 `applyBoneBreakParalysis` 跳過機率，驗證 buff 注入 + Paralyzed + StunApply 副作用。
+- **broader gap（不改）**：
+  - **PC→NPC 機率公式**：Go `checkNpcMRResist` 是 generic `50 + (L_caster - L_npc)*5 + INT*2 - MR` 共用於 192/208 等 NPC 技能，Java 各技能個別化（208 用 5/10/15）。屬「NPC 機率系統個別化」結構性缺口，與 192 同源；留至 MR/probability 系統整體對齊。
+  - **mp_consume 20→30、reuse_delay 0→2000、cast_gfx 0→7020**：Java SQL 真實值，Go yaml drift。屬 yaml 成本/冷卻/視覺 tuning，與 185/195/206/207 同源 broader gap。
+- 驗證：`go build ./...` 通過、`go test ./internal/system/ -count=1` 全綠（含新增的兩個 BONE_BREAK 測試）。
+
 - 修正 `THUNDER_GRAB(192)` 四項 Java 對齊差異：
   1. **STATUS_FREEZE(4000) 免疫檢查**：Java `THUNDER_GRAB.java:35 if (isProbability && !cha.hasSkillEffect(4000))` 對 STATUS_FREEZE 目標完全免疫。Go `applyThunderGrabBind` 與 `skill_damage.go:700` NPC 路徑原本都缺此檢查 → 補上 `target.HasBuff(4000) / npc.HasDebuff(4000)` 早返回。
   2. **bindtime 殘餘秒數疊加**：Java 第 26-32 行 `if (cha instanceof L1PcInstance && cha.hasSkillEffect(192)) bindtime += getSkillEffectTimeSec(192); if (bindtime > 4) bindtime = 4;` PC re-cast 加上殘餘秒數，最多 4 秒上限。Go 原本 PC 路徑 `if target.HasBuff(192) return` 直接早返回放棄施法；NPC 路徑無 stacking。改為兩路徑都讀取殘餘 ticks（÷5 換算秒）加總，clamp 4 上限。

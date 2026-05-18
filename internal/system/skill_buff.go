@@ -665,7 +665,9 @@ func (s *SkillSystem) cancelAllBuffs(target *world.PlayerInfo) {
 		// 追蹤麻痺/凍結/暈眩類型
 		if buff.SetParalyzed {
 			switch skillID {
-			case 87, 508:
+			case 87, 208, 508:
+				// 87 SHOCK_STUN、208 BONE_BREAK、508 都是「衝擊之暈」類型
+				// （Java `S_Paralysis(5, false)` → wire 0x17 StunRemove）。
 				needStunRemove = true
 			case 157, 50, 80, 30, 194:
 				needFreezeRemove = true

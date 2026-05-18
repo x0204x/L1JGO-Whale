@@ -6397,7 +6397,7 @@ skills:
     buff_duration: 2
     target: attack
     target_to: 3
-    damage_value: 0
+    damage_value: 10
     damage_dice: 0
     damage_dice_count: 0
     probability_value: 0

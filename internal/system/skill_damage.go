@@ -731,7 +731,10 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		}
 	}
 
-	// 骷髏毀壞（208）：傷害後暈眩 NPC（Java: BONE_BREAK.java — S_Paralysis type 5）
+	// 骷髏毀壞（208）：傷害後暈眩 NPC（Java `BONE_BREAK.start():31-36`）。
+	// PC→NPC 機率走 generic `checkNpcMRResist`（broader gap：Java 用 5/10/15 + INT/MR
+	// config 預設皆 0、無 magichit），暫不個別化。命中後對 NPC `setParalyzed(true)` +
+	// `broadcastPacketAll(S_SkillSound(npcId, 13119))`「骷髏毀壞動畫」。
 	if skill.SkillID == 208 {
 		for _, t := range hits {
 			if t.npc.Dead || t.npc.Paralyzed {
@@ -741,6 +744,8 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 				dur := world.RandInt(2) + 1 // 1-2 秒
 				t.npc.Paralyzed = true
 				t.npc.AddDebuff(208, dur*5)
+				nearby := s.deps.World.GetNearbyPlayersAt(t.npc.X, t.npc.Y, t.npc.MapID)
+				handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(t.npc.ID, 13119))
 			}
 		}
 	}

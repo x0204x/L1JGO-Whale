@@ -90,11 +90,14 @@ const (
 	joyOfPainDivisor = 5
 	joyOfPainMaxDmg  = 1000
 
-	boneBreakHigherLevelProb = 30
-	boneBreakEqualLevelProb  = 20
-	boneBreakLowerLevelProb  = 10
-	boneBreakIntFactor       = 0.5
-	boneBreakMRFactor        = 0.1
+	// Java `L1MagicPc:584-599` + `ConfigIllusionstSkill` 預設值
+	// BONE_BREAK_1=5（caster>target）、_2=10（equal）、_3=15（caster<target）。
+	// 注意 Java 配置反常識：低等目標基礎機率最低。
+	// BONE_BREAK_INT / BONE_BREAK_MR 預設皆 0，所以 INT/MR 對機率沒有影響；PC→PC
+	// 末段再 `-= target.RegistStun`（L1MagicPc:958-961）。
+	boneBreakHigherLevelProb = 5  // caster.Level > target.Level
+	boneBreakEqualLevelProb  = 10 // caster.Level == target.Level
+	boneBreakLowerLevelProb  = 15 // caster.Level < target.Level
 )
 
 func (s *SkillSystem) applyIllusionistControlAttackEffect(caster, target *world.PlayerInfo, skill *data.SkillInfo) {
@@ -110,6 +113,9 @@ func checkBoneBreakPlayerSuccess(caster, target *world.PlayerInfo) bool {
 	return world.RandInt(100) < calcBoneBreakPlayerProbability(caster, target)
 }
 
+// calcBoneBreakPlayerProbability 對齊 Java `L1MagicPc.calcProbabilityMagic` `case BONE_BREAK`
+// （L1MagicPc:584-599）+ PC→PC `case BONE_BREAK: probability -= RegistStun`（L1MagicPc:958-961）。
+// 使用 ConfigIllusionstSkill 預設值（_1=5、_2=10、_3=15、_INT=0、_MR=0）。
 func calcBoneBreakPlayerProbability(caster, target *world.PlayerInfo) int {
 	if caster == nil || target == nil {
 		return 0
@@ -120,8 +126,7 @@ func calcBoneBreakPlayerProbability(caster, target *world.PlayerInfo) int {
 	} else if caster.Level < target.Level {
 		probability = boneBreakLowerLevelProb
 	}
-	probability += int(float64(caster.Intel) * boneBreakIntFactor)
-	probability -= int(float64(target.MR) * boneBreakMRFactor)
+	probability -= int(target.RegistStun)
 	if probability < 0 {
 		return 0
 	}
@@ -132,6 +137,8 @@ func calcBoneBreakPlayerProbability(caster, target *world.PlayerInfo) int {
 }
 
 func (s *SkillSystem) applyBoneBreakParalysis(target *world.PlayerInfo) {
+	// Java `BONE_BREAK.start():24` 只在「目標未持 208 buff 且 isProbability」時生效。
+	// Go 額外守衛 `target.Paralyzed` 避免覆蓋其他更高優先狀態（與 192/87 一致）。
 	if target.Paralyzed || target.HasBuff(skillBoneBreak) {
 		return
 	}
@@ -146,7 +153,10 @@ func (s *SkillSystem) applyBoneBreakParalysis(target *world.PlayerInfo) {
 		s.revertBuffStats(target, old)
 	}
 	target.Paralyzed = true
-	handler.SendParalysis(target.Session, handler.ParalysisApply)
+	// Java `BONE_BREAK.start():29` 對 PC 送 `S_Paralysis(5, true)` —— TYPE_STUN (5) 對應
+	// wire byte 0x16（StunApply），並非 ParalysisApply(0x02)。S_Paralysis.java:79-85 切換顯示
+	// 「衝擊之暈」效果而非「身體完全麻痺」訊息。
+	handler.SendParalysis(target.Session, handler.StunApply)
 	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, 13119))
 }
