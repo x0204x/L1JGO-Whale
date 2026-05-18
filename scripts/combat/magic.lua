@@ -85,8 +85,10 @@ function calc_magic_damage(ctx)
 end
 
 ---------------------------------------------------------------------
--- Physical skill damage (108, 132, 203, 208)
+-- Physical skill damage (108, 132, 208)
 -- Uses STR/DEX/weapon tables from tables.lua, not INT/dice
+-- 注意：203 SMASH 已改走 calc_magic_damage（Java 為 TYPE_ATTACK 資料驅動，
+-- damage_value=12 + damage_dice=10 + attr=16 ATTR_RAY），不在此清單。
 ---------------------------------------------------------------------
 function calc_physical_skill(ctx)
     local sk = ctx.skill
@@ -139,8 +141,6 @@ function calc_physical_skill(ctx)
             -- yiwei config `各職業技能相關設置.properties: Triple_Arrow_Dmg = 5.0`
             hit_count = 3
             damage = damage * 5
-        elseif sid == 203 then  -- Smash/Rampage
-            damage = damage + math.floor(level / 3)
         elseif sid == 208 then  -- Bone Break/Skull Destruction
             damage = damage + math.floor(level / 3)
         end

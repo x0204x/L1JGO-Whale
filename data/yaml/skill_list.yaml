@@ -6242,15 +6242,15 @@ skills:
     buff_duration: 0
     target: attack
     target_to: 3
-    damage_value: 0
-    damage_dice: 0
+    damage_value: 12
+    damage_dice: 10
     damage_dice_count: 0
     probability_value: 0
     probability_dice: 0
-    attr: 0
+    attr: 16
     type: 64
     lawful: 0
-    ranged: 1
+    ranged: 10
     area: 0
     through: 0
     id: 4
