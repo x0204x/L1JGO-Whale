@@ -164,41 +164,19 @@ func (s *QuestSystem) removeQuestItem(sess *net.Session, player *world.PlayerInf
 	player.Dirty = true
 }
 
-// giveQuestItem 給予玩家物品（任務獎勵）。
+// giveQuestItem 透過共用 ItemCreate 給予任務物品。
 func (s *QuestSystem) giveQuestItem(sess *net.Session, player *world.PlayerInfo, itemID, count int32) {
-	itemInfo := s.deps.Items.Get(itemID)
-	if itemInfo == nil {
-		s.deps.Log.Warn("任務獎勵物品不存在", zap.Int32("itemID", itemID))
+	if s.deps.ItemCreate == nil {
 		return
 	}
-
-	// 可堆疊物品：合併到已有堆疊
-	if itemInfo.Stackable {
-		existing := player.Inv.FindByItemID(itemID)
-		if existing != nil {
-			existing.Count += count
-			handler.SendItemCountUpdate(sess, existing)
-			player.Dirty = true
-			return
-		}
+	if _, ok := s.deps.ItemCreate.GiveItem(sess, player, itemID, count); !ok {
+		s.deps.Log.Warn("任務給予物品失敗", zap.Int32("itemID", itemID), zap.Int32("count", count))
+		return
 	}
-
-	newItem := player.Inv.AddItem(
-		itemID, count, itemInfo.Name, itemInfo.InvGfx,
-		itemInfo.Weight, itemInfo.Stackable, 0,
-	)
-	handler.SendAddItem(sess, newItem, itemInfo)
 	player.Dirty = true
 }
 
-// giveQuestGold 給予玩家金幣（任務獎勵）。
+// giveQuestGold 透過共用 ItemCreate 給予任務金幣。
 func (s *QuestSystem) giveQuestGold(sess *net.Session, player *world.PlayerInfo, amount int32) {
-	adena := player.Inv.FindByItemID(world.AdenaItemID)
-	if adena != nil {
-		adena.Count += amount
-		handler.SendItemCountUpdate(sess, adena)
-	} else {
-		s.giveQuestItem(sess, player, world.AdenaItemID, amount)
-	}
-	player.Dirty = true
+	s.giveQuestItem(sess, player, world.AdenaItemID, amount)
 }

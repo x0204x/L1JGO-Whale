@@ -336,6 +336,13 @@ func (s *PvPSystem) inSafetyZone(p *world.PlayerInfo) bool {
 	return s.deps.MapData.IsSafetyZone(p.MapID, p.X, p.Y)
 }
 
+func (s *PvPSystem) TriggerPinkName(attacker, victim *world.PlayerInfo) {
+	if attacker == nil || victim == nil {
+		return
+	}
+	s.triggerPinkName(attacker, victim)
+}
+
 // triggerPinkName 攻擊藍名玩家時觸發粉紅名。
 func (s *PvPSystem) triggerPinkName(attacker, victim *world.PlayerInfo) {
 	// 決鬥對象不觸發粉紅名（Java: L1PinkName.onAction 決鬥豁免）

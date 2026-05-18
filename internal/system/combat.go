@@ -55,6 +55,16 @@ func (s *CombatSystem) Update(_ time.Duration) {
 // ==================== 近戰攻擊 ====================
 
 // processMeleeAttack 對目標施加近戰攻擊。
+func (s *CombatSystem) canPhysicalAttackReachTarget(player *world.PlayerInfo, mapID int16, x, y int32) bool {
+	if player == nil || player.MapID != mapID {
+		return false
+	}
+	if s == nil || s.deps == nil || s.deps.MapData == nil {
+		return true
+	}
+	return s.deps.MapData.HasLineOfSight(player.MapID, player.X, player.Y, x, y)
+}
+
 func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handler.NpcKillResult {
 	ws := s.deps.World
 	player := ws.GetBySession(sessID)
@@ -83,6 +93,9 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 		// 不是 NPC — 檢查是否為玩家（PvP）
 		targetPlayer := ws.GetByCharID(targetID)
 		if targetPlayer != nil && !targetPlayer.Dead && targetPlayer.CharID != player.CharID {
+			if !s.canPhysicalAttackReachTarget(player, targetPlayer.MapID, targetPlayer.X, targetPlayer.Y) {
+				return nil
+			}
 			s.deps.PvP.HandlePvPAttack(player, targetPlayer)
 		}
 		return nil
@@ -90,6 +103,9 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 
 	// 非戰鬥 NPC（商人等）：只播放攻擊動畫，不造成傷害
 	// Java: L1MerchantInstance.onAction() 只呼叫 attack.action()
+	if !s.canPhysicalAttackReachTarget(player, npc.MapID, npc.X, npc.Y) {
+		return nil
+	}
 	if !isAttackableNpc(npc.Impl) {
 		// FieldObject 特殊處理 — Java: L1FieldObjectInstance.onAction()
 		// NPC 81171（幽靈之家終點鬼火）：觸碰 = 到達終點
@@ -295,12 +311,18 @@ func (s *CombatSystem) processRangedAttack(sessID uint64, targetID int32) *handl
 		// 不是 NPC — 檢查是否為玩家（PvP 遠程）
 		targetPlayer := ws.GetByCharID(targetID)
 		if targetPlayer != nil && !targetPlayer.Dead && targetPlayer.CharID != player.CharID {
+			if !s.canPhysicalAttackReachTarget(player, targetPlayer.MapID, targetPlayer.X, targetPlayer.Y) {
+				return nil
+			}
 			s.deps.PvP.HandlePvPFarAttack(player, targetPlayer)
 		}
 		return nil
 	}
 
 	// 非戰鬥 NPC（商人等）：只播放攻擊動畫，不造成傷害
+	if !s.canPhysicalAttackReachTarget(player, npc.MapID, npc.X, npc.Y) {
+		return nil
+	}
 	if !isAttackableNpc(npc.Impl) {
 		player.Heading = CalcHeading(player.X, player.Y, npc.X, npc.Y)
 		handler.SendArrowAttackPacket(player.Session, player.CharID, npc.ID, 0, player.Heading,

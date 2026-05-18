@@ -169,6 +169,64 @@ func TestSkillClanAuraBraveAuraIsProcFlagNotFlatDamage(t *testing.T) {
 	}
 }
 
+func TestSkillClanAuraBraveAvatarAppliesAndRemovesPartyAura(t *testing.T) {
+	ws := world.NewState()
+	leader := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:     1,
+		Session:       newSkillTestSession(t, 1),
+		CharID:        1001,
+		Name:          "prince",
+		X:             100,
+		Y:             100,
+		MapID:         4,
+		ClassType:     0,
+		KnownSpells:   []int32{119},
+		Str:           10,
+		Dex:           11,
+		Intel:         12,
+		MR:            3,
+		RegistStun:    4,
+		RegistSustain: 5,
+	})
+	member := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:     2,
+		Session:       newSkillTestSession(t, 2),
+		CharID:        1002,
+		Name:          "member",
+		X:             110,
+		Y:             100,
+		MapID:         4,
+		Str:           20,
+		Dex:           21,
+		Intel:         22,
+		MR:            6,
+		RegistStun:    7,
+		RegistSustain: 8,
+	})
+	ws.Parties.CreateParty(leader.CharID, member.CharID, world.PartyTypeNormal)
+	s := newSkillTestSystem(t, ws)
+
+	s.updateBraveAvatarAura()
+
+	if !leader.HasBuff(8065) || !member.HasBuff(8065) {
+		t.Fatalf("王者加護應套用在 16 格內隊伍成員，leader=%v member=%v", leader.GetBuff(8065), member.GetBuff(8065))
+	}
+	if member.Str != 21 || member.Dex != 22 || member.Intel != 23 || member.MR != 16 ||
+		member.RegistStun != 9 || member.RegistSustain != 10 {
+		t.Fatalf("王者加護能力值錯誤 Str=%d Dex=%d Int=%d MR=%d Stun=%d Sustain=%d",
+			member.Str, member.Dex, member.Intel, member.MR, member.RegistStun, member.RegistSustain)
+	}
+
+	member.X = 117
+	s.updateBraveAvatarAura()
+
+	if member.HasBuff(8065) || member.Str != 20 || member.Dex != 21 || member.Intel != 22 || member.MR != 6 ||
+		member.RegistStun != 7 || member.RegistSustain != 8 {
+		t.Fatalf("王者加護離開 16 格後應還原 buff=%v Str=%d Dex=%d Int=%d MR=%d Stun=%d Sustain=%d",
+			member.GetBuff(8065), member.Str, member.Dex, member.Intel, member.MR, member.RegistStun, member.RegistSustain)
+	}
+}
+
 func TestSkillClanAuraTrueTargetRegistersBuffWithoutStatBonus(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{

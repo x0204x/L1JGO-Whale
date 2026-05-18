@@ -118,11 +118,13 @@ func (s *FishingSystem) Tick(player *world.PlayerInfo) {
 	// 隨機獲得魚
 	fish := rollFishReward()
 	if fish != 0 {
+		if s.deps.ItemCreate != nil {
+			s.deps.ItemCreate.GiveItem(player.Session, player, fish, 1)
+		}
 		s.deps.Log.Debug("釣到魚",
 			zap.String("player", player.Name),
 			zap.Int32("itemID", fish),
 		)
-		// TODO: 完整版需要 ItemCreateManager 介面
 	}
 }
 

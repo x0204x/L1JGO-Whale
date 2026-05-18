@@ -66,6 +66,37 @@ func (s *PowerItemSystem) BuyPowerItem(sess *net.Session, player *world.PlayerIn
 		}
 	}
 
+	if s.deps.ItemCreate != nil && itemInfo != nil {
+		opts := ItemCreateOptions{}
+		if pItem.EnchantLvl != 0 {
+			opts.EnchantLvl = int8(pItem.EnchantLvl)
+		}
+		if pItem.Bless != 0 {
+			opts.BlessSet = true
+			opts.Bless = byte(pItem.Bless)
+		}
+		if pItem.AttrKind > 0 {
+			opts.BeforeSend = func(item *world.InvItem) {
+				item.AttrEnchantKind = int8(pItem.AttrKind)
+				item.AttrEnchantLevel = int8(pItem.AttrLevel)
+			}
+		}
+		if creator, ok := s.deps.ItemCreate.(interface {
+			GiveItemWithOptions(sess *net.Session, player *world.PlayerInfo, itemID, count int32, opts ItemCreateOptions) (*world.InvItem, bool)
+		}); ok {
+			if _, ok := creator.GiveItemWithOptions(sess, player, pItem.ItemID, 1, opts); !ok {
+				return
+			}
+			return
+		}
+		if pItem.EnchantLvl == 0 && pItem.Bless == 0 && pItem.AttrKind <= 0 {
+			if _, ok := s.deps.ItemCreate.GiveItem(sess, player, pItem.ItemID, 1); !ok {
+				return
+			}
+			return
+		}
+	}
+
 	newItem := player.Inv.AddItemWithID(0, pItem.ItemID, 1, itemName, gfxID, weight, stackable, bless)
 	newItem.EnchantLvl = int8(pItem.EnchantLvl)
 	newItem.Identified = true

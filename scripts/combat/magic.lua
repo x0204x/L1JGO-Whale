@@ -70,8 +70,8 @@ function calc_magic_damage(ctx)
     if coefficient < 0 then coefficient = 0 end
     damage = math.floor(damage * coefficient)
 
-    -- Stage 5: Magic critical (level 1-6 spells, 10% chance, 1.5x)
-    if sk.skill_level >= 1 and sk.skill_level <= 6 then
+    -- Stage 5: Magic critical (Java: level 1-6 spells or DISINTEGRATE)
+    if (sk.skill_level >= 1 and sk.skill_level <= 6) or sk.id == 77 then
         if math.random(1, 100) <= 10 then
             damage = math.floor(damage * 1.5)
         end

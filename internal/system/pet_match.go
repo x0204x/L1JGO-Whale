@@ -391,17 +391,14 @@ func (s *PetMatchSystem) giveMedal(pc *world.PlayerInfo, slotIdx int, isWin bool
 		count = 3 // 勝者 3 個
 	}
 
-	// 給予獎牌物品
-	if s.deps.Items == nil {
+	if s.deps.ItemCreate == nil {
 		return
 	}
-	tmpl := s.deps.Items.Get(petMatchMedalID)
-	if tmpl == nil {
+	invItem, ok := s.deps.ItemCreate.GiveItem(pc.Session, pc, petMatchMedalID, count)
+	if !ok {
 		return
 	}
-	invItem := pc.Inv.AddItem(petMatchMedalID, count, tmpl.Name, tmpl.InvGfx, tmpl.Weight, true, 0)
-	handler.SendAddItem(pc.Session, invItem)
-	handler.SendServerMessageStr(pc.Session, 403, fmt.Sprintf("%s (%d)", tmpl.Name, count))
+	handler.SendServerMessageStr(pc.Session, 403, fmt.Sprintf("%s (%d)", invItem.Name, count))
 }
 
 // cleanupPlayer 清理玩家的比賽寵物並傳送回城。

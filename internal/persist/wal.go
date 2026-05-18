@@ -5,6 +5,12 @@ import (
 	"fmt"
 )
 
+const defaultWALGoldItemID int32 = 40308
+
+const minGeneratedWALItemObjectID int32 = 500_000_000
+
+const recoverWALItemTransferSQL = `UPDATE character_items SET char_id = $1 WHERE obj_id = $2 AND char_id = $3`
+
 // WALEntry represents one economic write-ahead log entry.
 type WALEntry struct {
 	TxType     string // "trade", "shop", "auction"
@@ -14,6 +20,21 @@ type WALEntry struct {
 	Count      int32
 	EnchantLvl int16
 	GoldAmount int64
+}
+
+func isWALItemTransfer(wal WALEntry) bool {
+	return wal.GoldAmount == 0 && wal.ItemID >= minGeneratedWALItemObjectID && wal.FromChar > 0 && wal.ToChar > 0
+}
+
+func isWALStackItemTransfer(wal WALEntry) bool {
+	return wal.GoldAmount == 0 && wal.ItemID > 0 && wal.ItemID < minGeneratedWALItemObjectID && wal.Count > 0 && wal.FromChar > 0 && wal.ToChar > 0
+}
+
+func walGoldItemID(wal WALEntry) int32 {
+	if wal.ItemID > 0 {
+		return wal.ItemID
+	}
+	return defaultWALGoldItemID
 }
 
 type WALRepo struct {
@@ -59,6 +80,7 @@ func (r *WALRepo) MarkProcessed(ctx context.Context) error {
 // Each entry is replayed idempotently:
 //   - gold_amount > 0: deduct from from_char, add to to_char
 //   - item_id > 0: transfer item ownership from from_char to to_char
+//
 // After replay, entries are marked processed.
 func (r *WALRepo) RecoverWAL(ctx context.Context) (int, error) {
 	rows, err := r.db.Pool.Query(ctx,
@@ -104,24 +126,61 @@ func (r *WALRepo) RecoverWAL(ctx context.Context) (int, error) {
 
 		// Replay gold transfer
 		if wal.GoldAmount > 0 && wal.FromChar > 0 && wal.ToChar > 0 {
-			// Idempotent: use the WAL entry ID as dedup key by only processing unprocessed
+			goldItemID := walGoldItemID(wal)
 			if _, err := tx.Exec(ctx,
-				`UPDATE characters SET adena = adena - $1 WHERE id = $2`,
-				wal.GoldAmount, wal.FromChar); err != nil {
+				`UPDATE character_items SET count = count - $1::INT WHERE char_id = $2 AND item_id = $3`,
+				wal.GoldAmount, wal.FromChar, goldItemID); err != nil {
 				return 0, fmt.Errorf("wal recover gold deduct (id=%d): %w", e.id, err)
 			}
 			if _, err := tx.Exec(ctx,
-				`UPDATE characters SET adena = adena + $1 WHERE id = $2`,
-				wal.GoldAmount, wal.ToChar); err != nil {
+				`DELETE FROM character_items WHERE char_id = $1 AND item_id = $2 AND count <= 0`,
+				wal.FromChar, goldItemID); err != nil {
+				return 0, fmt.Errorf("wal recover gold cleanup (id=%d): %w", e.id, err)
+			}
+			tag, err := tx.Exec(ctx,
+				`UPDATE character_items SET count = count + $1::INT WHERE char_id = $2 AND item_id = $3`,
+				wal.GoldAmount, wal.ToChar, goldItemID)
+			if err != nil {
 				return 0, fmt.Errorf("wal recover gold add (id=%d): %w", e.id, err)
+			}
+			if tag.RowsAffected() == 0 {
+				if _, err := tx.Exec(ctx,
+					`INSERT INTO character_items (char_id, item_id, count, obj_id) VALUES ($1, $2, $3::INT, 0)`,
+					wal.ToChar, goldItemID, wal.GoldAmount); err != nil {
+					return 0, fmt.Errorf("wal recover gold insert (id=%d): %w", e.id, err)
+				}
+			}
+		}
+
+		if isWALStackItemTransfer(wal) {
+			if _, err := tx.Exec(ctx,
+				`UPDATE character_items SET count = count - $1::INT WHERE char_id = $2 AND item_id = $3`,
+				wal.Count, wal.FromChar, wal.ItemID); err != nil {
+				return 0, fmt.Errorf("wal recover stack item deduct (id=%d): %w", e.id, err)
+			}
+			if _, err := tx.Exec(ctx,
+				`DELETE FROM character_items WHERE char_id = $1 AND item_id = $2 AND count <= 0`,
+				wal.FromChar, wal.ItemID); err != nil {
+				return 0, fmt.Errorf("wal recover stack item cleanup (id=%d): %w", e.id, err)
+			}
+			tag, err := tx.Exec(ctx,
+				`UPDATE character_items SET count = count + $1::INT WHERE char_id = $2 AND item_id = $3`,
+				wal.Count, wal.ToChar, wal.ItemID)
+			if err != nil {
+				return 0, fmt.Errorf("wal recover stack item add (id=%d): %w", e.id, err)
+			}
+			if tag.RowsAffected() == 0 {
+				if _, err := tx.Exec(ctx,
+					`INSERT INTO character_items (char_id, item_id, count, enchant_lvl, obj_id) VALUES ($1, $2, $3::INT, $4, 0)`,
+					wal.ToChar, wal.ItemID, wal.Count, wal.EnchantLvl); err != nil {
+					return 0, fmt.Errorf("wal recover stack item insert (id=%d): %w", e.id, err)
+				}
 			}
 		}
 
 		// Replay item transfer
-		if wal.ItemID > 0 && wal.FromChar > 0 && wal.ToChar > 0 {
-			if _, err := tx.Exec(ctx,
-				`UPDATE character_items SET char_id = $1 WHERE id = $2 AND char_id = $3`,
-				wal.ToChar, wal.ItemID, wal.FromChar); err != nil {
+		if isWALItemTransfer(wal) {
+			if _, err := tx.Exec(ctx, recoverWALItemTransferSQL, wal.ToChar, wal.ItemID, wal.FromChar); err != nil {
 				return 0, fmt.Errorf("wal recover item transfer (id=%d): %w", e.id, err)
 			}
 		}

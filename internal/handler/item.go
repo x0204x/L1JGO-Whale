@@ -175,6 +175,15 @@ func HandleUseItem(sess *net.Session, r *packet.Reader, deps *Deps) {
 		return
 	}
 
+	if player.AbsoluteBarrier && deps.Skill != nil {
+		deps.Skill.CancelAbsoluteBarrier(player)
+	}
+
+	if player.Paralyzed || player.Sleeped {
+		sendTeleportUnlock(sess)
+		return
+	}
+
 	deps.Log.Debug("C_UseItem",
 		zap.String("player", player.Name),
 		zap.Int32("item_id", invItem.ItemID),

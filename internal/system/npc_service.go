@@ -199,6 +199,10 @@ func (s *NpcServiceSystem) NpcUpgrade(sess *net.Session, player *world.PlayerInf
 		}
 	}
 
+	if upg.NewItemID > 0 && !s.canReceiveNpcServiceItem(sess, player, upg.NewItemID, 1) {
+		return
+	}
+
 	// 4. 消耗主物品
 	removed := player.Inv.RemoveItem(mainItem.ObjectID, upg.MainItemCount)
 	if removed {
@@ -256,24 +260,7 @@ func (s *NpcServiceSystem) NpcUpgrade(sess *net.Session, player *world.PlayerInf
 // upgradeSuccess 升級成功：給予新物品 + 顯示成功 HTML。
 func (s *NpcServiceSystem) upgradeSuccess(sess *net.Session, player *world.PlayerInfo, upg *data.ItemUpgrade) {
 	if upg.NewItemID > 0 {
-		itemInfo := s.deps.Items.Get(upg.NewItemID)
-		if itemInfo != nil {
-			stackable := itemInfo.Stackable || upg.NewItemID == world.AdenaItemID
-			existing := player.Inv.FindByItemID(upg.NewItemID)
-			wasExisting := existing != nil && stackable
-
-			invItem := player.Inv.AddItem(upg.NewItemID, 1, itemInfo.Name, itemInfo.InvGfx,
-				itemInfo.Weight, stackable, byte(itemInfo.Bless))
-			invItem.UseType = itemInfo.UseTypeID
-			invItem.Identified = true
-
-			if wasExisting {
-				handler.SendItemCountUpdate(sess, invItem)
-			} else {
-				handler.SendAddItem(sess, invItem, itemInfo)
-			}
-			handler.SendWeightUpdate(sess, player)
-		}
+		s.giveNpcServiceItem(sess, player, upg.NewItemID, 1)
 	}
 
 	if upg.SuccessHTML != "" {
@@ -362,6 +349,10 @@ func (s *NpcServiceSystem) ConsumeItem(sess *net.Session, player *world.PlayerIn
 
 // Refine 火神精煉分解（移除裝備 + 給予結晶體）。
 func (s *NpcServiceSystem) Refine(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, crystalItemID int32, crystalCount int32) {
+	if !s.canReceiveNpcServiceItem(sess, player, crystalItemID, crystalCount) {
+		return
+	}
+
 	// 移除原物品（item 為 nil 時表示已由呼叫方移除，僅給予結晶體）
 	if item != nil {
 		removed := player.Inv.RemoveItem(item.ObjectID, 1)
@@ -373,22 +364,60 @@ func (s *NpcServiceSystem) Refine(sess *net.Session, player *world.PlayerInfo, i
 	}
 
 	// 給予結晶體
-	crystalInfo := s.deps.Items.Get(crystalItemID)
-	if crystalInfo != nil {
-		existing := player.Inv.FindByItemID(crystalItemID)
-		wasExisting := existing != nil && crystalInfo.Stackable
-
-		newItem := player.Inv.AddItem(crystalItemID, crystalCount, crystalInfo.Name,
-			crystalInfo.InvGfx, crystalInfo.Weight, crystalInfo.Stackable, byte(crystalInfo.Bless))
-		newItem.UseType = data.UseTypeToID(crystalInfo.UseType)
-
-		if wasExisting {
-			handler.SendItemCountUpdate(sess, newItem)
-		} else {
-			handler.SendAddItem(sess, newItem, crystalInfo)
-		}
-	}
+	s.giveNpcServiceItem(sess, player, crystalItemID, crystalCount)
 
 	handler.SendWeightUpdate(sess, player)
 	player.Dirty = true
+}
+
+func (s *NpcServiceSystem) canReceiveNpcServiceItem(sess *net.Session, player *world.PlayerInfo, itemID, count int32) bool {
+	if s.deps.ItemCreate == nil {
+		return true
+	}
+	if s.deps.Items == nil || player == nil || player.Inv == nil || count <= 0 {
+		return false
+	}
+	info := s.deps.Items.Get(itemID)
+	if info == nil {
+		return false
+	}
+	stackable := info.Stackable || itemID == world.AdenaItemID
+	newSlots := int32(1)
+	if stackable && player.Inv.FindByItemID(itemID) != nil {
+		newSlots = 0
+	} else if !stackable {
+		newSlots = count
+	}
+	if newSlots > 0 && player.Inv.Size()+int(newSlots) > world.MaxInventorySize {
+		handler.SendServerMessage(sess, 263)
+		return false
+	}
+	addWeight := info.Weight * count
+	if addWeight > 0 && player.Inv.IsOverWeight(addWeight, world.PlayerMaxWeight(player)) {
+		handler.SendServerMessage(sess, 82)
+		return false
+	}
+	return true
+}
+
+func (s *NpcServiceSystem) giveNpcServiceItem(sess *net.Session, player *world.PlayerInfo, itemID, count int32) (*world.InvItem, bool) {
+	if s.deps.ItemCreate != nil {
+		return s.deps.ItemCreate.GiveItem(sess, player, itemID, count)
+	}
+	itemInfo := s.deps.Items.Get(itemID)
+	if itemInfo == nil {
+		return nil, false
+	}
+	stackable := itemInfo.Stackable || itemID == world.AdenaItemID
+	existing := player.Inv.FindByItemID(itemID)
+	wasExisting := existing != nil && stackable
+	item := player.Inv.AddItem(itemID, count, itemInfo.Name, itemInfo.InvGfx, itemInfo.Weight, stackable, byte(itemInfo.Bless))
+	applyItemTemplate(item, itemInfo)
+	if wasExisting {
+		handler.SendItemCountUpdate(sess, item)
+	} else {
+		handler.SendAddItem(sess, item, itemInfo)
+	}
+	handler.SendWeightUpdate(sess, player)
+	return item, true
 }

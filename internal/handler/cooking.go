@@ -30,14 +30,14 @@ type CookingRecipe struct {
 // 料理配方表（Java: Cooking_Book.java 中的 24 種料理）
 // Lv1 料理（8 種），材料 → 普通/幻想版
 var cookingRecipes = []CookingRecipe{
-	{40057, 41277, 41285, 0},   // cookNo=0: 麵包 → 烤麵包
-	{41275, 41278, 41286, 1},   // cookNo=1
-	{41276, 41279, 41287, 2},   // cookNo=2
-	{41277, 41280, 41288, 3},   // cookNo=3
-	{41278, 41281, 41289, 4},   // cookNo=4
-	{41279, 41282, 41290, 5},   // cookNo=5
-	{41280, 41283, 41291, 6},   // cookNo=6
-	{41281, 41284, 41292, 7},   // cookNo=7
+	{40057, 41277, 41285, 0}, // cookNo=0: 麵包 → 烤麵包
+	{41275, 41278, 41286, 1}, // cookNo=1
+	{41276, 41279, 41287, 2}, // cookNo=2
+	{41277, 41280, 41288, 3}, // cookNo=3
+	{41278, 41281, 41289, 4}, // cookNo=4
+	{41279, 41282, 41290, 5}, // cookNo=5
+	{41280, 41283, 41291, 6}, // cookNo=6
+	{41281, 41284, 41292, 7}, // cookNo=7
 }
 
 // IsCookingBook 檢查物品是否為料理書。
@@ -75,11 +75,18 @@ func HandleCookingSelect(sess *net.Session, player *world.PlayerInfo, cookNo int
 		return
 	}
 
-	// 消耗材料
-	deps.NpcSvc.ConsumeItem(sess, player, mat.ObjectID, 1)
+	if deps == nil || deps.NpcSvc == nil || deps.ItemCreate == nil {
+		return
+	}
 
-	// TODO: 透過 ItemCreate 系統建立結果物品到背包
-	_ = recipe.ResultID
+	// 消耗材料
+	if !deps.NpcSvc.ConsumeItem(sess, player, mat.ObjectID, 1) {
+		return
+	}
+
+	if _, ok := deps.ItemCreate.GiveItem(sess, player, recipe.ResultID, 1); !ok {
+		return
+	}
 
 	// 發送料理圖示效果
 	sendCookingIcon(sess, player, recipe.BuffType, cookingDuration)
@@ -125,7 +132,7 @@ func sendCookingIcon(sess *net.Session, player *world.PlayerInfo, cookType int, 
 	w.WriteC(byte(cookType)) // 料理 type
 	w.WriteC(38)             // icon_id（Java 預設 38）
 	w.WriteH(uint16(duration))
-	w.WriteC(0)              // 尾碼
+	w.WriteC(0) // 尾碼
 
 	sess.Send(w.Bytes())
 }

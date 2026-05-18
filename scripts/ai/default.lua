@@ -124,6 +124,14 @@ function try_use_skill(ctx)
 
         -- Passed all checks
         if ok then
+            -- type 5 = 範圍衝暈（Java: areashock_stun）
+            if sk.type == 5 then
+                return {
+                    type = "area_shock_stun",
+                    act_id = sk.act_id,
+                }
+            end
+
             -- type 3 = 召喚技能
             if sk.type == 3 and sk.summon_id > 0 then
                 return {

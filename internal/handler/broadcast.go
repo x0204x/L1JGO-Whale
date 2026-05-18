@@ -638,7 +638,7 @@ func sendIconShield(sess *net.Session, durationSec uint16, iconType byte) {
 
 // sendIconStrup sends S_Strup (opcode 166) — STR buff icon.
 // Java: [C opcode][H time][C currentStr][C weightPercent][C type]
-// Types: 2=DressMighty, 5=PhysicalEnchantSTR
+// Types: 2=DressMighty, 3=DressMighty cancel, 5=PhysicalEnchantSTR
 // Send time=0 to cancel.
 func sendIconStrup(sess *net.Session, durationSec uint16, currentStr byte, iconType byte) {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_STRUP)
@@ -651,7 +651,7 @@ func sendIconStrup(sess *net.Session, durationSec uint16, currentStr byte, iconT
 
 // sendIconDexup sends S_Dexup (opcode 188) — DEX buff icon.
 // Java: [C opcode][H time][C currentDex][C type]
-// Types: 2=DressDexterity, 5=PhysicalEnchantDEX
+// Types: 2=DressDexterity, 3=DressDexterity cancel, 5=PhysicalEnchantDEX
 // Send time=0 to cancel.
 func sendIconDexup(sess *net.Session, durationSec uint16, currentDex byte, iconType byte) {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_DEXUP)
@@ -909,6 +909,30 @@ func SendIconAura(sess *net.Session, iconID byte, durationSec uint16) {
 	sendIconAura(sess, iconID, durationSec)
 }
 
+// SendIconGfx 發送一般 S_SkillIconGFX / S_PacketBox 圖示。
+func SendIconGfx(sess *net.Session, iconID byte, durationSec uint16) {
+	sendIconGfx(sess, iconID, durationSec)
+}
+
+// SendNoneTimeIcon 發送 S_PacketBox NONE_TIME_ICON。
+// Java: new S_PacketBox(S_PacketBox.NONE_TIME_ICON, onOff, iconID)。
+func SendNoneTimeIcon(sess *net.Session, on bool, iconID int32) {
+	if sess == nil {
+		return
+	}
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EVENT)
+	w.WriteC(180)
+	if on {
+		w.WriteC(1)
+	} else {
+		w.WriteC(0)
+	}
+	w.WriteD(iconID)
+	w.WriteD(0x00000D67)
+	w.WriteH(0)
+	sess.Send(w.Bytes())
+}
+
 // BuildTrueTarget builds S_TrueTarget.
 // Java: [C opcode=11][D targetId][D casterId][S message]
 func BuildTrueTarget(targetID, casterID int32, message string) []byte {
@@ -1059,6 +1083,15 @@ func SendDodgeIcon(sess *net.Session, dodge int16, increase bool) {
 		w.WriteC(0x65) // dodge down
 	}
 	w.WriteH(uint16(dodge))
+	sess.Send(w.Bytes())
+}
+
+// SendUpdateER 發送 S_PacketBox.UPDATE_ER（opcode 250, subcode 132）。
+// Java: new S_PacketBox(S_PacketBox.UPDATE_ER, pc.getEr())。
+func SendUpdateER(sess *net.Session, er int16) {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EVENT)
+	w.WriteC(132)
+	w.WriteH(uint16(er))
 	sess.Send(w.Bytes())
 }
 

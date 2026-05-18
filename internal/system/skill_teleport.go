@@ -13,13 +13,29 @@ func (s *SkillSystem) executeTeleportSpell(sess *net.Session, player *world.Play
 	var destMapID int16
 	var destHeading int16 = 5
 
+	if player.HasBuff(230) {
+		handler.SendServerMessage(sess, 1413)
+		return
+	}
+	if skill.SkillID == 5 && player.HasBuff(4000) {
+		handler.SendNormalChat(sess, 0, "\\fY已被束縛的效果無法瞬移")
+		return
+	}
+	if skill.SkillID == 5 && player.HasBuff(192) {
+		handler.SendNormalChat(sess, 0, "\\fY身上有奪命之雷的效果無法瞬移")
+		handler.SendParalysis(sess, handler.TeleportUnlock)
+		return
+	}
+
 	if bookmarkID != 0 {
 		// --- 書籤傳送 ---
 		if s.deps.MapData != nil {
-			if mi := s.deps.MapData.GetInfo(player.MapID); mi != nil && !mi.Escapable {
-				handler.SendServerMessage(sess, 79)
-				handler.SendParalysis(sess, handler.TeleportUnlock)
-				return
+			if mi := s.deps.MapData.GetInfo(player.MapID); mi != nil {
+				if ok, msgID := checkBookmarkTeleportMapRule(skill.SkillID, mi, player); !ok {
+					handler.SendServerMessage(sess, msgID)
+					handler.SendParalysis(sess, handler.TeleportUnlock)
+					return
+				}
 			}
 		}
 
@@ -40,10 +56,12 @@ func (s *SkillSystem) executeTeleportSpell(sess *net.Session, player *world.Play
 	} else {
 		// --- 隨機傳送 ---
 		if s.deps.MapData != nil {
-			if mi := s.deps.MapData.GetInfo(player.MapID); mi != nil && !mi.Teleportable {
-				handler.SendServerMessage(sess, 276)
-				handler.SendParalysis(sess, handler.TeleportUnlock)
-				return
+			if mi := s.deps.MapData.GetInfo(player.MapID); mi != nil {
+				if ok, msgID := checkRandomTeleportMapRule(skill.SkillID, mi, player); !ok {
+					handler.SendServerMessage(sess, msgID)
+					handler.SendParalysis(sess, handler.TeleportUnlock)
+					return
+				}
 			}
 		}
 
@@ -95,9 +113,6 @@ func (s *SkillSystem) executeTeleportSpell(sess *net.Session, player *world.Play
 	}
 
 	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
-	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
-
-	// 施法者在 nearby 中（GetNearbyPlayersAt 不排除），直接廣播即可
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, int32(skill.CastGfx)))
 
 	// 傳送時取消交易
@@ -113,7 +128,20 @@ func (s *SkillSystem) executeTeleportSpell(sess *net.Session, player *world.Play
 			if member.ClanID != player.ClanID {
 				continue
 			}
+			if member.PrivateShop {
+				continue
+			}
 			if chebyshevDist(player.X, player.Y, member.X, member.Y) > 3 {
+				continue
+			}
+			if !member.NoAskMassTeleport {
+				member.TeleportX = destX
+				member.TeleportY = destY
+				member.TeleportMapID = destMapID
+				member.TeleportHeading = destHeading
+				member.PendingYesNoType = 748
+				member.PendingYesNoData = player.CharID
+				handler.SendYesNoDialog(member.Session, 748)
 				continue
 			}
 			clanMembers = append(clanMembers, member)
@@ -127,4 +155,46 @@ func (s *SkillSystem) executeTeleportSpell(sess *net.Session, player *world.Play
 		handler.CancelTradeIfActive(member, s.deps)
 		handler.TeleportPlayer(member.Session, member, destX, destY, destMapID, destHeading, s.deps)
 	}
+}
+
+func checkBookmarkTeleportMapRule(skillID int32, mi *data.MapInfo, player *world.PlayerInfo) (bool, uint16) {
+	if mi == nil {
+		return true, 0
+	}
+	if skillID == 69 {
+		if !mi.Escapable {
+			return false, 276
+		}
+		return true, 0
+	}
+	if !mi.Teleportable && !hasTowerTeleportPermit(player, mi.MapID) {
+		return false, 647
+	}
+	return true, 0
+}
+
+func checkRandomTeleportMapRule(skillID int32, mi *data.MapInfo, player *world.PlayerInfo) (bool, uint16) {
+	if mi == nil || mi.Teleportable || (skillID == 5 && hasTowerTeleportPermit(player, mi.MapID)) {
+		return true, 0
+	}
+	if skillID == 69 {
+		return false, 276
+	}
+	return false, 647
+}
+
+func hasTowerTeleportPermit(player *world.PlayerInfo, mapID int16) bool {
+	if player == nil || player.Inv == nil || mapID < 3301 || mapID > 3310 {
+		return false
+	}
+	if hasInventoryItem(player, 84071) {
+		return true
+	}
+	itemID := int32(84040) + int32(mapID-3300)
+	return hasInventoryItem(player, itemID)
+}
+
+func hasInventoryItem(player *world.PlayerInfo, itemID int32) bool {
+	item := player.Inv.FindByItemID(itemID)
+	return item != nil && item.Count > 0
 }

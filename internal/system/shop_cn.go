@@ -67,6 +67,27 @@ func (s *ShopCnSystem) BuyCnItem(sess *net.Session, player *world.PlayerInfo, cn
 		bless = byte(itemInfo.Bless)
 	}
 
+	if s.deps.ItemCreate != nil && itemInfo != nil {
+		opts := ItemCreateOptions{}
+		if cnItem.EnchantLevel > 0 {
+			opts.EnchantLvl = int8(cnItem.EnchantLevel)
+		}
+		if creator, ok := s.deps.ItemCreate.(interface {
+			GiveItemWithOptions(sess *net.Session, player *world.PlayerInfo, itemID, count int32, opts ItemCreateOptions) (*world.InvItem, bool)
+		}); ok {
+			if _, ok := creator.GiveItemWithOptions(sess, player, cnItem.ItemID, actualCount, opts); !ok {
+				return
+			}
+			return
+		}
+		if cnItem.EnchantLevel <= 0 {
+			if _, ok := s.deps.ItemCreate.GiveItem(sess, player, cnItem.ItemID, actualCount); !ok {
+				return
+			}
+			return
+		}
+	}
+
 	newItem := player.Inv.AddItemWithID(0, cnItem.ItemID, actualCount, itemName, gfxID, weight, stackable, bless)
 	if cnItem.EnchantLevel > 0 {
 		newItem.EnchantLvl = int8(cnItem.EnchantLevel)
@@ -87,6 +108,15 @@ func (s *ShopCnSystem) SellCnItem(sess *net.Session, player *world.PlayerInfo, i
 		totalPrice = 2_000_000_000
 	}
 	price := int32(totalPrice)
+	if s.deps.ItemCreate == nil || s.deps.Items == nil || s.deps.Items.Get(handler.CnCurrencyItemID) == nil {
+		return
+	}
+	if player.Inv.FindByItemID(handler.CnCurrencyItemID) == nil &&
+		item.Stackable && item.Count > sellCount &&
+		player.Inv.Size() >= world.MaxInventorySize {
+		handler.SendServerMessage(sess, 263)
+		return
+	}
 
 	// 移除物品
 	if item.Stackable && item.Count > sellCount {
@@ -99,17 +129,5 @@ func (s *ShopCnSystem) SellCnItem(sess *net.Session, player *world.PlayerInfo, i
 		handler.SendRemoveInventoryItem(sess, item.ObjectID)
 	}
 
-	// 給予天寶幣
-	currencyInfo := s.deps.Items.Get(handler.CnCurrencyItemID)
-	currencyName := "天寶"
-	gfxID := int32(0)
-	weight := int32(0)
-	if currencyInfo != nil {
-		currencyName = currencyInfo.Name
-		gfxID = currencyInfo.InvGfx
-		weight = currencyInfo.Weight
-	}
-
-	coinItem := player.Inv.AddItem(handler.CnCurrencyItemID, price, currencyName, gfxID, weight, true, 0)
-	handler.SendAddItem(sess, coinItem, currencyInfo)
+	s.deps.ItemCreate.GiveItem(sess, player, handler.CnCurrencyItemID, price)
 }

@@ -48,7 +48,7 @@ func (s *SkillSystem) executeGroundTargetSkill(sess *net.Session, player *world.
 
 	switch skill.SkillID {
 	case skillLifeStream:
-		s.spawnGroundEffect(player, skill, lifeStreamNpcID, world.GroundEffectLifeStream, targetX, targetY)
+		s.spawnGroundEffectWithSkillID(player, skill, lifeStreamNpcID, world.GroundEffectLifeStream, targetX, targetY, 0)
 	case skillFireWall:
 		s.spawnFireWallEffects(player, skill, targetX, targetY)
 	case skillCubeIgnition:
@@ -94,25 +94,25 @@ func cubeEffectType(skillID int32) world.GroundEffectType {
 }
 
 func (s *SkillSystem) spawnFireWallEffects(player *world.PlayerInfo, skill *data.SkillInfo, targetX, targetY int32) {
-	heading := CalcHeading(player.X, player.Y, targetX, targetY)
-	dx := combatHeadingDX[heading]
-	dy := combatHeadingDY[heading]
-	x := player.X
-	y := player.Y
+	baseX := player.X
+	baseY := player.Y
 
 	for i := 0; i < 8; i++ {
 		if s.countOwnerFireWalls(player) >= 24 {
 			return
 		}
-		if s.deps.MapData != nil && !s.deps.MapData.IsPassableIgnoreOccupant(player.MapID, x, y, int(heading)) {
+		heading := CalcHeading(baseX, baseY, targetX, targetY)
+		if s.deps.MapData != nil && !s.deps.MapData.IsPassableIgnoreOccupant(player.MapID, baseX, baseY, int(heading)) {
 			return
 		}
-		x += dx
-		y += dy
+		x := baseX + combatHeadingDX[heading]
+		y := baseY + combatHeadingDY[heading]
 		if s.deps.World.HasGroundEffectAt(x, y, player.MapID, fireWallNpcID) {
 			continue
 		}
 		s.spawnGroundEffect(player, skill, fireWallNpcID, world.GroundEffectFireWall, x, y)
+		baseX = x
+		baseY = y
 	}
 }
 
@@ -127,6 +127,10 @@ func (s *SkillSystem) countOwnerFireWalls(player *world.PlayerInfo) int {
 }
 
 func (s *SkillSystem) spawnGroundEffect(player *world.PlayerInfo, skill *data.SkillInfo, npcID int32, typ world.GroundEffectType, x, y int32) {
+	s.spawnGroundEffectWithSkillID(player, skill, npcID, typ, x, y, skill.SkillID)
+}
+
+func (s *SkillSystem) spawnGroundEffectWithSkillID(player *world.PlayerInfo, skill *data.SkillInfo, npcID int32, typ world.GroundEffectType, x, y int32, effectSkillID int32) {
 	if s.deps.Npcs == nil {
 		return
 	}
@@ -136,7 +140,7 @@ func (s *SkillSystem) spawnGroundEffect(player *world.PlayerInfo, skill *data.Sk
 	}
 	effect := &world.GroundEffect{
 		ID:           world.NextGroundEffectID(),
-		SkillID:      skill.SkillID,
+		SkillID:      effectSkillID,
 		NpcID:        npcID,
 		GfxID:        tpl.GfxID,
 		Type:         typ,
@@ -149,6 +153,34 @@ func (s *SkillSystem) spawnGroundEffect(player *world.PlayerInfo, skill *data.Sk
 		OwnerIntel:   player.Intel,
 		OwnerClanID:  player.ClanID,
 		TicksLeft:    skill.BuffDuration * groundEffectTickSec,
+	}
+	if effect.TicksLeft <= 0 {
+		effect.TicksLeft = groundEffectTickSec
+	}
+	s.deps.World.AddGroundEffect(effect)
+	s.broadcastGroundEffect(effect)
+}
+
+func (s *SkillSystem) spawnGroundEffectFromNpc(caster *world.NpcInfo, skill *data.SkillInfo, npcID int32, typ world.GroundEffectType, x, y int32) {
+	if s.deps.Npcs == nil {
+		return
+	}
+	tpl := s.deps.Npcs.Get(npcID)
+	if tpl == nil {
+		return
+	}
+	effect := &world.GroundEffect{
+		ID:          world.NextGroundEffectID(),
+		SkillID:     skill.SkillID,
+		NpcID:       npcID,
+		GfxID:       tpl.GfxID,
+		Type:        typ,
+		X:           x,
+		Y:           y,
+		MapID:       caster.MapID,
+		OwnerCharID: caster.ID,
+		OwnerName:   caster.Name,
+		TicksLeft:   skill.BuffDuration * groundEffectTickSec,
 	}
 	if effect.TicksLeft <= 0 {
 		effect.TicksLeft = groundEffectTickSec

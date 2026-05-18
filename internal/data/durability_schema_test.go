@@ -30,6 +30,30 @@ npcs:
 	}
 }
 
+func TestNpcSchemaLoadsSubMagicSpeedLikeJava(t *testing.T) {
+	path := writeTempYAML(t, "npc_list.yaml", `
+npcs:
+  - npc_id: 990002
+    name: shock stun caster
+    impl: L1Monster
+    hp: 10
+    sub_magic_speed: 1600
+`)
+
+	table, err := LoadNpcTable(path)
+	if err != nil {
+		t.Fatalf("載入 NPC YAML 失敗: %v", err)
+	}
+
+	tmpl := table.Get(990002)
+	if tmpl == nil {
+		t.Fatal("找不到測試 NPC")
+	}
+	if tmpl.SubMagicSpeed != 1600 {
+		t.Fatalf("Java NpcTable 會載入 sub_magic_speed，SubMagicSpeed=%d want=1600", tmpl.SubMagicSpeed)
+	}
+}
+
 func TestDurabilitySchemaLoadsWeaponCanBeDamagedFlag(t *testing.T) {
 	weaponPath := writeTempYAML(t, "weapon_list.yaml", `
 weapons:

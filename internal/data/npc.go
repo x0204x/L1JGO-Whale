@@ -9,53 +9,75 @@ import (
 
 // NpcTemplate holds static data for an NPC type loaded from YAML.
 type NpcTemplate struct {
-	NpcID         int32  `yaml:"npc_id"`
-	Name          string `yaml:"name"`
-	NameID        string `yaml:"nameid"`
-	Impl          string `yaml:"impl"` // L1Monster, L1Merchant, L1Guard, etc.
-	GfxID         int32  `yaml:"gfx_id"`
-	Level         int16  `yaml:"level"`
-	HP            int32  `yaml:"hp"`
-	MP            int32  `yaml:"mp"`
-	AC            int16  `yaml:"ac"`
-	STR           int16  `yaml:"str"`
-	DEX           int16  `yaml:"dex"`
-	CON           int16  `yaml:"con"`
-	WIS           int16  `yaml:"wis"`
-	INT           int16  `yaml:"intel"`
-	MR            int16  `yaml:"mr"`
-	Exp           int32  `yaml:"exp"`
-	Lawful        int32  `yaml:"lawful"`
-	Size          string `yaml:"size"`
-	Ranged        int16  `yaml:"ranged"`
-	AtkSpeed      int16  `yaml:"atk_speed"`
-	PassiveSpeed  int16  `yaml:"passive_speed"`
-	Undead        bool   `yaml:"undead"`
-	Agro          bool   `yaml:"agro"`
-	Tameable      bool   `yaml:"tameable"`
-	Hard          bool   `yaml:"hard"`
-	CantResurrect bool   `yaml:"cant_resurrect"`
-	PoisonAtk     byte   `yaml:"poison_atk"` // 毒攻擊類型: 0=無, 1=傷害毒, 2=沉默毒, 4=麻痺毒
-	FireRes       int16  `yaml:"fire_res"`   // 火抗
-	WaterRes      int16  `yaml:"water_res"`  // 水抗
-	WindRes       int16  `yaml:"wind_res"`   // 風抗
-	EarthRes      int16  `yaml:"earth_res"`  // 地抗
-	LightSize     int16  `yaml:"light_size"` // 光源半徑（0=無光源）
+	NpcID          int32  `yaml:"npc_id"`
+	Name           string `yaml:"name"`
+	NameID         string `yaml:"nameid"`
+	Impl           string `yaml:"impl"` // L1Monster, L1Merchant, L1Guard, etc.
+	GfxID          int32  `yaml:"gfx_id"`
+	Level          int16  `yaml:"level"`
+	HP             int32  `yaml:"hp"`
+	MP             int32  `yaml:"mp"`
+	AC             int16  `yaml:"ac"`
+	STR            int16  `yaml:"str"`
+	DEX            int16  `yaml:"dex"`
+	CON            int16  `yaml:"con"`
+	WIS            int16  `yaml:"wis"`
+	INT            int16  `yaml:"intel"`
+	MR             int16  `yaml:"mr"`
+	Exp            int32  `yaml:"exp"`
+	Lawful         int32  `yaml:"lawful"`
+	Size           string `yaml:"size"`
+	Ranged         int16  `yaml:"ranged"`
+	AtkSpeed       int16  `yaml:"atk_speed"`
+	SubMagicSpeed  int16  `yaml:"sub_magic_speed"`
+	PassiveSpeed   int16  `yaml:"passive_speed"`
+	Undead         bool   `yaml:"undead"`
+	UndeadType     int16  `yaml:"undead_type"`
+	TurnUndeadable *bool  `yaml:"turn_undeadable"`
+	Agro           bool   `yaml:"agro"`
+	Tameable       bool   `yaml:"tameable"`
+	Hard           bool   `yaml:"hard"`
+	CantResurrect  bool   `yaml:"cant_resurrect"`
+	PoisonAtk      byte   `yaml:"poison_atk"` // 毒攻擊類型: 0=無, 1=傷害毒, 2=沉默毒, 4=麻痺毒
+	FireRes        int16  `yaml:"fire_res"`   // 火抗
+	WaterRes       int16  `yaml:"water_res"`  // 水抗
+	WindRes        int16  `yaml:"wind_res"`   // 風抗
+	EarthRes       int16  `yaml:"earth_res"`  // 地抗
+	WeakAttr       int16  `yaml:"weak_attr"`  // 害怕屬性 bitmask：1=地, 2=火, 4=水, 8=風
+	LightSize      int16  `yaml:"light_size"` // 光源半徑（0=無光源）
+}
+
+func (n *NpcTemplate) EffectiveTurnUndeadable() bool {
+	if n == nil {
+		return false
+	}
+	if n.TurnUndeadable != nil {
+		return *n.TurnUndeadable
+	}
+	return n.Undead
 }
 
 // SpawnEntry defines where and how many NPCs to spawn.
 type SpawnEntry struct {
-	NpcID        int32  `yaml:"npc_id"`
-	MapID        int16  `yaml:"map_id"`
-	X            int32  `yaml:"x"`
-	Y            int32  `yaml:"y"`
-	Count        int    `yaml:"count"`
-	RandomX      int32  `yaml:"randomx"`
-	RandomY      int32  `yaml:"randomy"`
-	Heading      int16  `yaml:"heading"`
-	RespawnDelay int    `yaml:"respawn_delay"` // seconds
-	MobGroupID   int32  `yaml:"mob_group_id"`  // 怪物群體 ID（0=無群體）
-	Spread       string `yaml:"spread"`        // "point"=固定座標 "area"=散佈（預設 area）
+	NpcID         int32  `yaml:"npc_id"`
+	MapID         int16  `yaml:"map_id"`
+	X             int32  `yaml:"x"`
+	Y             int32  `yaml:"y"`
+	Count         int    `yaml:"count"`
+	RandomX       int32  `yaml:"randomx"`
+	RandomY       int32  `yaml:"randomy"`
+	LocX1         int32  `yaml:"locx1"`
+	LocY1         int32  `yaml:"locy1"`
+	LocX2         int32  `yaml:"locx2"`
+	LocY2         int32  `yaml:"locy2"`
+	Heading       int16  `yaml:"heading"`
+	RespawnDelay  int    `yaml:"respawn_delay"` // seconds
+	MobGroupID    int32  `yaml:"mob_group_id"`  // 怪物群體 ID（0=無群體）
+	RespawnScreen bool   `yaml:"respawn_screen"`
+	MovementDist  int    `yaml:"movement_distance"`
+	Rest          bool   `yaml:"rest"`
+	AvoidPC       bool   `yaml:"avoid_pc"`
+	Spread        string `yaml:"spread"` // "point"=固定座標 "area"=散佈（預設 area）
 }
 
 type npcListFile struct {

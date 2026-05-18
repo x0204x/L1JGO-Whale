@@ -1,7 +1,6 @@
 package system
 
 import (
-	"math/rand"
 	"time"
 
 	coresys "github.com/l1jgo/server/internal/core/system"
@@ -55,22 +54,11 @@ func (s *NpcRespawnSystem) Update(_ time.Duration) {
 }
 
 func (s *NpcRespawnSystem) respawnNpc(npc *world.NpcInfo) {
-	// Find unoccupied spawn tile
-	spawnX, spawnY := npc.SpawnX, npc.SpawnY
-	if s.world.IsOccupied(spawnX, spawnY, npc.SpawnMapID, npc.ID) {
-		// Spiral search radius 1~3 for nearest empty tile
-		found := false
-		for r := int32(1); r <= 3 && !found; r++ {
-			for dx := -r; dx <= r && !found; dx++ {
-				for dy := -r; dy <= r && !found; dy++ {
-					tx, ty := spawnX+dx, spawnY+dy
-					if !s.world.IsOccupied(tx, ty, npc.SpawnMapID, npc.ID) {
-						spawnX, spawnY = tx, ty
-						found = true
-					}
-				}
-			}
-		}
+	rule := NpcSpawnRuleFromNpc(npc)
+	spawnX, spawnY, ok := FindNpcSpawnPoint(rule, s.world, s.maps, npc.ID, nil)
+	if !ok {
+		npc.RespawnTimer = 25
+		return
 	}
 
 	npc.Dead = false
@@ -79,6 +67,8 @@ func (s *NpcRespawnSystem) respawnNpc(npc *world.NpcInfo) {
 	npc.X = spawnX
 	npc.Y = spawnY
 	npc.MapID = npc.SpawnMapID
+	npc.SpawnX = spawnX
+	npc.SpawnY = spawnY
 	npc.AggroTarget = 0
 	npc.HateList = nil // 清空仇恨列表
 	npc.AttackTimer = 0
@@ -138,8 +128,19 @@ func (s *NpcRespawnSystem) respawnMobGroup(leader *world.NpcInfo, group *data.Mo
 			continue
 		}
 		for j := 0; j < minion.Count; j++ {
-			mx := leader.X + int32(rand.Intn(5)) - 2
-			my := leader.Y + int32(rand.Intn(5)) - 2
+			rule := NpcSpawnRule{
+				MapID: leader.MapID,
+				X:     leader.X,
+				Y:     leader.Y,
+				LocX1: leader.X - 2,
+				LocY1: leader.Y - 2,
+				LocX2: leader.X + 3,
+				LocY2: leader.Y + 3,
+			}
+			mx, my, ok := FindNpcSpawnPoint(rule, s.world, s.maps, 0, nil)
+			if !ok {
+				continue
+			}
 
 			mob := s.createMinion(mTmpl, mx, my, leader)
 			s.world.AddNpc(mob)
@@ -175,45 +176,50 @@ func (s *NpcRespawnSystem) createMinion(tmpl *data.NpcTemplate, x, y int32, lead
 		}
 	}
 	mob := &world.NpcInfo{
-		ID:            world.NextNpcID(),
-		NpcID:         tmpl.NpcID,
-		Impl:          tmpl.Impl,
-		GfxID:         tmpl.GfxID,
-		Name:          tmpl.Name,
-		NameID:        tmpl.NameID,
-		Level:         tmpl.Level,
-		X:             x,
-		Y:             y,
-		MapID:         leader.MapID,
-		Heading:       leader.Heading,
-		HP:            tmpl.HP,
-		MaxHP:         tmpl.HP,
-		MP:            tmpl.MP,
-		MaxMP:         tmpl.MP,
-		AC:            tmpl.AC,
-		STR:           tmpl.STR,
-		DEX:           tmpl.DEX,
-		Exp:           tmpl.Exp,
-		Lawful:        tmpl.Lawful,
-		Size:          tmpl.Size,
-		MR:            tmpl.MR,
-		Undead:        tmpl.Undead,
-		Hard:          tmpl.Hard,
-		CantResurrect: tmpl.CantResurrect,
-		Agro:          tmpl.Agro,
-		AtkDmg:        int32(tmpl.Level) + int32(tmpl.STR)/3,
-		Ranged:        tmpl.Ranged,
-		AtkSpeed:      atkSpeed,
-		MoveSpeed:     moveSpeed,
-		PoisonAtk:     tmpl.PoisonAtk,
-		FireRes:       tmpl.FireRes,
-		WaterRes:      tmpl.WaterRes,
-		WindRes:       tmpl.WindRes,
-		EarthRes:      tmpl.EarthRes,
-		SpawnX:        leader.SpawnX,
-		SpawnY:        leader.SpawnY,
-		SpawnMapID:    leader.SpawnMapID,
-		IsMinion:      true,
+		ID:                world.NextNpcID(),
+		NpcID:             tmpl.NpcID,
+		Impl:              tmpl.Impl,
+		GfxID:             tmpl.GfxID,
+		Name:              tmpl.Name,
+		NameID:            tmpl.NameID,
+		Level:             tmpl.Level,
+		X:                 x,
+		Y:                 y,
+		MapID:             leader.MapID,
+		Heading:           leader.Heading,
+		HP:                tmpl.HP,
+		MaxHP:             tmpl.HP,
+		MP:                tmpl.MP,
+		MaxMP:             tmpl.MP,
+		AC:                tmpl.AC,
+		STR:               tmpl.STR,
+		DEX:               tmpl.DEX,
+		Exp:               tmpl.Exp,
+		Lawful:            tmpl.Lawful,
+		Size:              tmpl.Size,
+		MR:                tmpl.MR,
+		Undead:            tmpl.Undead,
+		UndeadType:        tmpl.UndeadType,
+		TurnUndeadable:    tmpl.EffectiveTurnUndeadable(),
+		TurnUndeadableSet: true,
+		Hard:              tmpl.Hard,
+		CantResurrect:     tmpl.CantResurrect,
+		Agro:              tmpl.Agro,
+		AtkDmg:            int32(tmpl.Level) + int32(tmpl.STR)/3,
+		Ranged:            tmpl.Ranged,
+		AtkSpeed:          atkSpeed,
+		SubMagicSpeed:     tmpl.SubMagicSpeed,
+		MoveSpeed:         moveSpeed,
+		PoisonAtk:         tmpl.PoisonAtk,
+		FireRes:           tmpl.FireRes,
+		WaterRes:          tmpl.WaterRes,
+		WindRes:           tmpl.WindRes,
+		EarthRes:          tmpl.EarthRes,
+		WeakAttr:          tmpl.WeakAttr,
+		SpawnX:            leader.SpawnX,
+		SpawnY:            leader.SpawnY,
+		SpawnMapID:        leader.SpawnMapID,
+		IsMinion:          true,
 	}
 	return mob
 }

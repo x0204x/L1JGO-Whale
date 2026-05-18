@@ -104,6 +104,30 @@ func (s *GMCommandSystem) GiveItem(sess *net.Session, player *world.PlayerInfo, 
 	}
 
 	stackable := itemInfo.Stackable || itemID == world.AdenaItemID
+	if s.deps.ItemCreate != nil {
+		if stackable {
+			if _, ok := s.deps.ItemCreate.GiveItem(sess, player, itemID, count); !ok {
+				return
+			}
+			player.Dirty = true
+			return
+		}
+		if creator, ok := s.deps.ItemCreate.(interface {
+			GiveItemWithOptions(sess *net.Session, player *world.PlayerInfo, itemID, count int32, opts ItemCreateOptions) (*world.InvItem, bool)
+		}); ok {
+			opts := ItemCreateOptions{}
+			if enchant != 0 {
+				opts.EnchantLvl = enchant
+			}
+			for i := int32(0); i < count; i++ {
+				if _, ok := creator.GiveItemWithOptions(sess, player, itemID, 1, opts); !ok {
+					break
+				}
+				player.Dirty = true
+			}
+			return
+		}
+	}
 
 	if stackable {
 		existing := player.Inv.FindByItemID(itemID)
@@ -176,6 +200,10 @@ func (s *GMCommandSystem) BreakWeapon(player *world.PlayerInfo, amount int8) (st
 func (s *GMCommandSystem) GiveGold(sess *net.Session, player *world.PlayerInfo, amount int32) {
 	adenaInfo := s.deps.Items.Get(world.AdenaItemID)
 	if adenaInfo == nil {
+		return
+	}
+	if s.deps.ItemCreate != nil {
+		s.deps.ItemCreate.GiveItem(sess, player, world.AdenaItemID, amount)
 		return
 	}
 

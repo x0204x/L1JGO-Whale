@@ -10,8 +10,8 @@ import (
 // BuffIconInfo describes how to send a buff icon to the client.
 type BuffIconInfo struct {
 	SkillID int32
-	Type    string // "shield", "strup", "dexup", "aura", "invis", "wisdom", "blue_potion"
-	Param   byte   // icon sub-type (used by shield/strup/dexup)
+	Type    string // "shield", "strup", "dexup", "aura", "gfx", "invis", "wisdom", "blue_potion"
+	Param   byte   // icon sub-type or icon ID
 }
 
 // BuffIconTable maps skill ID to icon display info.

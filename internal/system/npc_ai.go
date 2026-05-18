@@ -21,6 +21,14 @@ type NpcAISystem struct {
 	deps  *handler.Deps
 }
 
+type npcShockStunApplier interface {
+	ApplyNpcShockStun(caster *world.NpcInfo, target *world.PlayerInfo, skill *data.SkillInfo, leverage int)
+}
+
+type npcAreaShockStunApplier interface {
+	ApplyNpcAreaShockStun(caster *world.NpcInfo, targets []*world.PlayerInfo)
+}
+
 func NewNpcAISystem(ws *world.State, deps *handler.Deps) *NpcAISystem {
 	return &NpcAISystem{world: ws, deps: deps}
 }
@@ -265,6 +273,10 @@ func (s *NpcAISystem) tickMonsterAI(npc *world.NpcInfo) {
 		case "summon":
 			s.executeNpcSummon(npc, cmd.SummonID, cmd.SummonMin, cmd.SummonMax, cmd.GfxID)
 			setNpcAtkCooldown(npc)
+		case "area_shock_stun":
+			if s.executeNpcAreaShockStun(npc, cmd.ActID) {
+				setNpcSubMagicCooldown(npc)
+			}
 		case "flee":
 			if target != nil {
 				npcFleeFrom(s.world, npc, target.X, target.Y, s.deps.MapData)
@@ -636,7 +648,7 @@ func (s *NpcAISystem) executeNpcSkill(npc *world.NpcInfo, target *world.PlayerIn
 
 	// Type 1 物理技能（leverage > 0）：不需查技能表，直接用 STR * leverage / 10 計算傷害
 	// Java 參考：L1MobSkillUse — type == 1 時使用 getStr() * leverage / 10
-	if leverage > 0 {
+	if leverage > 0 && skillID != 87 {
 		s.executeNpcPhysicalSkill(npc, target, actID, gfxID, leverage)
 		return
 	}
@@ -761,6 +773,19 @@ func (s *NpcAISystem) executeNpcSkill(npc *world.NpcInfo, target *world.PlayerIn
 		}
 	} else {
 		// 非傷害技能（debuff）：發送特效 + 套用 debuff 狀態
+		if skill.SkillID == 87 {
+			if applier, ok := s.deps.Skill.(npcShockStunApplier); ok {
+				shockSkill := *skill
+				if actID > 0 {
+					shockSkill.ActionID = actID
+				}
+				if gfxID > 0 {
+					shockSkill.CastGfx = int32(gfxID)
+				}
+				applier.ApplyNpcShockStun(npc, target, &shockSkill, leverage)
+				return
+			}
+		}
 		if gfx > 0 {
 			effData := handler.BuildSkillEffect(target.CharID, gfx)
 			handler.BroadcastToPlayers(nearby, effData)
@@ -770,6 +795,22 @@ func (s *NpcAISystem) executeNpcSkill(npc *world.NpcInfo, target *world.PlayerIn
 			s.deps.Skill.ApplyNpcDebuff(target, skill)
 		}
 	}
+}
+
+func (s *NpcAISystem) executeNpcAreaShockStun(npc *world.NpcInfo, actID int) bool {
+	if npc == nil || npc.MapID == 93 {
+		return false
+	}
+	actionID := actID
+	if actionID <= 0 {
+		actionID = 1
+	}
+	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	if applier, ok := s.deps.Skill.(npcAreaShockStunApplier); ok {
+		applier.ApplyNpcAreaShockStun(npc, nearby)
+	}
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(npc.ID, byte(actionID)))
+	return true
 }
 
 // executeNpcPhysicalSkill 處理 NPC type 1 物理技能（leverage 倍率傷害）。
@@ -955,43 +996,48 @@ func (s *NpcAISystem) executeNpcSummon(npc *world.NpcInfo, summonID int32, summo
 		}
 
 		summonNpc := &world.NpcInfo{
-			ID:           world.NextNpcID(),
-			NpcID:        tmpl.NpcID,
-			Impl:         tmpl.Impl,
-			GfxID:        tmpl.GfxID,
-			Name:         tmpl.Name,
-			NameID:       tmpl.NameID,
-			Level:        tmpl.Level,
-			X:            sx,
-			Y:            sy,
-			MapID:        npc.MapID,
-			HP:           tmpl.HP,
-			MaxHP:        tmpl.HP,
-			MP:           tmpl.MP,
-			MaxMP:        tmpl.MP,
-			AC:           tmpl.AC,
-			STR:          tmpl.STR,
-			DEX:          tmpl.DEX,
-			Exp:          tmpl.Exp,
-			Lawful:       tmpl.Lawful,
-			Size:         tmpl.Size,
-			MR:           tmpl.MR,
-			Undead:       tmpl.Undead,
-			Hard:         tmpl.Hard,
-			Agro:         tmpl.Agro,
-			AtkDmg:       int32(tmpl.Level) + int32(tmpl.STR)/3,
-			Ranged:       tmpl.Ranged,
-			AtkSpeed:     atkSpeed,
-			MoveSpeed:    moveSpeed,
-			PoisonAtk:    tmpl.PoisonAtk,
-			FireRes:      tmpl.FireRes,
-			WaterRes:     tmpl.WaterRes,
-			WindRes:      tmpl.WindRes,
-			EarthRes:     tmpl.EarthRes,
-			SpawnX:       sx,
-			SpawnY:       sy,
-			SpawnMapID:   npc.MapID,
-			RespawnDelay: 0, // 召喚怪物不重生
+			ID:                world.NextNpcID(),
+			NpcID:             tmpl.NpcID,
+			Impl:              tmpl.Impl,
+			GfxID:             tmpl.GfxID,
+			Name:              tmpl.Name,
+			NameID:            tmpl.NameID,
+			Level:             tmpl.Level,
+			X:                 sx,
+			Y:                 sy,
+			MapID:             npc.MapID,
+			HP:                tmpl.HP,
+			MaxHP:             tmpl.HP,
+			MP:                tmpl.MP,
+			MaxMP:             tmpl.MP,
+			AC:                tmpl.AC,
+			STR:               tmpl.STR,
+			DEX:               tmpl.DEX,
+			Exp:               tmpl.Exp,
+			Lawful:            tmpl.Lawful,
+			Size:              tmpl.Size,
+			MR:                tmpl.MR,
+			Undead:            tmpl.Undead,
+			UndeadType:        tmpl.UndeadType,
+			TurnUndeadable:    tmpl.EffectiveTurnUndeadable(),
+			TurnUndeadableSet: true,
+			Hard:              tmpl.Hard,
+			Agro:              tmpl.Agro,
+			AtkDmg:            int32(tmpl.Level) + int32(tmpl.STR)/3,
+			Ranged:            tmpl.Ranged,
+			AtkSpeed:          atkSpeed,
+			SubMagicSpeed:     tmpl.SubMagicSpeed,
+			MoveSpeed:         moveSpeed,
+			PoisonAtk:         tmpl.PoisonAtk,
+			FireRes:           tmpl.FireRes,
+			WaterRes:          tmpl.WaterRes,
+			WindRes:           tmpl.WindRes,
+			EarthRes:          tmpl.EarthRes,
+			WeakAttr:          tmpl.WeakAttr,
+			SpawnX:            sx,
+			SpawnY:            sy,
+			SpawnMapID:        npc.MapID,
+			RespawnDelay:      0, // 召喚怪物不重生
 		}
 
 		s.world.AddNpc(summonNpc)
@@ -1011,6 +1057,9 @@ func (s *NpcAISystem) executeNpcSummon(npc *world.NpcInfo, summonID int32, summo
 // npcMoveToward moves NPC 1 tile toward a target position.
 // If the direct path is blocked, tries two alternate side-step directions.
 func npcMoveToward(ws *world.State, npc *world.NpcInfo, tx, ty int32, maps *data.MapDataTable) {
+	if maps == nil {
+		return
+	}
 	dx := tx - npc.X
 	dy := ty - npc.Y
 
@@ -1049,7 +1098,7 @@ func npcMoveToward(ws *world.State, npc *world.NpcInfo, tx, ty int32, maps *data
 		}
 		h := calcNpcHeading(npc.X, npc.Y, c.x, c.y)
 
-		if maps != nil && !maps.IsPassable(npc.MapID, npc.X, npc.Y, int(h)) {
+		if !maps.IsPassable(npc.MapID, npc.X, npc.Y, int(h)) {
 			continue
 		}
 		occupant := ws.OccupantAt(c.x, c.y, npc.MapID)
@@ -1062,7 +1111,7 @@ func npcMoveToward(ws *world.State, npc *world.NpcInfo, tx, ty int32, maps *data
 	}
 	// All candidates blocked — last resort: pass through
 	h := calcNpcHeading(npc.X, npc.Y, mx, my)
-	if maps == nil || maps.IsPassableIgnoreOccupant(npc.MapID, npc.X, npc.Y, int(h)) {
+	if maps.IsPassableIgnoreOccupant(npc.MapID, npc.X, npc.Y, int(h)) {
 		npcExecuteMove(ws, npc, mx, my, h, maps)
 	}
 }
@@ -1071,10 +1120,11 @@ func npcMoveToward(ws *world.State, npc *world.NpcInfo, tx, ty int32, maps *data
 func npcExecuteMove(ws *world.State, npc *world.NpcInfo, moveX, moveY int32, heading int16, maps *data.MapDataTable) {
 	oldX, oldY := npc.X, npc.Y
 
-	if maps != nil {
-		maps.SetImpassable(npc.MapID, oldX, oldY, false)
-		maps.SetImpassable(npc.MapID, moveX, moveY, true)
+	if maps == nil || !maps.IsPassableIgnoreOccupant(npc.MapID, oldX, oldY, int(heading)) {
+		return
 	}
+	maps.SetImpassable(npc.MapID, oldX, oldY, false)
+	maps.SetImpassable(npc.MapID, moveX, moveY, true)
 
 	ws.UpdateNpcPosition(npc.ID, moveX, moveY, heading)
 
@@ -1189,6 +1239,18 @@ func setNpcAtkCooldown(npc *world.NpcInfo) {
 		}
 	}
 	npc.AttackTimer = atkCooldown
+}
+
+func setNpcSubMagicCooldown(npc *world.NpcInfo) {
+	if npc.SubMagicSpeed <= 0 {
+		setNpcAtkCooldown(npc)
+		return
+	}
+	cooldown := int(npc.SubMagicSpeed) / 200
+	if cooldown < 3 {
+		cooldown = 3
+	}
+	npc.AttackTimer = cooldown
 }
 
 func chebyshev32(x1, y1, x2, y2 int32) int32 {

@@ -12,6 +12,7 @@ const (
 	GroundEffectCubeShock    GroundEffectType = 5
 	GroundEffectCubeBalance  GroundEffectType = 6
 	GroundEffectTomb         GroundEffectType = 7
+	GroundEffectShockStun    GroundEffectType = 8
 )
 
 const (

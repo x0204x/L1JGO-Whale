@@ -1,10 +1,13 @@
 package system
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/l1jgo/server/internal/handler"
+	"github.com/l1jgo/server/internal/persist"
 	"github.com/l1jgo/server/internal/world"
+	"go.uber.org/zap"
 )
 
 // PrivateShopSystem 處理個人商店交易邏輯。
@@ -119,6 +122,10 @@ func (s *PrivateShopSystem) ExecuteBuy(buyer *world.PlayerInfo, shopPlayer *worl
 			break
 		}
 
+		if !s.writePrivateShopWAL(shopPlayer, buyer, buyer, shopPlayer, item, count, price) {
+			return
+		}
+
 		// 執行物品轉移：賣方 → 買方
 		s.TransferItem(shopPlayer, buyer, item, count)
 
@@ -216,6 +223,10 @@ func (s *PrivateShopSystem) ExecuteSell(seller *world.PlayerInfo, shopPlayer *wo
 			break
 		}
 
+		if !s.writePrivateShopWAL(seller, shopPlayer, shopPlayer, seller, item, count, price) {
+			return
+		}
+
 		// 執行物品轉移：賣方（玩家）→ 商店玩家
 		s.TransferItem(seller, shopPlayer, item, count)
 
@@ -240,11 +251,49 @@ func (s *PrivateShopSystem) ExecuteSell(seller *world.PlayerInfo, shopPlayer *wo
 	}
 }
 
+func (s *PrivateShopSystem) writePrivateShopWAL(itemFrom, itemTo, goldFrom, goldTo *world.PlayerInfo, item *world.InvItem, count int32, price int32) bool {
+	if s.deps.WALRepo == nil {
+		return true
+	}
+	entries := buildPrivateShopWALEntries(itemFrom, itemTo, goldFrom, goldTo, item, count, price)
+	if len(entries) == 0 {
+		return true
+	}
+	if err := s.deps.WALRepo.WriteWAL(context.Background(), entries); err != nil {
+		s.deps.Log.Error("個人商店 WAL 寫入失敗", zap.Error(err))
+		return false
+	}
+	return true
+}
+
+func buildPrivateShopWALEntries(itemFrom, itemTo, goldFrom, goldTo *world.PlayerInfo, item *world.InvItem, count int32, price int32) []persist.WALEntry {
+	return []persist.WALEntry{
+		{
+			TxType:     "private_shop",
+			FromChar:   itemFrom.CharID,
+			ToChar:     itemTo.CharID,
+			ItemID:     tradeWALItemID(item),
+			Count:      count,
+			EnchantLvl: int16(item.EnchantLvl),
+		},
+		{
+			TxType:     "private_shop",
+			FromChar:   goldFrom.CharID,
+			ToChar:     goldTo.CharID,
+			ItemID:     world.AdenaItemID,
+			GoldAmount: int64(price),
+		},
+	}
+}
+
 // TransferItem 從來源玩家背包移動物品到目標玩家背包。
 func (s *PrivateShopSystem) TransferItem(from, to *world.PlayerInfo, item *world.InvItem, count int32) {
 	info := s.deps.Items.Get(item.ItemID)
 
 	if item.Stackable && item.Count > count {
+		itemSnapshot := *item
+		itemSnapshot.Count = count
+
 		// 可堆疊物品：扣減來源數量 + 更新顯示
 		item.Count -= count
 		from.Dirty = true
@@ -252,6 +301,7 @@ func (s *PrivateShopSystem) TransferItem(from, to *world.PlayerInfo, item *world
 
 		// 目標：增加數量或新增
 		destItem := to.Inv.AddItem(item.ItemID, count, item.Name, item.InvGfx, item.Weight, true, item.Bless)
+		copyInventoryItemState(destItem, &itemSnapshot)
 		to.Dirty = true
 		handler.SendAddItem(to.Session, destItem, info)
 	} else {
@@ -261,13 +311,12 @@ func (s *PrivateShopSystem) TransferItem(from, to *world.PlayerInfo, item *world
 		handler.SendRemoveInventoryItem(from.Session, item.ObjectID)
 
 		// 目標：新增物品（保留原有屬性）
-		newItem := to.Inv.AddItemWithID(0, item.ItemID, count, item.Name, item.InvGfx, item.Weight, item.Stackable, item.Bless)
-		newItem.EnchantLvl = item.EnchantLvl
-		newItem.Identified = item.Identified
-		newItem.UseType = item.UseType
-		newItem.AttrEnchantKind = item.AttrEnchantKind
-		newItem.AttrEnchantLevel = item.AttrEnchantLevel
-		newItem.Durability = item.Durability
+		objID := int32(0)
+		if !item.Stackable {
+			objID = item.ObjectID
+		}
+		newItem := to.Inv.AddItemWithID(objID, item.ItemID, count, item.Name, item.InvGfx, item.Weight, item.Stackable, item.Bless)
+		copyInventoryItemState(newItem, item)
 		to.Dirty = true
 		handler.SendAddItem(to.Session, newItem, info)
 	}

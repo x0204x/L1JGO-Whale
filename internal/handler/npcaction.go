@@ -71,6 +71,19 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 		return
 	}
 
+	if objID == player.CharID {
+		switch strings.ToLower(action) {
+		case "teleport_open":
+			player.NoAskMassTeleport = false
+			sendNormalChat(sess, 0, "\\aD您已開啟了\\aI集體傳送術的詢問！")
+			return
+		case "teleport_close":
+			player.NoAskMassTeleport = true
+			sendNormalChat(sess, 0, "\\aG您已關閉了\\aE集體傳送術的詢問！")
+			return
+		}
+	}
+
 	npc := deps.World.GetNpc(objID)
 	if npc == nil {
 		// Not an NPC — check for S_Message_YN (yes/no dialog) response
@@ -557,6 +570,7 @@ func handleTeleport(sess *net.Session, player *world.PlayerInfo, npcID int32, ac
 //  5. S_OwnCharPack — self character at new position (live player data)
 //  6. updateObject equivalent — send nearby players, NPCs, ground items to self
 //  7. S_CharVisualUpdate — weapon/poly visual fix (LAST per Java)
+//
 // TeleportPlayer 處理完整傳送流程。Exported for system package usage.
 func TeleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, mapID, heading int16, deps *Deps) {
 	teleportPlayer(sess, player, x, y, mapID, heading, deps)
@@ -793,13 +807,40 @@ func handleYesNoResponse(sess *net.Session, player *world.PlayerInfo, accepted b
 	case 252: // Trade confirmation
 		handleTradeYesNo(sess, player, data, accepted, deps)
 	case 729: // Call Clan（呼喚盟友）— 玩家接受盟主呼喚後傳送到盟主位置
+		handleCallClanYesNo(sess, player, data, accepted, deps)
+	case 748: // Mass Teleport（集體傳送術）— 接受後傳送到施法時暫存座標
 		if accepted {
-			caller := deps.World.GetByCharID(data)
-			if caller != nil && caller.ClanID == player.ClanID {
-				TeleportPlayer(sess, player, caller.X, caller.Y, caller.MapID, 5, deps)
-			}
+			TeleportPlayer(sess, player, player.TeleportX, player.TeleportY, player.TeleportMapID, player.TeleportHeading, deps)
 		}
 	}
+}
+
+func handleCallClanYesNo(sess *net.Session, player *world.PlayerInfo, callerID int32, accepted bool, deps *Deps) {
+	if !accepted || player.Paralyzed || player.Sleeped || deps.World == nil {
+		return
+	}
+	caller := deps.World.GetByCharID(callerID)
+	if caller != nil && caller.ClanID == player.ClanID {
+		TeleportPlayer(sess, player, caller.X, caller.Y, caller.MapID, 5, deps)
+	}
+}
+
+func handleAllianceCallClanYesNo(sess *net.Session, player *world.PlayerInfo, callerID int32, accepted bool, deps *Deps) {
+	if !accepted || player.Paralyzed || player.Sleeped || deps.World == nil {
+		return
+	}
+	caller := deps.World.GetByCharID(callerID)
+	if caller != nil && sameAlliance(player, caller, deps) {
+		TeleportPlayer(sess, player, caller.X, caller.Y, caller.MapID, 5, deps)
+	}
+}
+
+func sameAlliance(player, caller *world.PlayerInfo, deps *Deps) bool {
+	if player.ClanID == 0 || caller.ClanID == 0 || deps.Alliances == nil {
+		return false
+	}
+	alliance := deps.Alliances.GetAllianceByClan(player.ClanID)
+	return alliance != nil && alliance.Contains(caller.ClanID)
 }
 
 // ========================================================================

@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	innKeyItemID    int32         = 40312
-	innPricePerKey  int32         = 300
-	innRentalDurSys               = 4 * time.Hour
+	innKeyItemID    int32 = 40312
+	innPricePerKey  int32 = 300
+	innRentalDurSys       = 4 * time.Hour
 )
 
 // InnSystem 處理旅館租房/退租邏輯。
@@ -79,8 +79,7 @@ func (s *InnSystem) ReturnRoom(sess *net.Session, player *world.PlayerInfo, npcO
 				adena.Count += price
 				handler.SendItemCountUpdate(sess, adena)
 			} else {
-				adena = player.Inv.AddItem(world.AdenaItemID, price, "金幣", 5, 0, true, 0)
-				handler.SendAddItem(sess, adena, nil)
+				s.giveInnItem(sess, player, world.AdenaItemID, price)
 			}
 		}
 		player.Dirty = true
@@ -136,11 +135,10 @@ func (s *InnSystem) RentRoom(sess *net.Session, player *world.PlayerInfo, npcObj
 		return
 	}
 
-	keyItem := player.Inv.AddItem(innKeyItemID, amount, keyInfo.Name, keyInfo.InvGfx, keyInfo.Weight, false, 0)
-	keyItem.InnKeyID = keyItem.ObjectID
-	keyItem.InnNpcID = npcID
-	keyItem.InnHall = player.PendingInnHall
-	keyItem.InnDueTime = dueUnix
+	keyItem, ok := s.giveInnKey(sess, player, amount, npcID, player.PendingInnHall, dueUnix)
+	if !ok {
+		return
+	}
 
 	room.KeyID = keyItem.InnKeyID
 	room.LodgerID = player.CharID
@@ -152,7 +150,6 @@ func (s *InnSystem) RentRoom(sess *net.Session, player *world.PlayerInfo, npcObj
 
 	adena.Count -= totalCost
 	handler.SendItemCountUpdate(sess, adena)
-	handler.SendAddItem(sess, keyItem, keyInfo)
 	handler.SendWeightUpdate(sess, player)
 	player.Dirty = true
 
@@ -176,4 +173,46 @@ func (s *InnSystem) RentRoom(sess *net.Session, player *world.PlayerInfo, npcObj
 		zap.Int32("keys", amount),
 		zap.Int32("cost", totalCost),
 	)
+}
+
+func (s *InnSystem) giveInnItem(sess *net.Session, player *world.PlayerInfo, itemID, count int32) (*world.InvItem, bool) {
+	if s.deps.ItemCreate != nil {
+		return s.deps.ItemCreate.GiveItem(sess, player, itemID, count)
+	}
+	info := s.deps.Items.Get(itemID)
+	if info == nil {
+		return nil, false
+	}
+	existing := player.Inv.FindByItemID(itemID)
+	wasExisting := existing != nil && info.Stackable
+	item := player.Inv.AddItem(itemID, count, info.Name, info.InvGfx, info.Weight, info.Stackable, byte(info.Bless))
+	applyItemTemplate(item, info)
+	if wasExisting {
+		handler.SendItemCountUpdate(sess, item)
+	} else {
+		handler.SendAddItem(sess, item, info)
+	}
+	handler.SendWeightUpdate(sess, player)
+	return item, true
+}
+
+func (s *InnSystem) giveInnKey(sess *net.Session, player *world.PlayerInfo, amount, npcID int32, hall bool, dueUnix int64) (*world.InvItem, bool) {
+	applyKey := func(item *world.InvItem) {
+		item.InnKeyID = item.ObjectID
+		item.InnNpcID = npcID
+		item.InnHall = hall
+		item.InnDueTime = dueUnix
+	}
+	if creator, ok := s.deps.ItemCreate.(craftItemCreatorWithOptions); ok {
+		return creator.GiveItemWithOptions(sess, player, innKeyItemID, amount, ItemCreateOptions{
+			SingleItem: true,
+			BeforeSend: applyKey,
+		})
+	}
+	item, ok := s.giveInnItem(sess, player, innKeyItemID, amount)
+	if !ok {
+		return nil, false
+	}
+	applyKey(item)
+	return item, true
 }

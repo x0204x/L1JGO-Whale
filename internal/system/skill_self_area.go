@@ -21,6 +21,9 @@ func (s *SkillSystem) executeSelfAreaAttackSkill(sess *net.Session, player *worl
 		if chebyshevDist(player.X, player.Y, target.X, target.Y) > int32(skill.Area) {
 			continue
 		}
+		if !s.canSkillReachTarget(player, skill, target.MapID, target.X, target.Y) {
+			continue
+		}
 		if s.tryCounterMagic(target, skill.SkillID) {
 			continue
 		}
@@ -36,6 +39,9 @@ func (s *SkillSystem) executeSelfAreaAttackSkill(sess *net.Session, player *worl
 			continue
 		}
 		if chebyshevDist(player.X, player.Y, npc.X, npc.Y) > int32(skill.Area) {
+			continue
+		}
+		if !s.canSkillReachTarget(player, skill, npc.MapID, npc.X, npc.Y) {
 			continue
 		}
 		dmg := s.calcSelfAreaSkillNpcDamage(player, npc, skill)

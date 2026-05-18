@@ -18,42 +18,47 @@ func NextNpcID() int32 {
 // NpcInfo holds runtime data for an NPC currently in-world.
 // Accessed only from the game loop goroutine — no locks.
 type NpcInfo struct {
-	ID            int32  // unique object ID (from NextNpcID)
-	NpcID         int32  // template ID
-	Impl          string // L1Monster, L1Merchant, L1Guard, etc.
-	GfxID         int32
-	LightSize     byte // 光源半徑（路燈 NPC 用，0=無光源）
-	Name          string
-	NameID        string // client string table key (e.g. "$936")
-	Level         int16
-	X             int32
-	Y             int32
-	MapID         int16
-	Heading       int16
-	HP            int32
-	MaxHP         int32
-	MP            int32
-	MaxMP         int32
-	AC            int16
-	STR           int16
-	DEX           int16
-	Exp           int32 // exp reward on kill
-	Lawful        int32
-	Size          string // "small" or "large"
-	MR            int16
-	Undead        bool
-	Hard          bool
-	CantResurrect bool
-	Agro          bool  // true = aggressive, attacks players on sight
-	AtkDmg        int32 // damage per attack (simplified: Level + STR/3)
-	Ranged        int16 // attack range (1 = melee, >1 = ranged attacker)
-	AtkSpeed      int16 // attack animation speed (ms, 0 = default)
-	MoveSpeed     int16 // passive/move speed (ms, 0 = default)
-	PoisonAtk     byte  // 怪物施毒能力（從模板載入）: 0=無, 1=傷害毒, 2=沉默毒, 4=麻痺毒
-	FireRes       int16 // 火抗
-	WaterRes      int16 // 水抗
-	WindRes       int16 // 風抗
-	EarthRes      int16 // 地抗
+	ID                int32  // unique object ID (from NextNpcID)
+	NpcID             int32  // template ID
+	Impl              string // L1Monster, L1Merchant, L1Guard, etc.
+	GfxID             int32
+	LightSize         byte // 光源半徑（路燈 NPC 用，0=無光源）
+	Name              string
+	NameID            string // client string table key (e.g. "$936")
+	Level             int16
+	X                 int32
+	Y                 int32
+	MapID             int16
+	Heading           int16
+	HP                int32
+	MaxHP             int32
+	MP                int32
+	MaxMP             int32
+	AC                int16
+	STR               int16
+	DEX               int16
+	Exp               int32 // exp reward on kill
+	Lawful            int32
+	Size              string // "small" or "large"
+	MR                int16
+	Undead            bool
+	UndeadType        int16
+	TurnUndeadable    bool
+	TurnUndeadableSet bool
+	Hard              bool
+	CantResurrect     bool
+	Agro              bool  // true = aggressive, attacks players on sight
+	AtkDmg            int32 // damage per attack (simplified: Level + STR/3)
+	Ranged            int16 // attack range (1 = melee, >1 = ranged attacker)
+	AtkSpeed          int16 // attack animation speed (ms, 0 = default)
+	SubMagicSpeed     int16 // non-directional magic animation delay (ms, 0 = fallback)
+	MoveSpeed         int16 // passive/move speed (ms, 0 = default)
+	PoisonAtk         byte  // 怪物施毒能力（從模板載入）: 0=無, 1=傷害毒, 2=沉默毒, 4=麻痺毒
+	FireRes           int16 // 火抗
+	WaterRes          int16 // 水抗
+	WindRes           int16 // 風抗
+	EarthRes          int16 // 地抗
+	WeakAttr          int16 // 害怕屬性 bitmask：1=地, 2=火, 4=水, 8=風
 
 	// Spawn data for respawning
 	SpawnX       int32
@@ -61,6 +66,17 @@ type NpcInfo struct {
 	SpawnMapID   int16
 	RespawnDelay int   // seconds
 	MobGroupID   int32 // 群體 ID（隊長記憶，重生時重新建立群體）
+	SpawnBaseX   int32 // spawnlist 原始中心 X
+	SpawnBaseY   int32 // spawnlist 原始中心 Y
+	SpawnCount   int
+	SpawnRandomX int32
+	SpawnRandomY int32
+	SpawnLocX1   int32
+	SpawnLocY1   int32
+	SpawnLocX2   int32
+	SpawnLocY2   int32
+	SpawnAvoidPC bool
+	SpawnScreen  bool
 
 	// State
 	Dead         bool

@@ -76,15 +76,15 @@ func (e *Engine) loadDir(dir string) error {
 
 // CombatContext holds pre-packed data for a melee attack calculation.
 type CombatContext struct {
-	AttackerLevel  int
-	AttackerSTR    int
-	AttackerDEX    int
-	AttackerWeapon int // max weapon damage (0 = fist = 4)
-	AttackerHitMod int // equipment hit modifier
-	AttackerDmgMod int // equipment damage modifier
-	TargetAC       int
-	TargetLevel    int
-	TargetMR       int
+	AttackerLevel   int
+	AttackerSTR     int
+	AttackerDEX     int
+	AttackerWeapon  int // max weapon damage (0 = fist = 4)
+	AttackerHitMod  int // equipment hit modifier
+	AttackerDmgMod  int // equipment damage modifier
+	TargetAC        int
+	TargetLevel     int
+	TargetMR        int
 	TargetClassType int // 目標職業（-1=NPC, 0-7=玩家職業）— AC 防禦加成用
 }
 
@@ -222,15 +222,15 @@ type SkillDamageContext struct {
 	Attr            int // element: 0=none, 1=earth, 2=fire, 4=water, 8=wind, 16=light
 
 	// Attacker
-	AttackerLevel  int
-	AttackerSTR    int
-	AttackerDEX    int
-	AttackerINT    int
-	AttackerWIS    int
-	AttackerSP     int
-	AttackerDmgMod int
-	AttackerHitMod int
-	AttackerWeapon int // weapon max damage (0 = fist)
+	AttackerLevel      int
+	AttackerSTR        int
+	AttackerDEX        int
+	AttackerINT        int
+	AttackerWIS        int
+	AttackerSP         int
+	AttackerDmgMod     int
+	AttackerHitMod     int
+	AttackerWeapon     int // weapon max damage (0 = fist)
 	AttackerHP         int
 	AttackerMaxHP      int
 	AttackerMagicLevel int // 職業魔法等級（get_magic_level 計算結果）
@@ -342,24 +342,24 @@ func (e *Engine) ExpForLevel(level int) int {
 
 // BuffEffect holds stat deltas and flags returned by Lua get_buff_effect().
 type BuffEffect struct {
-	AC, Str, Dex, Con, Wis, Intel, Cha int
-	MaxHP, MaxMP                        int
-	HitMod, DmgMod                      int
-	SP, MR                              int
-	HPR, MPR                            int
-	BowHit, BowDmg                      int
-	Dodge                               int
+	AC, Str, Dex, Con, Wis, Intel, Cha   int
+	MaxHP, MaxMP                         int
+	HitMod, DmgMod                       int
+	SP, MR                               int
+	HPR, MPR                             int
+	BowHit, BowDmg                       int
+	Dodge                                int
 	FireRes, WaterRes, WindRes, EarthRes int
-	RegistSustain, RegistFreeze         int
-	RegistStun, RegistStone             int
-	RegistBlind, RegistSleep            int
-	MagicCritical                       int
-	Exclusions                          []int
-	MoveSpeed                           int  // 1=haste, 2=slow
-	BraveSpeed                          int  // 4=brave/holy walk
-	Invisible                           bool
-	Paralyzed                           bool
-	Sleeped                             bool
+	RegistSustain, RegistFreeze          int
+	RegistStun, RegistStone              int
+	RegistBlind, RegistSleep             int
+	MagicCritical                        int
+	Exclusions                           []int
+	MoveSpeed                            int // 1=haste, 2=slow
+	BraveSpeed                           int // 4=brave/holy walk
+	Invisible                            bool
+	Paralyzed                            bool
+	Sleeped                              bool
 }
 
 // GetBuffEffect calls Lua get_buff_effect(skill_id, target_level).
@@ -392,23 +392,23 @@ func (e *Engine) GetBuffEffect(skillID, targetLevel int) *BuffEffect {
 	}
 
 	eff := &BuffEffect{
-		AC:         lInt(rt, "ac"),
-		Str:        lInt(rt, "str"),
-		Dex:        lInt(rt, "dex"),
-		Con:        lInt(rt, "con"),
-		Wis:        lInt(rt, "wis"),
-		Intel:      lInt(rt, "intel"),
-		Cha:        lInt(rt, "cha"),
-		MaxHP:      lInt(rt, "max_hp"),
-		MaxMP:      lInt(rt, "max_mp"),
-		HitMod:     lInt(rt, "hit_mod"),
-		DmgMod:     lInt(rt, "dmg_mod"),
-		SP:         lInt(rt, "sp"),
-		MR:         lInt(rt, "mr"),
-		HPR:        lInt(rt, "hpr"),
-		MPR:        lInt(rt, "mpr"),
-		BowHit:     lInt(rt, "bow_hit"),
-		BowDmg:     lInt(rt, "bow_dmg"),
+		AC:            lInt(rt, "ac"),
+		Str:           lInt(rt, "str"),
+		Dex:           lInt(rt, "dex"),
+		Con:           lInt(rt, "con"),
+		Wis:           lInt(rt, "wis"),
+		Intel:         lInt(rt, "intel"),
+		Cha:           lInt(rt, "cha"),
+		MaxHP:         lInt(rt, "max_hp"),
+		MaxMP:         lInt(rt, "max_mp"),
+		HitMod:        lInt(rt, "hit_mod"),
+		DmgMod:        lInt(rt, "dmg_mod"),
+		SP:            lInt(rt, "sp"),
+		MR:            lInt(rt, "mr"),
+		HPR:           lInt(rt, "hpr"),
+		MPR:           lInt(rt, "mpr"),
+		BowHit:        lInt(rt, "bow_hit"),
+		BowDmg:        lInt(rt, "bow_dmg"),
 		Dodge:         lInt(rt, "dodge"),
 		RegistSustain: lInt(rt, "regist_sustain"),
 		RegistFreeze:  lInt(rt, "regist_freeze"),
@@ -417,15 +417,15 @@ func (e *Engine) GetBuffEffect(skillID, targetLevel int) *BuffEffect {
 		RegistBlind:   lInt(rt, "regist_blind"),
 		RegistSleep:   lInt(rt, "regist_sleep"),
 		MagicCritical: lInt(rt, "magic_critical"),
-		FireRes:    lInt(rt, "fire_res"),
-		WaterRes:   lInt(rt, "water_res"),
-		WindRes:    lInt(rt, "wind_res"),
-		EarthRes:   lInt(rt, "earth_res"),
-		MoveSpeed:  lInt(rt, "move_speed"),
-		BraveSpeed: lInt(rt, "brave_speed"),
-		Invisible:  rt.RawGetString("invisible") == lua.LTrue,
-		Paralyzed:  rt.RawGetString("paralyzed") == lua.LTrue,
-		Sleeped:    rt.RawGetString("sleeped") == lua.LTrue,
+		FireRes:       lInt(rt, "fire_res"),
+		WaterRes:      lInt(rt, "water_res"),
+		WindRes:       lInt(rt, "wind_res"),
+		EarthRes:      lInt(rt, "earth_res"),
+		MoveSpeed:     lInt(rt, "move_speed"),
+		BraveSpeed:    lInt(rt, "brave_speed"),
+		Invisible:     rt.RawGetString("invisible") == lua.LTrue,
+		Paralyzed:     rt.RawGetString("paralyzed") == lua.LTrue,
+		Sleeped:       rt.RawGetString("sleeped") == lua.LTrue,
 	}
 
 	// Parse exclusions array
@@ -541,10 +541,10 @@ func (e *Engine) CalcHeal(damageValue, damageDice, damageDiceCount, intel, sp in
 // CharCreateData holds class creation data from Lua.
 type CharCreateData struct {
 	BaseSTR, BaseDEX, BaseCON, BaseWIS, BaseCHA, BaseINT int
-	BonusAmount                                           int
-	BaseHP, BaseMP                                        int
-	MaleGFX, FemaleGFX                                    int
-	InitialSpells                                         []int
+	BonusAmount                                          int
+	BaseHP, BaseMP                                       int
+	MaleGFX, FemaleGFX                                   int
+	InitialSpells                                        []int
 }
 
 // GetCharCreateData calls Lua get_char_create_data(class_type).
@@ -613,9 +613,9 @@ func (e *Engine) CalcInitMP(classType, wis int) int {
 
 // ResurrectResult holds resurrection effect data.
 type ResurrectResult struct {
-	HPRatio  float64 // 0.0-1.0 ratio of MaxHP to restore, or 0 for fixed amount
-	MPRatio  float64
-	FixedHP  int     // fixed HP amount (for skill 18: caster's level)
+	HPRatio float64 // 0.0-1.0 ratio of MaxHP to restore, or 0 for fixed amount
+	MPRatio float64
+	FixedHP int // fixed HP amount (for skill 18: caster's level)
 }
 
 // GetResurrectEffect calls Lua get_resurrect_effect(skill_id).
@@ -852,7 +852,7 @@ func (e *Engine) CalcEnchant(ctx EnchantContext) EnchantResult {
 // MobSkillEntry holds a single mob skill passed into AI context.
 type MobSkillEntry struct {
 	SkillID       int
-	Type          int // 1=物理, 2=魔法, 3=召喚
+	Type          int // 1=物理, 2=魔法, 3=召喚, 5=範圍衝暈
 	MpConsume     int
 	TriggerRandom int
 	TriggerHP     int
@@ -868,25 +868,25 @@ type MobSkillEntry struct {
 
 // AIContext holds pre-packed data for NPC AI decisions.
 type AIContext struct {
-	NpcID      int
-	X, Y       int
-	MapID      int
-	HP, MaxHP  int
-	MP, MaxMP  int
-	Level      int
-	AtkDmg     int
-	AtkSpeed   int // ms
-	MoveSpeed  int // ms
-	Ranged     int // 1=melee, >1=ranged range
-	Agro       bool
+	NpcID     int
+	X, Y      int
+	MapID     int
+	HP, MaxHP int
+	MP, MaxMP int
+	Level     int
+	AtkDmg    int
+	AtkSpeed  int // ms
+	MoveSpeed int // ms
+	Ranged    int // 1=melee, >1=ranged range
+	Agro      bool
 
 	// Target (detected by Go; 0 = no target)
-	TargetID     int
-	TargetX      int
-	TargetY      int
-	TargetDist   int // Chebyshev distance
-	TargetAC     int
-	TargetLevel  int
+	TargetID    int
+	TargetX     int
+	TargetY     int
+	TargetDist  int // Chebyshev distance
+	TargetAC    int
+	TargetLevel int
 
 	// Cooldown state
 	CanAttack bool
@@ -902,7 +902,7 @@ type AIContext struct {
 
 // AICommand is a single action returned by Lua AI.
 type AICommand struct {
-	Type         string // "attack", "ranged_attack", "skill", "move_toward", "wander", "lose_aggro", "idle", "flee", "summon"
+	Type         string // "attack", "ranged_attack", "skill", "move_toward", "wander", "lose_aggro", "idle", "flee", "summon", "area_shock_stun"
 	SkillID      int
 	ActID        int
 	GfxID        int   // mob-specific spell effect override (0 = use skill's CastGfx)
@@ -1328,13 +1328,13 @@ func (e *Engine) GetHPRegenInterval(level, classType int) int {
 
 // HPRegenContext holds data for HP regen calculation.
 type HPRegenContext struct {
-	Level               int
-	Con                 int
-	HPR                 int
-	Food                int
-	WeightPct           int
-	HasExoticVitalize   bool
-	HasAdditionalFire   bool
+	Level             int
+	Con               int
+	HPR               int
+	Food              int
+	WeightPct         int
+	HasExoticVitalize bool
+	HasAdditionalFire bool
 }
 
 // CalcHPRegenAmount calls Lua calc_hp_regen_amount(ctx).
@@ -1383,13 +1383,13 @@ func (e *Engine) CalcHPRegenAmount(ctx HPRegenContext) int {
 
 // MPRegenContext holds data for MP regen calculation.
 type MPRegenContext struct {
-	Wis                 int
-	MPR                 int
-	Food                int
-	WeightPct           int
-	HasExoticVitalize   bool
-	HasAdditionalFire   bool
-	HasBluePotion       bool
+	Wis               int
+	MPR               int
+	Food              int
+	WeightPct         int
+	HasExoticVitalize bool
+	HasAdditionalFire bool
+	HasBluePotion     bool
 }
 
 // CalcMPRegenAmount calls Lua calc_mp_regen_amount(ctx).

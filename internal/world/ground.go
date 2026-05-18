@@ -18,10 +18,11 @@ func NextGroundItemID() int32 {
 // GroundItem represents an item on the ground that players can see and pick up.
 // Not persisted to DB — exists only in memory.
 type GroundItem struct {
-	ID         int32  // unique ground object ID
-	ItemID     int32  // template ID
-	Count      int32  // stack count
-	EnchantLvl int8   // enchant level (signed: cursed scrolls can go negative)
+	ID         int32 // unique ground object ID
+	ItemID     int32 // template ID
+	Count      int32 // stack count
+	EnchantLvl int8  // enchant level (signed: cursed scrolls can go negative)
+	Item       *InvItem
 	Name       string // display name
 	GrdGfx     int32  // ground visual GFX ID
 	X          int32

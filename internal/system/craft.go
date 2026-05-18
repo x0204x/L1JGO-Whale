@@ -251,34 +251,21 @@ func (s *CraftSystem) produceItems(sess *net.Session, player *world.PlayerInfo, 
 			continue
 		}
 		totalCount := out.Amount * amount
-
-		if outInfo.Stackable {
-			item := player.Inv.AddItem(out.ItemID, totalCount, outInfo.Name,
-				outInfo.InvGfx, outInfo.Weight, true, byte(outInfo.Bless))
-			item.UseType = data.UseTypeToID(outInfo.UseType)
-			if out.EnchantLvl > 0 {
-				item.EnchantLvl = int8(out.EnchantLvl)
-			}
-			handler.SendAddItem(sess, item, outInfo)
-		} else {
-			for i := int32(0); i < totalCount; i++ {
-				bless := byte(outInfo.Bless)
-				if out.Bless > 0 {
-					bless = byte(out.Bless)
-				}
-				item := player.Inv.AddItem(out.ItemID, 1, outInfo.Name,
-					outInfo.InvGfx, outInfo.Weight, false, bless)
-				item.UseType = data.UseTypeToID(outInfo.UseType)
-				if out.EnchantLvl > 0 {
-					item.EnchantLvl = int8(out.EnchantLvl)
-				}
-				item.Identified = true
-				handler.SendAddItem(sess, item, outInfo)
-			}
+		opts := ItemCreateOptions{}
+		if out.EnchantLvl > 0 {
+			opts.EnchantLvl = int8(out.EnchantLvl)
+		}
+		if out.Bless > 0 {
+			opts.Bless = byte(out.Bless)
+			opts.BlessSet = true
+		}
+		item, ok := s.giveCraftItem(sess, player, out.ItemID, totalCount, opts)
+		if !ok {
+			continue
 		}
 
 		if npcName != "" {
-			handler.SendServerMessageArgs(sess, 143, npcName, outInfo.Name)
+			handler.SendServerMessageArgs(sess, 143, npcName, item.Name)
 		}
 	}
 
@@ -287,21 +274,12 @@ func (s *CraftSystem) produceItems(sess *net.Session, player *world.PlayerInfo, 
 		bonusInfo := s.deps.Items.Get(recipe.BonusItemID)
 		if bonusInfo != nil {
 			totalBonus := recipe.BonusItemCount * amount
-			if bonusInfo.Stackable {
-				item := player.Inv.AddItem(recipe.BonusItemID, totalBonus, bonusInfo.Name,
-					bonusInfo.InvGfx, bonusInfo.Weight, true, byte(bonusInfo.Bless))
-				item.UseType = data.UseTypeToID(bonusInfo.UseType)
-				handler.SendAddItem(sess, item, bonusInfo)
-			} else {
-				for i := int32(0); i < totalBonus; i++ {
-					item := player.Inv.AddItem(recipe.BonusItemID, 1, bonusInfo.Name,
-						bonusInfo.InvGfx, bonusInfo.Weight, false, byte(bonusInfo.Bless))
-					item.UseType = data.UseTypeToID(bonusInfo.UseType)
-					handler.SendAddItem(sess, item, bonusInfo)
-				}
+			item, ok := s.giveCraftItem(sess, player, recipe.BonusItemID, totalBonus, ItemCreateOptions{})
+			if !ok {
+				return
 			}
 			if npcName != "" {
-				handler.SendServerMessageArgs(sess, 143, npcName, bonusInfo.Name)
+				handler.SendServerMessageArgs(sess, 143, npcName, item.Name)
 			}
 		}
 	}
@@ -338,22 +316,28 @@ func (s *CraftSystem) produceResidueItems(sess *net.Session, player *world.Playe
 		return
 	}
 	totalRes := recipe.ResidueItemCount * failCount
-	if resInfo.Stackable {
-		item := player.Inv.AddItem(recipe.ResidueItemID, totalRes, resInfo.Name,
-			resInfo.InvGfx, resInfo.Weight, true, byte(resInfo.Bless))
-		item.UseType = data.UseTypeToID(resInfo.UseType)
-		handler.SendAddItem(sess, item, resInfo)
-	} else {
-		for i := int32(0); i < totalRes; i++ {
-			item := player.Inv.AddItem(recipe.ResidueItemID, 1, resInfo.Name,
-				resInfo.InvGfx, resInfo.Weight, false, byte(resInfo.Bless))
-			item.UseType = data.UseTypeToID(resInfo.UseType)
-			handler.SendAddItem(sess, item, resInfo)
-		}
-	}
+	s.giveCraftItem(sess, player, recipe.ResidueItemID, totalRes, ItemCreateOptions{})
 }
 
 // === 私有輔助函式 ===
+
+type craftItemCreatorWithOptions interface {
+	GiveItemWithOptions(sess *net.Session, player *world.PlayerInfo, itemID, count int32, opts ItemCreateOptions) (*world.InvItem, bool)
+}
+
+func (s *CraftSystem) giveCraftItem(sess *net.Session, player *world.PlayerInfo, itemID, count int32, opts ItemCreateOptions) (*world.InvItem, bool) {
+	if s.deps.ItemCreate == nil {
+		return nil, false
+	}
+	if creator, ok := s.deps.ItemCreate.(craftItemCreatorWithOptions); ok {
+		return creator.GiveItemWithOptions(sess, player, itemID, count, opts)
+	}
+	item, ok := s.deps.ItemCreate.GiveItem(sess, player, itemID, count)
+	if ok {
+		applyItemCreateOptions(item, opts)
+	}
+	return item, ok
+}
 
 // countMaterialSets 計算玩家可提供幾套完整材料。
 func countMaterialSets(inv *world.Inventory, materials []data.CraftMaterial) int32 {

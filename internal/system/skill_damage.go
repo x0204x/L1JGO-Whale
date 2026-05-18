@@ -8,6 +8,28 @@ import (
 	"github.com/l1jgo/server/internal/world"
 )
 
+const (
+	skillTypeChange  = 2
+	skillTypeRestore = 32
+	skillFinalBurn   = int32(108)
+)
+
+func (s *SkillSystem) canSkillReachTarget(caster *world.PlayerInfo, skill *data.SkillInfo, mapID int16, x, y int32) bool {
+	if caster == nil || skill == nil {
+		return false
+	}
+	if caster.MapID != mapID {
+		return false
+	}
+	if skill.Through || skill.Type&skillTypeChange != 0 || skill.Type&skillTypeRestore != 0 {
+		return true
+	}
+	if s == nil || s.deps == nil || s.deps.MapData == nil {
+		return true
+	}
+	return s.deps.MapData.HasLineOfSight(caster.MapID, caster.X, caster.Y, x, y)
+}
+
 func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, target *world.PlayerInfo) {
 	if target == nil || target.Dead || target.MapID != player.MapID {
 		return
@@ -21,7 +43,7 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 		return
 	}
 
-	if s.deps.MapData != nil && !s.deps.MapData.HasLineOfSight(player.MapID, player.X, player.Y, target.X, target.Y) {
+	if !s.canSkillReachTarget(player, skill, target.MapID, target.X, target.Y) {
 		s.sendCastFail(sess)
 		return
 	}
@@ -40,7 +62,8 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 			if other.CharID == player.CharID || other.CharID == target.CharID || other.Dead {
 				continue
 			}
-			if chebyshevDist(target.X, target.Y, other.X, other.Y) <= int32(skill.Area) {
+			if chebyshevDist(target.X, target.Y, other.X, other.Y) <= int32(skill.Area) &&
+				s.canSkillReachTarget(player, skill, other.MapID, other.X, other.Y) {
 				targets = append(targets, other)
 			}
 		}
@@ -55,11 +78,33 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 		if skill.SkillID == skillJoyOfPain {
 			s.applyJoyOfPainReady(player)
 			dmg = 0
+		} else if skill.SkillID == skillFinalBurn {
+			dmg = player.MP
 		} else if skill.SkillID == skillMindBreak {
 			dmg = calcMindBreakDamage(player)
 			applyMindBreakMPDrain(p)
 		}
-		s.applySkillDamageToPlayer(sess, player, p, skill, dmg, nearby)
+		hitCount := res.HitCount
+		if skill.SkillID == 132 && hitCount < 3 {
+			hitCount = 3
+		}
+		if hitCount < 1 {
+			hitCount = 1
+		}
+		totalLeechDamage := int32(0)
+		for h := 0; h < hitCount; h++ {
+			if p.Dead || p.HP <= 0 {
+				break
+			}
+			totalLeechDamage += s.applySkillDamageToPlayer(sess, player, p, skill, dmg, nearby)
+		}
+		if (skill.SkillID == 10 || skill.SkillID == 28) && totalLeechDamage > 0 {
+			player.HP += totalLeechDamage
+			if player.HP > player.MaxHP {
+				player.HP = player.MaxHP
+			}
+			sendHpUpdate(sess, player)
+		}
 		s.applyIllusionistStatusAttackEffect(p, skill)
 		s.applyIllusionistControlAttackEffect(player, p, skill)
 		s.applyDragonKnightBindAttackEffect(player, p, skill)
@@ -69,6 +114,9 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 	if skill.Area > 0 {
 		for _, npc := range s.deps.World.GetNearbyNpcs(target.X, target.Y, target.MapID) {
 			if npc.Dead || chebyshevDist(target.X, target.Y, npc.X, npc.Y) > int32(skill.Area) {
+				continue
+			}
+			if !s.canSkillReachTarget(player, skill, npc.MapID, npc.X, npc.Y) {
 				continue
 			}
 			s.applyAreaSkillDamageToNpc(sess, player, skill, npc, nearby)
@@ -106,7 +154,7 @@ func (s *SkillSystem) buildPlayerSkillDamageContext(player, target *world.Player
 	}
 }
 
-func (s *SkillSystem) applySkillDamageToPlayer(sess *net.Session, player, target *world.PlayerInfo, skill *data.SkillInfo, dmg int32, nearby []*world.PlayerInfo) {
+func (s *SkillSystem) applySkillDamageToPlayer(sess *net.Session, player, target *world.PlayerInfo, skill *data.SkillInfo, dmg int32, nearby []*world.PlayerInfo) int32 {
 	if dmg < 0 {
 		dmg = 0
 	}
@@ -134,7 +182,7 @@ func (s *SkillSystem) applySkillDamageToPlayer(sess *net.Session, player, target
 		handler.SendDamageNumbers(sess, target.CharID, dmg)
 	}
 	if dmg <= 0 {
-		return
+		return 0
 	}
 
 	if target.Sleeped {
@@ -150,9 +198,10 @@ func (s *SkillSystem) applySkillDamageToPlayer(sess *net.Session, player, target
 		if s.deps.Death != nil {
 			s.deps.Death.KillPlayer(target)
 		}
-		return
+		return dmg
 	}
 	sendHpUpdate(target.Session, target)
+	return dmg
 }
 
 func (s *SkillSystem) applyAreaSkillDamageToNpc(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, npc *world.NpcInfo, nearby []*world.PlayerInfo) {
@@ -310,7 +359,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 
 	// LOS 檢查（Java: L1SkillUse — glanceCheck）
 	// 攻擊型技能需要視線，buff/heal 技能豁免
-	if s.deps.MapData != nil && !s.deps.MapData.HasLineOfSight(player.MapID, player.X, player.Y, npc.X, npc.Y) {
+	if !s.canSkillReachTarget(player, skill, npc.MapID, npc.X, npc.Y) {
 		s.sendCastFail(sess)
 		return
 	}
@@ -399,6 +448,11 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		res.Damage = int(float64(player.SP) * 3.8)
 		res.DrainMP = 5 // 強制扣除目標 5 MP
 	}
+	if skill.SkillID == skillFinalBurn {
+		res.Damage = int(player.MP)
+		res.HitCount = 1
+		res.DrainMP = 0
+	}
 	if skill.SkillID == skillJoyOfPain {
 		s.applyJoyOfPainReady(player)
 		res.Damage = 0
@@ -418,6 +472,9 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 			if other.ID == npc.ID {
 				continue
 			}
+			if !s.canSkillReachTarget(player, skill, other.MapID, other.X, other.Y) {
+				continue
+			}
 			r := s.deps.Scripting.CalcSkillDamage(buildCtx(other))
 			hits = append(hits, hitTarget{npc: other, dmg: int32(r.Damage), hitCount: r.HitCount, drainMP: int32(r.DrainMP)})
 		}
@@ -427,10 +484,14 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 			if other.ID == npc.ID || other.Dead {
 				continue
 			}
-			if chebyshevDist(npc.X, npc.Y, other.X, other.Y) <= int32(skill.Area) {
-				r := s.deps.Scripting.CalcSkillDamage(buildCtx(other))
-				hits = append(hits, hitTarget{npc: other, dmg: int32(r.Damage), hitCount: r.HitCount, drainMP: int32(r.DrainMP)})
+			if chebyshevDist(npc.X, npc.Y, other.X, other.Y) > int32(skill.Area) {
+				continue
 			}
+			if !s.canSkillReachTarget(player, skill, other.MapID, other.X, other.Y) {
+				continue
+			}
+			r := s.deps.Scripting.CalcSkillDamage(buildCtx(other))
+			hits = append(hits, hitTarget{npc: other, dmg: int32(r.Damage), hitCount: r.HitCount, drainMP: int32(r.DrainMP)})
 		}
 	}
 
@@ -641,7 +702,7 @@ func (s *SkillSystem) executeTurnUndead(sess *net.Session, player *world.PlayerI
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 
 	// 前置判定：目標必須是不死族（Java: undeadType == 1 || 3 且 isTU == true）
-	if !npc.Undead {
+	if !canTurnUndeadNpc(npc) {
 		// 非不死族：施法動畫播放但不造成傷害
 		return
 	}
@@ -692,4 +753,17 @@ func (s *SkillSystem) executeTurnUndead(sess *net.Session, player *world.PlayerI
 
 	_ = dmg // 即死傷害值，用於 handleNpcDeath 的經驗計算
 	handleNpcDeath(npc, player, nearby, s.deps)
+}
+
+func canTurnUndeadNpc(npc *world.NpcInfo) bool {
+	if npc == nil {
+		return false
+	}
+	if npc.UndeadType != 0 && npc.UndeadType != 1 && npc.UndeadType != 3 {
+		return false
+	}
+	if npc.TurnUndeadableSet {
+		return npc.TurnUndeadable
+	}
+	return npc.Undead
 }

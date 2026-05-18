@@ -39,7 +39,7 @@ func main() {
 func printBanner(serverName string, serverID int) {
 	fmt.Println()
 	fmt.Println("\033[36;1m  ┌───────────────────────────────────────────┐\033[0m")
-	fmt.Println("\033[36;1m  │\033[0m           L1JGO-Whale  v0.3.18           \033[36;1m│\033[0m")
+	fmt.Println("\033[36;1m  │\033[0m           L1JGO-Whale  v0.3.19           \033[36;1m│\033[0m")
 	fmt.Println("\033[36;1m  │\033[0m      天堂 3.80C · Go 遊戲伺服器           \033[36;1m│\033[0m")
 	fmt.Println("\033[36;1m  └───────────────────────────────────────────┘\033[0m")
 	fmt.Println()
@@ -207,7 +207,7 @@ func run() error {
 	}
 	printStat("怪物群體", mobGroupTable.Count())
 
-	npcCount := spawnNpcs(worldState, npcTable, spawnList, mapDataTable, sprTable, mobGroupTable, log)
+	npcCount := spawnNpcsSafe(worldState, npcTable, spawnList, mapDataTable, sprTable, mobGroupTable, log)
 	printStat("NPC 生成", npcCount)
 
 	npcActionTable, err := data.LoadNpcActionTable("data/yaml/npc_action_list.yaml")
@@ -610,6 +610,8 @@ func run() error {
 	deps.Craft = system.NewCraftSystem(deps)
 	// 物品地面操作系統（銷毀、掉落、撿取）
 	deps.ItemGround = system.NewItemGroundSystem(deps)
+	// 共用給物品系統（堆疊、背包限制、封包通知）
+	deps.ItemCreate = system.NewItemCreateSystem(deps)
 	// 寵物生命週期系統（召喚/收回/解放/死亡/經驗/指令）
 	deps.PetLife = system.NewPetSystem(deps)
 	// 魔法娃娃系統（召喚/解散/屬性加成）
@@ -898,45 +900,46 @@ func createNpcFromTemplate(tmpl *data.NpcTemplate, x, y int32, mapID, heading in
 		}
 	}
 	return &world.NpcInfo{
-		ID:           world.NextNpcID(),
-		NpcID:        tmpl.NpcID,
-		Impl:         tmpl.Impl,
-		GfxID:        tmpl.GfxID,
-		LightSize:    byte(tmpl.LightSize),
-		Name:         tmpl.Name,
-		NameID:       tmpl.NameID,
-		Level:        tmpl.Level,
-		X:            x,
-		Y:            y,
-		MapID:        mapID,
-		Heading:      heading,
-		HP:           tmpl.HP,
-		MaxHP:        tmpl.HP,
-		MP:           tmpl.MP,
-		MaxMP:        tmpl.MP,
-		AC:           tmpl.AC,
-		STR:          tmpl.STR,
-		DEX:          tmpl.DEX,
-		Exp:          tmpl.Exp,
-		Lawful:       tmpl.Lawful,
-		Size:         tmpl.Size,
-		MR:           tmpl.MR,
-		Undead:       tmpl.Undead,
-		Hard:         tmpl.Hard,
-		Agro:         tmpl.Agro,
-		AtkDmg:       int32(tmpl.Level) + int32(tmpl.STR)/3,
-		Ranged:       tmpl.Ranged,
-		AtkSpeed:     atkSpeed,
-		MoveSpeed:    moveSpeed,
-		PoisonAtk:    tmpl.PoisonAtk,
-		FireRes:      tmpl.FireRes,
-		WaterRes:     tmpl.WaterRes,
-		WindRes:      tmpl.WindRes,
-		EarthRes:     tmpl.EarthRes,
-		SpawnX:       x,
-		SpawnY:       y,
-		SpawnMapID:   mapID,
-		RespawnDelay: respawnDelay,
+		ID:            world.NextNpcID(),
+		NpcID:         tmpl.NpcID,
+		Impl:          tmpl.Impl,
+		GfxID:         tmpl.GfxID,
+		LightSize:     byte(tmpl.LightSize),
+		Name:          tmpl.Name,
+		NameID:        tmpl.NameID,
+		Level:         tmpl.Level,
+		X:             x,
+		Y:             y,
+		MapID:         mapID,
+		Heading:       heading,
+		HP:            tmpl.HP,
+		MaxHP:         tmpl.HP,
+		MP:            tmpl.MP,
+		MaxMP:         tmpl.MP,
+		AC:            tmpl.AC,
+		STR:           tmpl.STR,
+		DEX:           tmpl.DEX,
+		Exp:           tmpl.Exp,
+		Lawful:        tmpl.Lawful,
+		Size:          tmpl.Size,
+		MR:            tmpl.MR,
+		Undead:        tmpl.Undead,
+		Hard:          tmpl.Hard,
+		Agro:          tmpl.Agro,
+		AtkDmg:        int32(tmpl.Level) + int32(tmpl.STR)/3,
+		Ranged:        tmpl.Ranged,
+		AtkSpeed:      atkSpeed,
+		SubMagicSpeed: tmpl.SubMagicSpeed,
+		MoveSpeed:     moveSpeed,
+		PoisonAtk:     tmpl.PoisonAtk,
+		FireRes:       tmpl.FireRes,
+		WaterRes:      tmpl.WaterRes,
+		WindRes:       tmpl.WindRes,
+		EarthRes:      tmpl.EarthRes,
+		SpawnX:        x,
+		SpawnY:        y,
+		SpawnMapID:    mapID,
+		RespawnDelay:  respawnDelay,
 	}
 }
 

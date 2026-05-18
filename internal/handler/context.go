@@ -210,6 +210,8 @@ type PvPManager interface {
 	HandlePvPAttack(attacker, target *world.PlayerInfo)
 	// HandlePvPFarAttack 處理遠程 PvP 攻擊。
 	HandlePvPFarAttack(attacker, target *world.PlayerInfo)
+	// TriggerPinkName 依 Java L1PinkName.onAction 觸發粉紅名判定。
+	TriggerPinkName(attacker, target *world.PlayerInfo)
 	// AddLawfulFromNpc 根據 NPC 善惡值增加擊殺者善惡值。
 	AddLawfulFromNpc(killer *world.PlayerInfo, npcLawful int32)
 }
@@ -458,6 +460,12 @@ type ShopCnManager interface {
 	BuyCnItem(sess *net.Session, player *world.PlayerInfo, cnItem *data.ShopCnItem, buyCount, actualCount int32)
 	// SellCnItem 回收物品換天寶幣（移除物品+給幣）。
 	SellCnItem(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, sellCount, recyclePrice int32)
+}
+
+// ItemCreateManager 處理統一給物品流程。由 system.ItemCreateSystem 實作。
+type ItemCreateManager interface {
+	// GiveItem 給玩家物品，處理堆疊、背包格數、負重與封包通知。
+	GiveItem(sess *net.Session, player *world.PlayerInfo, itemID, count int32) (*world.InvItem, bool)
 }
 
 // PowerItemManager 處理強化物品購買邏輯。由 system.PowerItemSystem 實作。
@@ -764,6 +772,7 @@ type Deps struct {
 	MobGroups     *data.MobGroupTable
 	ShopCn        *data.ShopCnTable
 	PowerItems    *data.PowerItemTable
+	ItemCreate    ItemCreateManager // filled after ItemCreateSystem is created
 	Hierarchs     *data.HierarchTable
 	Auction       AuctionManager                       // filled after AuctionSystem is created
 	Houses        *data.HouseTable                     // 住宅靜態座標資料

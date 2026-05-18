@@ -67,6 +67,34 @@ func TestBlankMagicScrollWizardCreatesSpellScrollAndConsumesSkillResources(t *te
 	}
 }
 
+func TestBlankMagicScrollUsesItemCreateForSpellScroll(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		ClassType: 3,
+		MP:        20,
+		MaxMP:     20,
+	})
+	scroll := player.Inv.AddItemWithID(7001, 40090, 1, "blank", 859, 630, true, 1)
+	s := newMagicScrollTestSystem(t, ws)
+	itemCreate := &shopItemCreateStub{}
+	s.deps.ItemCreate = itemCreate
+
+	if !s.UseBlankMagicScroll(player.Session, player, scroll, 0) {
+		t.Fatal("法師使用一級空白魔法卷軸應成功")
+	}
+
+	if itemCreate.calls != 1 {
+		t.Fatalf("ItemCreate 呼叫次數錯誤：got %d want 1", itemCreate.calls)
+	}
+	if itemCreate.itemID != 40859 || itemCreate.count != 1 {
+		t.Fatalf("ItemCreate 參數錯誤：got item=%d count=%d want item=40859 count=1", itemCreate.itemID, itemCreate.count)
+	}
+}
+
 func TestBlankMagicScrollRejectsNonWizardWithoutConsuming(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{

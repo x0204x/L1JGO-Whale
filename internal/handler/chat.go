@@ -16,7 +16,7 @@ const (
 	ChatWorld  = 3
 	ChatClan   = 4
 	ChatParty  = 11
-	ChatTrade    = 12
+	ChatTrade  = 12
 	// ChatAlliance 定義在 alliance.go（= 15）
 )
 
@@ -197,6 +197,11 @@ func sendNormalChat(sess *net.Session, senderID int32, msg string) {
 	w.WriteD(senderID)
 	w.WriteS(msg)
 	sess.Send(w.Bytes())
+}
+
+// SendNormalChat 發送 S_ServerMessage(String) 相同格式的 normal chat 文字。
+func SendNormalChat(sess *net.Session, senderID int32, msg string) {
+	sendNormalChat(sess, senderID, msg)
 }
 
 // sendShoutChat sends S_SAY (opcode 81) type 2 — shout.

@@ -50,6 +50,7 @@ type SkillSystem struct {
 	deps                    *handler.Deps
 	requests                []handler.SkillRequest
 	suppressCastFailMessage bool
+	braveAvatarElapsed      time.Duration
 }
 
 // NewSkillSystem 建立 SkillSystem。
@@ -73,7 +74,12 @@ func (s *SkillSystem) QueueSkill(req handler.SkillRequest) {
 }
 
 // Update 處理所有排隊的技能請求。
-func (s *SkillSystem) Update(_ time.Duration) {
+func (s *SkillSystem) Update(dt time.Duration) {
+	s.braveAvatarElapsed += dt
+	if s.braveAvatarElapsed >= braveAvatarInterval {
+		s.braveAvatarElapsed = 0
+		s.updateBraveAvatarAura()
+	}
 	for _, req := range s.requests {
 		s.processSkill(req)
 	}
@@ -248,6 +254,7 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 
 	skill := s.deps.Skills.Get(skillID)
 	if skill == nil {
+		s.failTeleportSkill(sess, skillID)
 		s.deps.Log.Debug("unknown skill", zap.Int32("skill_id", skillID))
 		return
 	}
@@ -272,13 +279,19 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 		s.cancelAbsoluteBarrier(player)
 	}
 
+	if player.Invisible && skillID == 87 {
+		handler.SendServerMessage(sess, 1003)
+		return
+	}
+
 	// 隱身：施法時自動解除（Java: L1BuffUtil.cancelInvisibility 在 C_UseSkill）
 	if player.Invisible {
 		s.cancelInvisibility(player)
 	}
 
 	// 麻痺/暈眩/凍結/睡眠/沉默時無法施法
-	if player.Paralyzed || player.Sleeped || player.Silenced {
+	if player.Paralyzed || player.Sleeped || (player.Silenced && !isCastableWhileSilenced(skillID)) {
+		s.failTeleportSkill(sess, skillID)
 		return
 	}
 
@@ -287,6 +300,7 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 		poly := s.deps.Polys.GetByID(player.PolyID)
 		if poly != nil && !poly.CanUseSkill {
 			handler.SendServerMessage(sess, 285) // "此形態無法使用魔法。"
+			s.failTeleportSkill(sess, skillID)
 			return
 		}
 	}
@@ -294,33 +308,40 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 	// 檢查是否已學會此法術
 	if !s.playerKnowsSpell(player, skillID) {
 		s.sendCastFail(sess)
+		s.failTeleportSkill(sess, skillID)
 		return
 	}
 
 	// 全域施法冷卻
 	now := time.Now()
 	if now.Before(player.SkillDelayUntil) {
+		s.failTeleportSkill(sess, skillID)
 		return
 	}
 
 	// HP 消耗檢查
 	if skillID == 108 && player.HP <= 100 {
 		handler.SendServerMessage(sess, skillMsgNotEnoughHP)
+		s.failTeleportSkill(sess, skillID)
 		return
 	}
 	if skill.HpConsume > 0 && player.HP <= int32(skill.HpConsume) {
 		handler.SendServerMessage(sess, skillMsgNotEnoughHP)
+		s.failTeleportSkill(sess, skillID)
 		return
 	}
 
 	// MP 消耗檢查
-	if skill.MpConsume > 0 && player.MP < int32(skill.MpConsume) {
+	mpConsume := adjustedSkillMPConsume(player, skill)
+	if mpConsume > 0 && player.MP < int32(mpConsume) {
 		handler.SendServerMessage(sess, skillMsgNotEnoughMP)
+		s.failTeleportSkill(sess, skillID)
 		return
 	}
 
 	if skillID == 147 && player.ElfAttr == 0 {
 		s.sendCastFail(sess)
+		s.failTeleportSkill(sess, skillID)
 		return
 	}
 
@@ -350,11 +371,16 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 				zap.Int("inv_size", player.Inv.Size()),
 				zap.Int32s("inv_first10", invIDs))
 			handler.SendServerMessage(sess, 299) // 施放魔法所需材料不足。
+			s.failTeleportSkill(sess, skillID)
 			return
 		}
 	}
 
 	// --- 傳送技能：在消耗 MP 前特殊路由 ---
+	if skillID == 87 && s.shockStunInvalidTargetBeforeConsume(player, skill, targetID) {
+		return
+	}
+
 	if skillID == 5 || skillID == 69 {
 		// Owner: skill_teleport.go
 		s.executeTeleportSpell(sess, player, skill, req.BookmarkID)
@@ -402,11 +428,9 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 		return
 	}
 
-	if skillID == 108 {
-		s.consumeFinalBurnResources(sess, player)
-	} else {
-		if skill.MpConsume > 0 {
-			player.MP -= int32(skill.MpConsume)
+	if skillID != skillFinalBurn {
+		if mpConsume > 0 {
+			player.MP -= int32(mpConsume)
 			sendMpUpdate(sess, player)
 		}
 		if skill.HpConsume > 0 {
@@ -465,12 +489,51 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 	case "attack":
 		// Owner: skill_damage.go
 		s.executeAttackSkill(sess, player, skill, targetID)
+		if skillID == skillFinalBurn {
+			s.consumeFinalBurnResources(sess, player)
+		}
 	case "buff":
 		// Owner: skill_buff.go
 		s.executeBuffSkill(sess, player, skill, targetID, req.Text)
 	default:
 		// Owner: skill_self.go
 		s.executeSelfSkill(sess, player, skill)
+	}
+}
+
+func adjustedSkillMPConsume(player *world.PlayerInfo, skill *data.SkillInfo) int {
+	if skill == nil {
+		return 0
+	}
+	mp := skill.MpConsume
+	if (skill.SkillID == 12 || skill.SkillID == 13) && playerHasEquippedItem(player, 20015) {
+		mp >>= 1
+	}
+	if skill.SkillID == 87 && player != nil && player.Intel > 12 {
+		mp -= int(player.Intel - 12)
+		if mp < 0 {
+			mp = 0
+		}
+	}
+	return mp
+}
+
+func playerHasEquippedItem(player *world.PlayerInfo, itemID int32) bool {
+	if player == nil || player.Inv == nil {
+		return false
+	}
+	for _, item := range player.Inv.Items {
+		if item != nil && item.ItemID == itemID && item.Equipped {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *SkillSystem) failTeleportSkill(sess *net.Session, skillID int32) {
+	switch skillID {
+	case 5, 69, 131:
+		handler.SendParalysis(sess, handler.TeleportUnlock)
 	}
 }
 
@@ -483,6 +546,15 @@ func (s *SkillSystem) resolveSkillRequestTargetID(req handler.SkillRequest) int3
 		return 0
 	}
 	return target.CharID
+}
+
+func isCastableWhileSilenced(skillID int32) bool {
+	switch skillID {
+	case 87, 88, 89, 90, 91, 187:
+		return true
+	default:
+		return false
+	}
 }
 
 // consumeSkillResources 扣除 MP/HP/材料並設定冷卻。

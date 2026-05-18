@@ -45,15 +45,10 @@ func (s *ShopSystem) BuyFromNpc(sess *net.Session, r *packet.Reader, count int, 
 	// 計算總花費
 	var totalCost int64
 	type resolvedItem struct {
-		itemID    int32
-		name      string
-		invGfx    int32
-		weight    int32
-		qty       int32
-		bless     byte
-		stack     bool
-		useTypeID byte
-		info      *data.ItemInfo
+		itemID int32
+		weight int32
+		qty    int32
+		stack  bool
 	}
 	resolved := make([]resolvedItem, 0, len(orders))
 
@@ -72,15 +67,10 @@ func (s *ShopSystem) BuyFromNpc(sess *net.Session, r *packet.Reader, count int, 
 		totalCost += price
 
 		resolved = append(resolved, resolvedItem{
-			itemID:    si.ItemID,
-			name:      itemInfo.Name,
-			invGfx:    itemInfo.InvGfx,
-			weight:    itemInfo.Weight,
-			qty:       qty,
-			bless:     byte(itemInfo.Bless),
-			stack:     itemInfo.Stackable || si.ItemID == world.AdenaItemID,
-			useTypeID: itemInfo.UseTypeID,
-			info:      itemInfo,
+			itemID: si.ItemID,
+			weight: itemInfo.Weight,
+			qty:    qty,
+			stack:  itemInfo.Stackable || si.ItemID == world.AdenaItemID,
 		})
 	}
 
@@ -137,6 +127,18 @@ func (s *ShopSystem) BuyFromNpc(sess *net.Session, r *packet.Reader, count int, 
 	}
 
 	// 扣除金幣（含稅）
+	var addWeight int32
+	for _, ri := range resolved {
+		addWeight += ri.weight * ri.qty
+	}
+	if player.Inv.IsOverWeight(addWeight, world.PlayerMaxWeight(player)) {
+		handler.SendServerMessage(sess, 82)
+		return
+	}
+	if s.deps.ItemCreate == nil {
+		return
+	}
+
 	adenaItem := player.Inv.FindByItemID(world.AdenaItemID)
 	if adenaItem != nil {
 		adenaItem.Count -= int32(totalPayment)
@@ -170,37 +172,12 @@ func (s *ShopSystem) BuyFromNpc(sess *net.Session, r *packet.Reader, count int, 
 		}
 	}
 
-	// 給予物品
+	// 透過共用 ItemCreate 給予物品。
 	for _, ri := range resolved {
-		if ri.stack {
-			// 可堆疊：一次加全部（與已有堆疊合併）
-			existing := player.Inv.FindByItemID(ri.itemID)
-			wasExisting := existing != nil
-
-			item := player.Inv.AddItem(ri.itemID, ri.qty, ri.name, ri.invGfx, ri.weight, true, ri.bless)
-			item.UseType = ri.useTypeID
-			if ri.info != nil && ri.info.MaxChargeCount > 0 {
-				item.ChargeCount = int16(ri.info.MaxChargeCount)
-			}
-
-			if wasExisting {
-				handler.SendItemCountUpdate(sess, item)
-			} else {
-				handler.SendAddItem(sess, item, ri.info)
-			}
-		} else {
-			// 不可堆疊：每個單位獨立一格
-			for j := int32(0); j < ri.qty; j++ {
-				item := player.Inv.AddItem(ri.itemID, 1, ri.name, ri.invGfx, ri.weight, false, ri.bless)
-				item.UseType = ri.useTypeID
-				if ri.info != nil && ri.info.MaxChargeCount > 0 {
-					item.ChargeCount = int16(ri.info.MaxChargeCount)
-				}
-				handler.SendAddItem(sess, item, ri.info)
-			}
+		if _, ok := s.deps.ItemCreate.GiveItem(sess, player, ri.itemID, ri.qty); !ok {
+			return
 		}
 	}
-	handler.SendWeightUpdate(sess, player)
 
 	if totalTax > 0 {
 		s.deps.Log.Info(fmt.Sprintf("商店購買完成  角色=%s  花費=%d  稅金=%d  城堡=%d", player.Name, totalPayment, totalTax, castleID))
@@ -228,6 +205,9 @@ func (s *ShopSystem) SellToNpc(sess *net.Session, r *packet.Reader, count int, p
 		}
 		orders = append(orders, sellOrder{objectID: objID, qty: qty})
 	}
+	if s.deps.ItemCreate == nil {
+		return
+	}
 
 	var totalEarned int64
 
@@ -237,7 +217,6 @@ func (s *ShopSystem) SellToNpc(sess *net.Session, r *packet.Reader, count int, p
 			continue
 		}
 
-		// 查詢該物品的收購價格
 		var purchPrice int32
 		found := false
 		for _, pi := range shop.PurchasingItems {
@@ -268,26 +247,10 @@ func (s *ShopSystem) SellToNpc(sess *net.Session, r *packet.Reader, count int, p
 	}
 
 	if totalEarned > 0 {
-		// 給予金幣
-		adena := player.Inv.FindByItemID(world.AdenaItemID)
-		wasExisting := adena != nil
-
-		adenaInfo := s.deps.Items.Get(world.AdenaItemID)
-		adenaName := "Adena"
-		adenaGfx := int32(318)
-		if adenaInfo != nil {
-			adenaName = adenaInfo.Name
-			adenaGfx = adenaInfo.InvGfx
-		}
-
-		item := player.Inv.AddItem(world.AdenaItemID, int32(totalEarned), adenaName, adenaGfx, 0, true, 1)
-		if wasExisting {
-			handler.SendItemCountUpdate(sess, item)
-		} else {
-			handler.SendAddItem(sess, item)
+		if _, ok := s.deps.ItemCreate.GiveItem(sess, player, world.AdenaItemID, int32(totalEarned)); !ok {
+			return
 		}
 	}
-	handler.SendWeightUpdate(sess, player)
 
-	s.deps.Log.Info(fmt.Sprintf("商店販賣完成  角色=%s  收入=%d  數量=%d", player.Name, totalEarned, count))
+	s.deps.Log.Info(fmt.Sprintf("商店販賣完成  角色=%s  收入=%d  筆數=%d", player.Name, totalEarned, count))
 }

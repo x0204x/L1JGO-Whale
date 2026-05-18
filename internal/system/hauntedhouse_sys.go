@@ -279,29 +279,14 @@ func (s *HauntedHouseSystem) removeMember(charID int32) {
 func (s *HauntedHouseSystem) GiveReward(sess *net.Session, player *world.PlayerInfo) {
 	const rewardItemID int32 = 41308 // 勇者的南瓜袋子
 
-	itemInfo := s.deps.Items.Get(rewardItemID)
-	if itemInfo == nil {
+	if s.deps.ItemCreate == nil {
+		return
+	}
+	invItem, ok := s.deps.ItemCreate.GiveItem(sess, player, rewardItemID, 1)
+	if !ok {
 		return
 	}
 
-	if player.Inv.IsFull() {
-		return
-	}
-
-	existing := player.Inv.FindByItemID(rewardItemID)
-	wasExisting := existing != nil && itemInfo.Stackable
-
-	invItem := player.Inv.AddItem(
-		rewardItemID, 1, itemInfo.Name, itemInfo.InvGfx,
-		itemInfo.Weight, itemInfo.Stackable, byte(itemInfo.Bless),
-	)
-
-	if wasExisting {
-		handler.SendItemCountUpdate(sess, invItem)
-	} else {
-		handler.SendAddItem(sess, invItem, itemInfo)
-	}
-
-	// S_ServerMessage 403: 獲得 %0
+	// S_ServerMessage 403: 獲得 %0。
 	handler.SendServerMessageStr(sess, 403, invItem.Name)
 }

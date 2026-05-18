@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/handler"
 	"github.com/l1jgo/server/internal/net"
 	"github.com/l1jgo/server/internal/net/packet"
@@ -188,37 +189,97 @@ func (s *WarehouseSystem) loadWarehouseCache(sess *net.Session, player *world.Pl
 	player.WarehouseType = whType
 
 	for _, it := range items {
-		itemInfo := s.deps.Items.Get(it.ItemID)
-		name := fmt.Sprintf("item#%d", it.ItemID)
-		invGfx := int32(0)
-		weight := int32(0)
-		stackable := false
-		var useType byte
-		if itemInfo != nil {
-			name = itemInfo.Name
-			invGfx = itemInfo.InvGfx
-			weight = itemInfo.Weight
-			stackable = itemInfo.Stackable || it.ItemID == world.AdenaItemID
-			useType = itemInfo.UseTypeID
-		}
-
-		wc := &world.WarehouseCache{
-			TempObjID:  world.NextItemObjID(),
-			DbID:       it.ID,
-			ItemID:     it.ItemID,
-			Count:      it.Count,
-			EnchantLvl: it.EnchantLvl,
-			Bless:      it.Bless,
-			Stackable:  stackable,
-			Identified: it.Identified,
-			UseType:    useType,
-			Name:       name,
-			InvGfx:     invGfx,
-			Weight:     weight,
-		}
-		player.WarehouseItems = append(player.WarehouseItems, wc)
+		player.WarehouseItems = append(player.WarehouseItems, warehouseCacheFromPersistItem(it, s.deps.Items.Get(it.ItemID)))
 	}
 	return nil
+}
+
+func warehouseItemFromInvItem(accountName, charName string, whType int16, invItem *world.InvItem, qty int32) persist.WarehouseItem {
+	itemObjID := invItem.ObjectID
+	if qty < invItem.Count {
+		itemObjID = world.NextItemObjID()
+	}
+
+	return persist.WarehouseItem{
+		AccountName:      accountName,
+		CharName:         charName,
+		WhType:           whType,
+		ItemObjID:        itemObjID,
+		ItemID:           invItem.ItemID,
+		Count:            qty,
+		EnchantLvl:       int16(invItem.EnchantLvl),
+		Bless:            int16(invItem.Bless),
+		Identified:       invItem.Identified,
+		ChargeCount:      invItem.ChargeCount,
+		Durability:       int16(invItem.Durability),
+		AttrEnchantKind:  int16(invItem.AttrEnchantKind),
+		AttrEnchantLevel: int16(invItem.AttrEnchantLevel),
+		InnKeyID:         invItem.InnKeyID,
+		InnNpcID:         invItem.InnNpcID,
+		InnHall:          invItem.InnHall,
+		InnDueTime:       invItem.InnDueTime,
+	}
+}
+
+func warehouseCacheFromPersistItem(it persist.WarehouseItem, itemInfo *data.ItemInfo) *world.WarehouseCache {
+	name := fmt.Sprintf("item#%d", it.ItemID)
+	invGfx := int32(0)
+	weight := int32(0)
+	stackable := false
+	var useType byte
+	if itemInfo != nil {
+		name = itemInfo.Name
+		invGfx = itemInfo.InvGfx
+		weight = itemInfo.Weight
+		stackable = itemInfo.Stackable || it.ItemID == world.AdenaItemID
+		useType = itemInfo.UseTypeID
+	}
+
+	tempObjID := it.ItemObjID
+	if tempObjID == 0 {
+		tempObjID = world.NextItemObjID()
+	}
+
+	return &world.WarehouseCache{
+		TempObjID:        tempObjID,
+		DbID:             it.ID,
+		ItemID:           it.ItemID,
+		Count:            it.Count,
+		EnchantLvl:       it.EnchantLvl,
+		Bless:            it.Bless,
+		Stackable:        stackable,
+		Identified:       it.Identified,
+		UseType:          useType,
+		ChargeCount:      it.ChargeCount,
+		Durability:       int8(it.Durability),
+		AttrEnchantKind:  int8(it.AttrEnchantKind),
+		AttrEnchantLevel: int8(it.AttrEnchantLevel),
+		InnKeyID:         it.InnKeyID,
+		InnNpcID:         it.InnNpcID,
+		InnHall:          it.InnHall,
+		InnDueTime:       it.InnDueTime,
+		Name:             name,
+		InvGfx:           invGfx,
+		Weight:           weight,
+	}
+}
+
+func copyWarehouseCacheState(dst *world.InvItem, wc *world.WarehouseCache) {
+	if dst == nil || wc == nil {
+		return
+	}
+	dst.EnchantLvl = int8(wc.EnchantLvl)
+	dst.Bless = byte(wc.Bless)
+	dst.Identified = wc.Identified
+	dst.UseType = wc.UseType
+	dst.ChargeCount = wc.ChargeCount
+	dst.Durability = wc.Durability
+	dst.AttrEnchantKind = wc.AttrEnchantKind
+	dst.AttrEnchantLevel = wc.AttrEnchantLevel
+	dst.InnKeyID = wc.InnKeyID
+	dst.InnNpcID = wc.InnNpcID
+	dst.InnHall = wc.InnHall
+	dst.InnDueTime = wc.InnDueTime
 }
 
 // handleWarehouseDeposit 將物品從玩家背包移至倉庫。
@@ -306,16 +367,7 @@ func (s *WarehouseSystem) handleWarehouseDeposit(sess *net.Session, r *packet.Re
 		}
 
 		// 新增倉庫物品
-		whItem := persist.WarehouseItem{
-			AccountName: dbAccountName,
-			CharName:    player.Name,
-			WhType:      whType,
-			ItemID:      invItem.ItemID,
-			Count:       qty,
-			EnchantLvl:  int16(invItem.EnchantLvl),
-			Bless:       int16(invItem.Bless),
-			Identified:  invItem.Identified,
-		}
+		whItem := warehouseItemFromInvItem(dbAccountName, player.Name, whType, invItem, qty)
 
 		dbID, err := s.deps.WarehouseRepo.Deposit(ctx, whItem)
 		if err != nil {
@@ -339,20 +391,13 @@ func (s *WarehouseSystem) handleWarehouseDeposit(sess *net.Session, r *packet.Re
 			weight = itemInfo.Weight
 		}
 
-		wc := &world.WarehouseCache{
-			TempObjID:  world.NextItemObjID(),
-			DbID:       dbID,
-			ItemID:     invItem.ItemID,
-			Count:      qty,
-			EnchantLvl: int16(invItem.EnchantLvl),
-			Bless:      int16(invItem.Bless),
-			Stackable:  stackable,
-			Identified: invItem.Identified,
-			UseType:    useType,
-			Name:       itemName,
-			InvGfx:     invGfx,
-			Weight:     weight,
-		}
+		whItem.ID = dbID
+		wc := warehouseCacheFromPersistItem(whItem, itemInfo)
+		wc.Stackable = stackable
+		wc.Name = itemName
+		wc.InvGfx = invGfx
+		wc.Weight = weight
+		wc.UseType = useType
 		player.WarehouseItems = append(player.WarehouseItems, wc)
 
 		if whType == handler.WhTypeClan {
@@ -453,7 +498,12 @@ func (s *WarehouseSystem) handleWarehouseWithdraw(sess *net.Session, r *packet.R
 		existing := player.Inv.FindByItemID(wc.ItemID)
 		wasExisting := existing != nil && wc.Stackable
 
-		item := player.Inv.AddItem(
+		objID := int32(0)
+		if !wc.Stackable {
+			objID = wc.TempObjID
+		}
+		item := player.Inv.AddItemWithID(
+			objID,
 			wc.ItemID,
 			qty,
 			wc.Name,
@@ -462,9 +512,7 @@ func (s *WarehouseSystem) handleWarehouseWithdraw(sess *net.Session, r *packet.R
 			wc.Stackable,
 			byte(wc.Bless),
 		)
-		item.EnchantLvl = int8(wc.EnchantLvl)
-		item.Identified = wc.Identified
-		item.UseType = wc.UseType
+		copyWarehouseCacheState(item, wc)
 
 		if wasExisting {
 			handler.SendItemCountUpdate(sess, item)

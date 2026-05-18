@@ -111,6 +111,32 @@ func TestHandleNpcActionRoutesSummonlistSelectionToSummonSkill(t *testing.T) {
 	}
 }
 
+func TestHandleNpcActionTogglesMassTeleportAskSetting(t *testing.T) {
+	ws := world.NewState()
+	sess := &l1net.Session{ID: 1}
+	player := &world.PlayerInfo{
+		SessionID: sess.ID,
+		Session:   sess,
+		CharID:    1001,
+		Name:      "ask-toggle",
+		Inv:       world.NewInventory(),
+	}
+	ws.AddPlayer(player)
+	deps := &Deps{World: ws, Log: zap.NewNop()}
+
+	HandleNpcAction(sess, npcActionReader(player.CharID, "teleport_close"), deps)
+
+	if !player.NoAskMassTeleport {
+		t.Fatal("teleport_close 應關閉集體傳送詢問，讓玩家直接接受集體傳送")
+	}
+
+	HandleNpcAction(sess, npcActionReader(player.CharID, "teleport_open"), deps)
+
+	if player.NoAskMassTeleport {
+		t.Fatal("teleport_open 應重新開啟集體傳送詢問")
+	}
+}
+
 func npcActionReader(objID int32, action string) *packet.Reader {
 	w := packet.NewWriterWithOpcode(packet.C_OPCODE_HACTION)
 	w.WriteD(objID)

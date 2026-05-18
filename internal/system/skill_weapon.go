@@ -24,8 +24,15 @@ func applyWeaponBreakDurability(weapon *world.InvItem, amount int8) bool {
 	}
 	before := weapon.Durability
 	next := int16(weapon.Durability) + int16(amount)
-	if next > 127 {
-		next = 127
+	maxDurability := int16(weapon.EnchantLvl) + 5
+	if maxDurability < 0 {
+		maxDurability = 0
+	}
+	if maxDurability > 127 {
+		maxDurability = 127
+	}
+	if next > maxDurability {
+		next = maxDurability
 	}
 	weapon.Durability = int8(next)
 	return weapon.Durability != before
@@ -197,8 +204,15 @@ func (s *SkillSystem) executeBringStone(sess *net.Session, player *world.PlayerI
 			player.Dirty = true
 			return
 		}
-		newItem := player.Inv.AddItem(resultID, 1, resultInfo.Name, resultInfo.InvGfx, resultInfo.Weight, resultInfo.Stackable, byte(resultInfo.Bless))
-		handler.SendAddItem(sess, newItem, resultInfo)
+		if s.deps.ItemCreate != nil {
+			if _, ok := s.deps.ItemCreate.GiveItem(sess, player, resultID, 1); !ok {
+				player.Dirty = true
+				return
+			}
+		} else {
+			newItem := player.Inv.AddItem(resultID, 1, resultInfo.Name, resultInfo.InvGfx, resultInfo.Weight, resultInfo.Stackable, byte(resultInfo.Bless))
+			handler.SendAddItem(sess, newItem, resultInfo)
+		}
 		handler.SendServerMessageStr(sess, 403, msgArg)
 	} else {
 		// 失敗：魔法失敗了

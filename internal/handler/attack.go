@@ -43,6 +43,11 @@ func FindArrow(player *world.PlayerInfo, deps *Deps) *world.InvItem {
 // Thin handler: parse packet → queue to CombatSystem (Phase 2).
 // Format: [D targetID][H x][H y]
 func HandleAttack(sess *net.Session, r *packet.Reader, deps *Deps) {
+	player := deps.World.GetBySession(sess.ID)
+	if player == nil || player.Paralyzed || player.Sleeped {
+		return
+	}
+
 	targetID := r.ReadD()
 	_ = r.ReadH() // target x (unused, we use server position)
 	_ = r.ReadH() // target y (unused)
@@ -61,6 +66,11 @@ func HandleAttack(sess *net.Session, r *packet.Reader, deps *Deps) {
 // Thin handler: parse packet → queue to CombatSystem (Phase 2).
 // Format: [D targetID][H x][H y]
 func HandleFarAttack(sess *net.Session, r *packet.Reader, deps *Deps) {
+	player := deps.World.GetBySession(sess.ID)
+	if player == nil || player.Paralyzed || player.Sleeped {
+		return
+	}
+
 	targetID := r.ReadD()
 	_ = r.ReadH()
 	_ = r.ReadH()

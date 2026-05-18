@@ -3,6 +3,8 @@ package system
 import (
 	"encoding/binary"
 	stdnet "net"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/l1jgo/server/internal/data"
@@ -36,6 +38,39 @@ func newSkillTestSystem(t *testing.T, ws *world.State) *SkillSystem {
 		Scripting: engine,
 		Log:       zap.NewNop(),
 	}}
+}
+
+func newSkillLOSTestMap(t *testing.T) *data.MapDataTable {
+	t.Helper()
+	dir := t.TempDir()
+	yamlPath := filepath.Join(dir, "map_list.yaml")
+	tileDir := filepath.Join(dir, "tiles")
+	if err := os.Mkdir(tileDir, 0o755); err != nil {
+		t.Fatalf("建立測試地圖目錄失敗: %v", err)
+	}
+	yaml := []byte(`maps:
+  - map_id: 900
+    name: los_test
+    start_x: 100
+    end_x: 105
+    start_y: 100
+    end_y: 100
+`)
+	if err := os.WriteFile(yamlPath, yaml, 0o644); err != nil {
+		t.Fatalf("寫入測試地圖清單失敗: %v", err)
+	}
+	// 15 = 可走且箭矢可通過，3 = 可走但箭矢不可通過；102,100 是牆。
+	if err := os.WriteFile(filepath.Join(tileDir, "900.txt"), []byte("15,15,3,15,15,15\n"), 0o644); err != nil {
+		t.Fatalf("寫入測試地圖格資料失敗: %v", err)
+	}
+	maps, err := data.LoadMapData(yamlPath, tileDir)
+	if err != nil {
+		t.Fatalf("載入測試地圖失敗: %v", err)
+	}
+	if maps.Count() != 1 {
+		t.Fatalf("測試地圖未載入")
+	}
+	return maps
 }
 
 func addSkillTestPlayer(ws *world.State, p *world.PlayerInfo) *world.PlayerInfo {
@@ -137,6 +172,111 @@ func TestDeathTombttackSkillDamagesPlayerTarget(t *testing.T) {
 	if !target.Dirty {
 		t.Fatal("玩家目標受傷後應標記 Dirty")
 	}
+}
+
+func TestSkillDamageHealChillTouchLeechesFromPlayerTarget(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		HP:        50,
+		MaxHP:     100,
+		Intel:     12,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		HP:        100,
+		MaxHP:     100,
+	})
+	s := newSkillTestSystem(t, ws)
+	skill := &data.SkillInfo{
+		SkillID:     10,
+		Target:      "attack",
+		Type:        64,
+		DamageValue: 20,
+		Ranged:      3,
+		ActionID:    18,
+		CastGfx:     252,
+	}
+
+	s.executeAttackSkill(caster.Session, caster, skill, target.CharID)
+
+	lostHP := int32(100) - target.HP
+	if lostHP <= 0 {
+		t.Fatalf("寒冷戰慄應先對玩家目標造成傷害，targetHP=%d", target.HP)
+	}
+	if caster.HP != 50+lostHP {
+		t.Fatalf("寒冷戰慄應依傷害回復施法者，lostHP=%d casterHP=%d", lostHP, caster.HP)
+	}
+}
+
+func TestSkillTripleArrowDamagesPlayerTargetThreeTimes(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		Level:     90,
+		Str:       35,
+		Dex:       35,
+		DmgMod:    50,
+		HitMod:    100,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "target",
+		X:         103,
+		Y:         100,
+		MapID:     4,
+		HP:        1000,
+		MaxHP:     1000,
+		AC:        100,
+	})
+	s := newSkillTestSystem(t, ws)
+	skill := &data.SkillInfo{
+		SkillID:  132,
+		Target:   "attack",
+		Type:     64,
+		Ranged:   10,
+		ActionID: 18,
+	}
+
+	s.executeAttackSkill(caster.Session, caster, skill, target.CharID)
+
+	lostHP := int32(1000) - target.HP
+	if lostHP < 150 {
+		t.Fatalf("三重矢應對玩家目標套用 3 次傷害，lostHP=%d targetHP=%d", lostHP, target.HP)
+	}
+	if got := countSkillAttackPackets(drainSkillTestPackets(target.Session)); got != 3 {
+		t.Fatalf("三重矢應送出 3 個攻擊表現封包，got=%d", got)
+	}
+}
+
+func countSkillAttackPackets(packets [][]byte) int {
+	count := 0
+	for _, pkt := range packets {
+		if len(pkt) >= 2 && pkt[0] == packet.S_OPCODE_ATTACK && pkt[1] == 18 {
+			count++
+		}
+	}
+	return count
 }
 
 func TestSkillDamageHealSelfAreaAttackDamagesNearbyPlayersAndNpcs(t *testing.T) {
@@ -258,6 +398,210 @@ func TestSelfAreaAttackSkillUsesRangeSkillVisualInsteadOfNpcEffect(t *testing.T)
 	}
 	if hasSkillEffectPacket(packets, npc.ID, skill.CastGfx) {
 		t.Fatalf("自體範圍攻擊技能不應在被打到的 NPC 身上播放 S_SkillSoundGFX")
+	}
+}
+
+func TestTargetAreaAttackSkillSkipsNpcBehindWall(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+	})
+	front := &world.NpcInfo{
+		ID:    2001,
+		Name:  "front",
+		X:     101,
+		Y:     100,
+		MapID: 900,
+		HP:    100,
+		MaxHP: 100,
+		MR:    0,
+	}
+	behindWall := &world.NpcInfo{
+		ID:    2002,
+		Name:  "behind_wall",
+		X:     104,
+		Y:     100,
+		MapID: 900,
+		HP:    100,
+		MaxHP: 100,
+		MR:    0,
+	}
+	ws.AddNpc(front)
+	ws.AddNpc(behindWall)
+	s := newSkillTestSystem(t, ws)
+	s.deps.MapData = newSkillLOSTestMap(t)
+	skill := &data.SkillInfo{
+		SkillID:         53,
+		SkillLevel:      7,
+		Target:          "attack",
+		Type:            64,
+		DamageValue:     20,
+		DamageDice:      1,
+		DamageDiceCount: 1,
+		Ranged:          10,
+		Area:            4,
+		ActionID:        18,
+		CastGfx:         758,
+	}
+
+	s.executeAttackSkill(caster.Session, caster, skill, front.ID)
+
+	if front.HP >= 100 {
+		t.Fatalf("牆前主目標應該受到範圍攻擊傷害，HP=%d", front.HP)
+	}
+	if behindWall.HP != 100 {
+		t.Fatalf("牆後範圍候選不應該被打到，HP=%d", behindWall.HP)
+	}
+}
+
+func TestTargetAreaAttackSkillOnPlayerSkipsTargetsBehindWall(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+	})
+	frontPlayer := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "front",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		HP:        100,
+		MaxHP:     100,
+	})
+	behindWallPlayer := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "behind_wall_player",
+		X:         104,
+		Y:         100,
+		MapID:     900,
+		HP:        100,
+		MaxHP:     100,
+	})
+	behindWallNpc := &world.NpcInfo{
+		ID:    2001,
+		Name:  "behind_wall_npc",
+		X:     104,
+		Y:     100,
+		MapID: 900,
+		HP:    100,
+		MaxHP: 100,
+		MR:    0,
+	}
+	ws.AddNpc(behindWallNpc)
+	s := newSkillTestSystem(t, ws)
+	s.deps.MapData = newSkillLOSTestMap(t)
+	skill := &data.SkillInfo{
+		SkillID:         53,
+		SkillLevel:      7,
+		Target:          "attack",
+		Type:            64,
+		DamageValue:     20,
+		DamageDice:      1,
+		DamageDiceCount: 1,
+		Ranged:          10,
+		Area:            4,
+		ActionID:        18,
+		CastGfx:         758,
+	}
+
+	s.executeAttackSkill(caster.Session, caster, skill, frontPlayer.CharID)
+
+	if frontPlayer.HP >= 100 {
+		t.Fatalf("牆前主玩家應該受到範圍攻擊傷害，HP=%d", frontPlayer.HP)
+	}
+	if behindWallPlayer.HP != 100 {
+		t.Fatalf("牆後範圍玩家不應該被打到，HP=%d", behindWallPlayer.HP)
+	}
+	if behindWallNpc.HP != 100 {
+		t.Fatalf("牆後範圍 NPC 不應該被打到，HP=%d", behindWallNpc.HP)
+	}
+}
+
+func TestSelfAreaAttackSkillSkipsTargetsBehindWall(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+	})
+	frontPlayer := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "front",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		HP:        100,
+		MaxHP:     100,
+	})
+	behindWallPlayer := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "behind_wall_player",
+		X:         104,
+		Y:         100,
+		MapID:     900,
+		HP:        100,
+		MaxHP:     100,
+	})
+	behindWallNpc := &world.NpcInfo{
+		ID:    2001,
+		Name:  "behind_wall_npc",
+		X:     104,
+		Y:     100,
+		MapID: 900,
+		HP:    100,
+		MaxHP: 100,
+		MR:    0,
+	}
+	ws.AddNpc(behindWallNpc)
+	s := newSkillTestSystem(t, ws)
+	s.deps.MapData = newSkillLOSTestMap(t)
+	skill := &data.SkillInfo{
+		SkillID:         53,
+		SkillLevel:      7,
+		Target:          "none",
+		Type:            64,
+		DamageValue:     20,
+		DamageDice:      1,
+		DamageDiceCount: 1,
+		Area:            4,
+		ActionID:        18,
+		CastGfx:         758,
+	}
+
+	s.executeSelfSkill(caster.Session, caster, skill)
+
+	if frontPlayer.HP >= 100 {
+		t.Fatalf("牆前範圍玩家應該受到傷害，HP=%d", frontPlayer.HP)
+	}
+	if behindWallPlayer.HP != 100 {
+		t.Fatalf("牆後範圍玩家不應該被打到，HP=%d", behindWallPlayer.HP)
+	}
+	if behindWallNpc.HP != 100 {
+		t.Fatalf("牆後範圍 NPC 不應該被打到，HP=%d", behindWallNpc.HP)
 	}
 }
 

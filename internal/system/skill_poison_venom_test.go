@@ -51,6 +51,72 @@ func TestSkillPoisonVenomDragonLifeEyeBlocksPoison(t *testing.T) {
 	}
 }
 
+func TestSkillPoisonVenomCursePoisonRespectsPlayerPoisonResistance(t *testing.T) {
+	disablePlayerDebuffMRForStatusTest(t, 11)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+	})
+	target.AddBuff(&world.ActiveBuff{SkillID: 104, TicksLeft: 100})
+	s := newSkillTestSystem(t, ws)
+	skill := &data.SkillInfo{SkillID: 11, ActionID: 19, CastGfx: 745}
+
+	s.executeBuffSkill(caster.Session, caster, skill, target.CharID)
+
+	if target.PoisonType != 0 {
+		t.Fatalf("毒咒應依 Java L1Poison.isValidTarget 受毒性抵抗阻擋，PoisonType=%d", target.PoisonType)
+	}
+}
+
+func TestSkillPoisonVenomCursePoisonDoesNotOverwriteNpcExistingPoison(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	npc := &world.NpcInfo{
+		ID:                2001,
+		X:                 101,
+		Y:                 100,
+		MapID:             4,
+		HP:                100,
+		MaxHP:             100,
+		PoisonDmgAmt:      20,
+		PoisonDmgTimer:    7,
+		PoisonAttackerSID: 99,
+	}
+	ws.AddNpc(npc)
+	s := newSkillTestSystem(t, ws)
+	skill := &data.SkillInfo{SkillID: 11, ActionID: 19, CastGfx: 745}
+
+	s.executeNpcDebuffSkill(caster.Session, caster, skill, npc)
+
+	if npc.PoisonDmgAmt != 20 || npc.PoisonDmgTimer != 7 || npc.PoisonAttackerSID != 99 {
+		t.Fatalf("毒咒不應覆寫既有毒狀態，amount=%d timer=%d attacker=%d",
+			npc.PoisonDmgAmt, npc.PoisonDmgTimer, npc.PoisonAttackerSID)
+	}
+}
+
 func TestSkillPoisonVenomEnchantVenomPoisonsPlayerAndRespectsResistance(t *testing.T) {
 	ws := world.NewState()
 	attacker := addSkillTestPlayer(ws, &world.PlayerInfo{

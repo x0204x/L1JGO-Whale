@@ -6,15 +6,24 @@ import (
 
 // WarehouseItem represents a single item stored in the warehouse.
 type WarehouseItem struct {
-	ID          int32
-	AccountName string
-	CharName    string
-	WhType      int16 // 3=personal, 4=elf, 5=clan, 6=character
-	ItemID      int32
-	Count       int32
-	EnchantLvl  int16
-	Bless       int16
-	Identified  bool
+	ID               int32
+	AccountName      string
+	CharName         string
+	WhType           int16 // 3=personal, 4=elf, 5=clan, 6=character
+	ItemObjID        int32
+	ItemID           int32
+	Count            int32
+	EnchantLvl       int16
+	Bless            int16
+	Identified       bool
+	ChargeCount      int16
+	Durability       int16
+	AttrEnchantKind  int16
+	AttrEnchantLevel int16
+	InnKeyID         int32
+	InnNpcID         int32
+	InnHall          bool
+	InnDueTime       int64
 }
 
 type WarehouseRepo struct {
@@ -28,7 +37,9 @@ func NewWarehouseRepo(db *DB) *WarehouseRepo {
 // Load returns all warehouse items for an account + warehouse type.
 func (r *WarehouseRepo) Load(ctx context.Context, accountName string, whType int16) ([]WarehouseItem, error) {
 	rows, err := r.db.Pool.Query(ctx,
-		`SELECT id, account_name, char_name, wh_type, item_id, count, enchant_lvl, bless, identified
+		`SELECT id, account_name, char_name, wh_type, item_id, count, enchant_lvl, bless, identified,
+			item_obj_id, charge_count, durability, attr_enchant_kind, attr_enchant_level,
+			inn_key_id, inn_npc_id, inn_hall, inn_due_time
 		 FROM warehouse_items WHERE account_name = $1 AND wh_type = $2`, accountName, whType,
 	)
 	if err != nil {
@@ -42,6 +53,8 @@ func (r *WarehouseRepo) Load(ctx context.Context, accountName string, whType int
 		if err := rows.Scan(
 			&it.ID, &it.AccountName, &it.CharName, &it.WhType,
 			&it.ItemID, &it.Count, &it.EnchantLvl, &it.Bless, &it.Identified,
+			&it.ItemObjID, &it.ChargeCount, &it.Durability, &it.AttrEnchantKind, &it.AttrEnchantLevel,
+			&it.InnKeyID, &it.InnNpcID, &it.InnHall, &it.InnDueTime,
 		); err != nil {
 			return nil, err
 		}
@@ -54,10 +67,16 @@ func (r *WarehouseRepo) Load(ctx context.Context, accountName string, whType int
 func (r *WarehouseRepo) Deposit(ctx context.Context, item WarehouseItem) (int32, error) {
 	var id int32
 	err := r.db.Pool.QueryRow(ctx,
-		`INSERT INTO warehouse_items (account_name, char_name, wh_type, item_id, count, enchant_lvl, bless, identified)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		`INSERT INTO warehouse_items (
+			account_name, char_name, wh_type, item_id, count, enchant_lvl, bless, identified,
+			item_obj_id, charge_count, durability, attr_enchant_kind, attr_enchant_level,
+			inn_key_id, inn_npc_id, inn_hall, inn_due_time
+		)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
 		item.AccountName, item.CharName, item.WhType, item.ItemID, item.Count,
 		item.EnchantLvl, item.Bless, item.Identified,
+		item.ItemObjID, item.ChargeCount, item.Durability, item.AttrEnchantKind, item.AttrEnchantLevel,
+		item.InnKeyID, item.InnNpcID, item.InnHall, item.InnDueTime,
 	).Scan(&id)
 	return id, err
 }
@@ -94,7 +113,9 @@ func (r *WarehouseRepo) Withdraw(ctx context.Context, whItemID int32, count int3
 // Java 角色倉庫以 character ID 為鍵，每個角色獨立。
 func (r *WarehouseRepo) LoadByCharName(ctx context.Context, charName string, whType int16) ([]WarehouseItem, error) {
 	rows, err := r.db.Pool.Query(ctx,
-		`SELECT id, account_name, char_name, wh_type, item_id, count, enchant_lvl, bless, identified
+		`SELECT id, account_name, char_name, wh_type, item_id, count, enchant_lvl, bless, identified,
+			item_obj_id, charge_count, durability, attr_enchant_kind, attr_enchant_level,
+			inn_key_id, inn_npc_id, inn_hall, inn_due_time
 		 FROM warehouse_items WHERE char_name = $1 AND wh_type = $2`, charName, whType,
 	)
 	if err != nil {
@@ -108,6 +129,8 @@ func (r *WarehouseRepo) LoadByCharName(ctx context.Context, charName string, whT
 		if err := rows.Scan(
 			&it.ID, &it.AccountName, &it.CharName, &it.WhType,
 			&it.ItemID, &it.Count, &it.EnchantLvl, &it.Bless, &it.Identified,
+			&it.ItemObjID, &it.ChargeCount, &it.Durability, &it.AttrEnchantKind, &it.AttrEnchantLevel,
+			&it.InnKeyID, &it.InnNpcID, &it.InnHall, &it.InnDueTime,
 		); err != nil {
 			return nil, err
 		}
@@ -131,7 +154,7 @@ func (r *WarehouseRepo) InsertClanWarehouseHistory(ctx context.Context, clanID i
 // ClanWarehouseHistoryEntry 是血盟倉庫歷史記錄。
 type ClanWarehouseHistoryEntry struct {
 	CharName   string
-	Type       int    // 0=存入, 1=領出
+	Type       int // 0=存入, 1=領出
 	ItemName   string
 	ItemCount  int32
 	MinutesAgo int32 // 距今多少分鐘

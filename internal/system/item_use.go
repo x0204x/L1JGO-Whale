@@ -25,11 +25,23 @@ func NewItemUseSystem(deps *handler.Deps) *ItemUseSystem {
 	return &ItemUseSystem{deps: deps}
 }
 
+func isPlayerItemUseBlocked(sess *net.Session, player *world.PlayerInfo) bool {
+	if player.Paralyzed || player.Sleeped {
+		handler.SendParalysis(sess, handler.TeleportUnlock)
+		return true
+	}
+	return false
+}
+
 // ---------- 消耗品使用（藥水、食物） ----------
 
 // UseConsumable 處理消耗品使用。回傳 true 表示物品已被消耗。
 // 藥水效果定義在 Lua (scripts/item/potions.lua)。
 func (s *ItemUseSystem) UseConsumable(sess *net.Session, player *world.PlayerInfo, invItem *world.InvItem, itemInfo *data.ItemInfo) bool {
+	if isPlayerItemUseBlocked(sess, player) {
+		return false
+	}
+
 	consumed := false
 
 	pot := s.deps.Scripting.GetPotionEffect(int(invItem.ItemID))
@@ -295,7 +307,11 @@ func (s *ItemUseSystem) UseDissolutionWithRoll(sess *net.Session, player *world.
 
 	const crystalItemID int32 = 41246
 	crystalInfo := s.deps.Items.Get(crystalItemID)
-	if crystalInfo != nil {
+	if s.deps.ItemCreate != nil {
+		if _, ok := s.deps.ItemCreate.GiveItem(sess, player, crystalItemID, crystalCount); !ok {
+			return false
+		}
+	} else if crystalInfo != nil {
 		existing := player.Inv.FindByItemID(crystalItemID)
 		wasExisting := existing != nil && crystalInfo.Stackable
 		crystal := player.Inv.AddItem(crystalItemID, crystalCount, crystalInfo.Name,
@@ -643,6 +659,10 @@ func (s *ItemUseSystem) UseSpellBook(sess *net.Session, player *world.PlayerInfo
 // 封包接續: [H mapID][D bookmarkID]
 // Java ref: C_ItemUSe.java lines 1572-1625, L1Teleport.teleport()
 func (s *ItemUseSystem) UseTeleportScroll(sess *net.Session, r *packet.Reader, player *world.PlayerInfo, invItem *world.InvItem) {
+	if isPlayerItemUseBlocked(sess, player) {
+		return
+	}
+
 	_ = r.ReadH()           // mapID from client
 	bookmarkID := r.ReadD() // bookmark ID (0 = 無書籤 → 隨機傳送)
 
@@ -985,6 +1005,61 @@ func (s *ItemUseSystem) giveDropToPlayer(receiver *world.PlayerInfo, drop data.D
 		return
 	}
 
+	sendDropNotice := func() {
+		if drop.ItemID == world.AdenaItemID {
+			handler.SendShowDrop(receiver.Session, handler.ShowDropAdena, qty)
+			msg := fmt.Sprintf("獲得 %d 金幣", qty)
+			handler.SendGlobalChat(receiver.Session, 9, msg)
+			return
+		}
+
+		name := itemInfo.Name
+		if drop.EnchantLevel > 0 {
+			name = fmt.Sprintf("+%d %s", drop.EnchantLevel, name)
+		}
+		if qty > 1 {
+			msg := fmt.Sprintf("獲得 %s (%d)", name, qty)
+			handler.SendItemBoard(receiver.Session, uint16(itemInfo.InvGfx), msg)
+			handler.SendGlobalChat(receiver.Session, 9, msg)
+			return
+		}
+		msg := fmt.Sprintf("獲得 %s", name)
+		handler.SendItemBoard(receiver.Session, uint16(itemInfo.InvGfx), msg)
+		handler.SendGlobalChat(receiver.Session, 9, msg)
+	}
+
+	if s.deps.ItemCreate != nil {
+		opts := ItemCreateOptions{}
+		needsOptions := false
+		if drop.EnchantLevel != 0 {
+			opts.EnchantLvl = int8(drop.EnchantLevel)
+			needsOptions = true
+		}
+		if itemInfo.Category == data.CategoryWeapon || itemInfo.Category == data.CategoryArmor {
+			needsOptions = true
+			opts.BeforeSend = func(item *world.InvItem) {
+				item.Identified = false
+			}
+		}
+		if needsOptions {
+			if creator, ok := s.deps.ItemCreate.(interface {
+				GiveItemWithOptions(sess *net.Session, player *world.PlayerInfo, itemID, count int32, opts ItemCreateOptions) (*world.InvItem, bool)
+			}); ok {
+				if _, ok := creator.GiveItemWithOptions(receiver.Session, receiver, drop.ItemID, qty, opts); !ok {
+					return
+				}
+				sendDropNotice()
+				return
+			}
+		} else {
+			if _, ok := s.deps.ItemCreate.GiveItem(receiver.Session, receiver, drop.ItemID, qty); !ok {
+				return
+			}
+			sendDropNotice()
+			return
+		}
+	}
+
 	stackable := itemInfo.Stackable || drop.ItemID == world.AdenaItemID
 	existing := receiver.Inv.FindByItemID(drop.ItemID)
 	wasExisting := existing != nil && stackable
@@ -1013,25 +1088,7 @@ func (s *ItemUseSystem) giveDropToPlayer(receiver *world.PlayerInfo, drop data.D
 	handler.SendWeightUpdate(receiver.Session, receiver)
 
 	// 通知玩家掉落
-	if drop.ItemID == world.AdenaItemID {
-		handler.SendShowDrop(receiver.Session, handler.ShowDropAdena, qty)
-		msg := fmt.Sprintf("獲得 %d 金幣", qty)
-		handler.SendGlobalChat(receiver.Session, 9, msg)
-	} else {
-		name := itemInfo.Name
-		if drop.EnchantLevel > 0 {
-			name = fmt.Sprintf("+%d %s", drop.EnchantLevel, name)
-		}
-		if qty > 1 {
-			msg := fmt.Sprintf("獲得 %s (%d)", name, qty)
-			handler.SendItemBoard(receiver.Session, uint16(itemInfo.InvGfx), msg)
-			handler.SendGlobalChat(receiver.Session, 9, msg)
-		} else {
-			msg := fmt.Sprintf("獲得 %s", name)
-			handler.SendItemBoard(receiver.Session, uint16(itemInfo.InvGfx), msg)
-			handler.SendGlobalChat(receiver.Session, 9, msg)
-		}
-	}
+	sendDropNotice()
 }
 
 // ---------- 加速/勇敢效果 ----------
@@ -1393,6 +1450,37 @@ func (s *ItemUseSystem) GiveBoxReward(sess *net.Session, player *world.PlayerInf
 		itemBless = byte(bless)
 	}
 
+	if s.deps.ItemCreate != nil {
+		opts := ItemCreateOptions{}
+		if enchant > 0 {
+			opts.EnchantLvl = int8(enchant)
+		}
+		if bless >= 0 {
+			opts.BlessSet = true
+			opts.Bless = itemBless
+		}
+		if creator, ok := s.deps.ItemCreate.(interface {
+			GiveItemWithOptions(sess *net.Session, player *world.PlayerInfo, itemID, count int32, opts ItemCreateOptions) (*world.InvItem, bool)
+		}); ok {
+			if _, ok := creator.GiveItemWithOptions(sess, player, getItemID, count, opts); !ok {
+				return
+			}
+			if broadcast {
+				s.broadcastBoxDrop(player.Name, itemInfo.Name, count)
+			}
+			return
+		}
+		if bless < 0 && enchant <= 0 {
+			if _, ok := s.deps.ItemCreate.GiveItem(sess, player, getItemID, count); !ok {
+				return
+			}
+			if broadcast {
+				s.broadcastBoxDrop(player.Name, itemInfo.Name, count)
+			}
+			return
+		}
+	}
+
 	stackable := itemInfo.Stackable || getItemID == world.AdenaItemID
 
 	// 檢查是否已有同物品可堆疊
@@ -1635,44 +1723,49 @@ func (s *ItemUseSystem) useCreateMonsterWand(sess *net.Session, player *world.Pl
 	}
 
 	mob := &world.NpcInfo{
-		ID:            world.NextNpcID(),
-		NpcID:         tmpl.NpcID,
-		Impl:          tmpl.Impl,
-		GfxID:         tmpl.GfxID,
-		Name:          tmpl.Name,
-		NameID:        tmpl.NameID,
-		Level:         tmpl.Level,
-		X:             spawnX,
-		Y:             spawnY,
-		MapID:         player.MapID,
-		Heading:       int16(rand.Intn(8)),
-		HP:            tmpl.HP,
-		MaxHP:         tmpl.HP,
-		MP:            tmpl.MP,
-		MaxMP:         tmpl.MP,
-		AC:            tmpl.AC,
-		STR:           tmpl.STR,
-		DEX:           tmpl.DEX,
-		Exp:           tmpl.Exp,
-		Lawful:        tmpl.Lawful,
-		Size:          tmpl.Size,
-		MR:            tmpl.MR,
-		Undead:        tmpl.Undead,
-		Hard:          tmpl.Hard,
-		CantResurrect: tmpl.CantResurrect,
-		Agro:          tmpl.Agro,
-		AtkDmg:        int32(tmpl.Level) + int32(tmpl.STR)/3,
-		Ranged:        tmpl.Ranged,
-		AtkSpeed:      atkSpeed,
-		MoveSpeed:     moveSpeed,
-		PoisonAtk:     tmpl.PoisonAtk,
-		FireRes:       tmpl.FireRes,
-		WaterRes:      tmpl.WaterRes,
-		WindRes:       tmpl.WindRes,
-		EarthRes:      tmpl.EarthRes,
-		SpawnX:        spawnX,
-		SpawnY:        spawnY,
-		SpawnMapID:    player.MapID,
+		ID:                world.NextNpcID(),
+		NpcID:             tmpl.NpcID,
+		Impl:              tmpl.Impl,
+		GfxID:             tmpl.GfxID,
+		Name:              tmpl.Name,
+		NameID:            tmpl.NameID,
+		Level:             tmpl.Level,
+		X:                 spawnX,
+		Y:                 spawnY,
+		MapID:             player.MapID,
+		Heading:           int16(rand.Intn(8)),
+		HP:                tmpl.HP,
+		MaxHP:             tmpl.HP,
+		MP:                tmpl.MP,
+		MaxMP:             tmpl.MP,
+		AC:                tmpl.AC,
+		STR:               tmpl.STR,
+		DEX:               tmpl.DEX,
+		Exp:               tmpl.Exp,
+		Lawful:            tmpl.Lawful,
+		Size:              tmpl.Size,
+		MR:                tmpl.MR,
+		Undead:            tmpl.Undead,
+		UndeadType:        tmpl.UndeadType,
+		TurnUndeadable:    tmpl.EffectiveTurnUndeadable(),
+		TurnUndeadableSet: true,
+		Hard:              tmpl.Hard,
+		CantResurrect:     tmpl.CantResurrect,
+		Agro:              tmpl.Agro,
+		AtkDmg:            int32(tmpl.Level) + int32(tmpl.STR)/3,
+		Ranged:            tmpl.Ranged,
+		AtkSpeed:          atkSpeed,
+		SubMagicSpeed:     tmpl.SubMagicSpeed,
+		MoveSpeed:         moveSpeed,
+		PoisonAtk:         tmpl.PoisonAtk,
+		FireRes:           tmpl.FireRes,
+		WaterRes:          tmpl.WaterRes,
+		WindRes:           tmpl.WindRes,
+		EarthRes:          tmpl.EarthRes,
+		WeakAttr:          tmpl.WeakAttr,
+		SpawnX:            spawnX,
+		SpawnY:            spawnY,
+		SpawnMapID:        player.MapID,
 	}
 
 	s.deps.World.AddNpc(mob)

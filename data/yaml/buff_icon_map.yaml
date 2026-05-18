@@ -1,6 +1,6 @@
 # Buff icon mapping: skill_id → icon packet type + parameter.
-# type: shield|strup|dexup|aura|invis|wisdom|blue_potion
-# param: icon sub-type (used by shield/strup/dexup; ignored by others)
+# type: shield|strup|dexup|aura|gfx|invis|wisdom|blue_potion
+# param: icon sub-type or icon ID
 # Ported from Go handler/skill.go sendBuffIcon switch/case.
 
 buff_icons:
@@ -61,6 +61,11 @@ buff_icons:
     type: aura
   - skill_id: 166    # Storm Shot
     type: aura
+
+  # ========== General S_PacketBox/S_SkillIconGFX icons ==========
+  - skill_id: 68     # Immune to Harm
+    type: gfx
+    param: 40
 
   # ========== Invisibility (S_Invis opcode 171) ==========
   - skill_id: 60     # Invisibility

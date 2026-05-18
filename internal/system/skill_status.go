@@ -10,8 +10,16 @@ import (
 )
 
 const (
-	skillCurseBlindEffect = int32(40)
-	skillStatusHaste      = int32(1001)
+	skillCurseBlindEffect  = int32(40)
+	skillStatusFloatingEye = int32(1012)
+	skillStatusHaste       = int32(1001)
+)
+
+const (
+	weakElementalEarth = int16(1)
+	weakElementalFire  = int16(2)
+	weakElementalWater = int16(4)
+	weakElementalWind  = int16(8)
 )
 
 func (s *SkillSystem) applyCurseBlindEffect(target *world.PlayerInfo, skill *data.SkillInfo) {
@@ -27,7 +35,11 @@ func (s *SkillSystem) applyCurseBlindEffect(target *world.PlayerInfo, skill *dat
 		SkillID:   skillCurseBlindEffect,
 		TicksLeft: dur * 5,
 	})
-	handler.SendCurseBlind(target.Session, 1)
+	blindType := uint16(1)
+	if target.HasBuff(skillStatusFloatingEye) {
+		blindType = 2
+	}
+	handler.SendCurseBlind(target.Session, blindType)
 }
 
 func (s *SkillSystem) removeCurseBlindEffect(target *world.PlayerInfo) {
@@ -74,27 +86,298 @@ func (s *SkillSystem) applyShockStunToPlayer(sess *net.Session, caster, target *
 		return true
 	}
 	if !s.hasTwoHandSwordEquipped(caster) {
-		handler.SendGlobalChat(sess, 9, "\\f3請使用雙手劍。")
+		handler.SendSystemMessage(sess, "請使用雙手劍")
 		return true
 	}
+	targetViewers := nearby
+	if s.deps != nil && s.deps.World != nil {
+		targetViewers = s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+	}
 	if target.HasBuff(87) {
+		handler.BroadcastToPlayers(targetViewers, handler.BuildSkillEffect(target.CharID, 4434))
 		return true
 	}
 	dur := shockStunDurationSeconds()
+	if caster.AccessLevel >= 200 {
+		handler.SendNormalChat(sess, 0, fmt.Sprintf("此次衝暈秒數為%d秒..只有GM看的到", dur))
+	}
 	stunSkill := *skill
 	stunSkill.BuffDuration = dur
 	s.applyBuffEffect(target, &stunSkill)
-	if skill.CastGfx > 0 {
-		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+	s.spawnGroundEffect(caster, &stunSkill, shockStunEffectNpcID, world.GroundEffectShockStun, target.X, target.Y)
+	if s.deps != nil && s.deps.PvP != nil {
+		s.deps.PvP.TriggerPinkName(caster, target)
 	}
+	handler.BroadcastToPlayers(targetViewers, handler.BuildSkillEffect(target.CharID, 4434))
 	if s.deps != nil && s.deps.Log != nil {
 		s.deps.Log.Info(fmt.Sprintf("衝擊之暈  施法者=%s  玩家=%s  持續=%d秒", caster.Name, target.Name, dur))
 	}
 	return true
 }
 
+func (s *SkillSystem) ApplyNpcShockStun(caster *world.NpcInfo, target *world.PlayerInfo, skill *data.SkillInfo, leverage int) {
+	if caster == nil || target == nil || skill == nil {
+		return
+	}
+	if isGMInvisible(target) {
+		return
+	}
+	targetGfx := npcShockStunTargetGfx(skill)
+	nearby := s.deps.World.GetNearbyPlayersAt(caster.X, caster.Y, caster.MapID)
+	s.clearShockStunSleepEffects(target)
+	s.clearShockStunEraseMagic(target)
+	if target.HasBuff(50) || target.HasBuff(157) || !checkNpcCasterShockStunSuccess(caster, target, leverage) {
+		if skill.ActionID > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(caster.ID, byte(skill.ActionID)))
+		}
+		return
+	}
+	if target.HasBuff(87) {
+		if skill.ActionID > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(caster.ID, byte(skill.ActionID)))
+		}
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, targetGfx))
+		return
+	}
+	dur := shockStunDurationSeconds()
+	stunSkill := *skill
+	stunSkill.BuffDuration = dur
+	s.applyBuffEffect(target, &stunSkill)
+	s.spawnGroundEffectFromNpc(caster, &stunSkill, shockStunEffectNpcID, world.GroundEffectShockStun, target.X, target.Y)
+	if skill.ActionID > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(caster.ID, byte(skill.ActionID)))
+	}
+	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, targetGfx))
+}
+
+func (s *SkillSystem) clearShockStunSleepEffects(target *world.PlayerInfo) {
+	if target == nil {
+		return
+	}
+	hadSleep := target.Sleeped || target.HasBuff(62) || target.HasBuff(66) || target.HasBuff(103)
+	target.Sleeped = false
+	target.RemoveBuff(62)
+	target.RemoveBuff(66)
+	target.RemoveBuff(103)
+	if hadSleep && target.Session != nil {
+		handler.SendParalysis(target.Session, handler.SleepRemove)
+	}
+}
+
+func (s *SkillSystem) clearShockStunEraseMagic(target *world.PlayerInfo) {
+	if target == nil {
+		return
+	}
+	s.removeBuffAndRevert(target, 153)
+}
+
+func clearShockStunNpcSleepEffects(target *world.NpcInfo) {
+	if target == nil {
+		return
+	}
+	target.Sleeped = false
+	target.RemoveDebuff(62)
+	target.RemoveDebuff(66)
+	target.RemoveDebuff(103)
+}
+
+func clearShockStunNpcEraseMagic(target *world.NpcInfo) {
+	if target == nil {
+		return
+	}
+	target.RemoveDebuff(153)
+}
+
+func npcShockStunTargetGfx(skill *data.SkillInfo) int32 {
+	if skill != nil && skill.CastGfx > 0 {
+		return skill.CastGfx
+	}
+	return 4434
+}
+
+func (s *SkillSystem) ApplyNpcAreaShockStun(caster *world.NpcInfo, targets []*world.PlayerInfo) {
+	if caster == nil {
+		return
+	}
+	for _, target := range targets {
+		if target == nil || target.Dead || target.HasBuff(87) || isGMInvisible(target) {
+			continue
+		}
+		dur := areaShockStunDurationSeconds()
+		stunSkill := data.SkillInfo{SkillID: 87, BuffDuration: dur}
+		s.applyBuffEffect(target, &stunSkill)
+		s.spawnGroundEffectFromNpc(caster, &stunSkill, shockStunEffectNpcID, world.GroundEffectShockStun, target.X, target.Y)
+	}
+}
+
 func shockStunDurationSeconds() int {
-	return 1 + world.RandInt(6)
+	return 1 + world.RandInt(5)
+}
+
+func areaShockStunDurationSeconds() int {
+	return 2 + world.RandInt(4)
+}
+
+func shockStunRange(skill *data.SkillInfo) int32 {
+	if skill != nil && skill.Ranged > 0 {
+		return int32(skill.Ranged)
+	}
+	return 1
+}
+
+func (s *SkillSystem) shockStunInvalidTargetBeforeConsume(player *world.PlayerInfo, skill *data.SkillInfo, targetID int32) bool {
+	if s == nil || s.deps == nil || s.deps.World == nil || player == nil || skill == nil {
+		return false
+	}
+	if targetID == 0 || targetID == player.CharID {
+		return false
+	}
+	if target := s.deps.World.GetByCharID(targetID); target != nil {
+		if target.Dead || target.MapID != player.MapID || isGMInvisible(target) {
+			return true
+		}
+		return chebyshevDist(player.X, player.Y, target.X, target.Y) > shockStunRange(skill)
+	}
+	if npc := s.deps.World.GetNpc(targetID); npc != nil {
+		if npc.Dead || npc.MapID != player.MapID {
+			return true
+		}
+		return chebyshevDist(player.X, player.Y, npc.X, npc.Y) > shockStunRange(skill)
+	}
+	return true
+}
+
+func isGMInvisible(player *world.PlayerInfo) bool {
+	return player.AccessLevel >= 200 && player.Invisible
+}
+
+const shockStunEffectNpcID int32 = 81162
+
+func (s *SkillSystem) queueShockStunOnAction(sess *net.Session, targetID int32) {
+	if sess == nil || s.deps == nil || s.deps.Combat == nil {
+		return
+	}
+	s.deps.Combat.QueueAttack(handler.AttackRequest{
+		AttackerSessionID: sess.ID,
+		TargetID:          targetID,
+		IsMelee:           true,
+	})
+}
+
+func (s *SkillSystem) shockStunSafetyZoneBlocked(sess *net.Session, casterMap int16, casterX, casterY int32, targetMap int16, targetX, targetY int32) bool {
+	if s == nil || s.deps == nil || s.deps.MapData == nil {
+		return false
+	}
+	if s.deps.MapData.IsSafetyZone(casterMap, casterX, casterY) ||
+		s.deps.MapData.IsSafetyZone(targetMap, targetX, targetY) {
+		handler.SendSystemMessage(sess, "在安全區域無法使用此技能。")
+		return true
+	}
+	return false
+}
+
+func (s *SkillSystem) checkShockStunPlayerSuccess(caster, target *world.PlayerInfo) bool {
+	return world.RandInt(100) < shockStunPlayerProbability(caster, target)
+}
+
+func shockStunPlayerProbability(caster, target *world.PlayerInfo) int {
+	if caster == nil || target == nil {
+		return 0
+	}
+	prob := 10
+	attackLevel := caster.Level + caster.StunLevel
+	if attackLevel > target.Level {
+		prob = 40
+	} else if attackLevel == target.Level {
+		prob = 30
+	}
+	prob += shockStunBaseIntMagicHit(caster)
+	prob += int(caster.OriginalMagicHit)
+	prob += shockStunIntMagicHit(caster.Intel)
+	prob -= int(target.RegistStun)
+	if prob < 0 {
+		return 0
+	}
+	if prob > 100 {
+		return 100
+	}
+	return prob
+}
+
+func (s *SkillSystem) checkShockStunNpcSuccess(caster *world.PlayerInfo, npc *world.NpcInfo) bool {
+	return world.RandInt(100) < shockStunNpcProbability(caster, npc)
+}
+
+func shockStunNpcProbability(caster *world.PlayerInfo, npc *world.NpcInfo) int {
+	if caster == nil || npc == nil {
+		return 0
+	}
+	prob := 10
+	attackLevel := caster.Level + caster.StunLevel
+	if attackLevel > npc.Level {
+		prob = 40
+	} else if attackLevel == npc.Level {
+		prob = 30
+	}
+	prob += shockStunBaseIntMagicHit(caster)
+	prob += int(caster.OriginalMagicHit)
+	prob += shockStunIntMagicHit(caster.Intel)
+	if prob < 0 {
+		return 0
+	}
+	if prob > 100 {
+		return 100
+	}
+	return prob
+}
+
+func shockStunIntMagicHit(intel int16) int {
+	if intel < 23 || intel > 127 {
+		return 0
+	}
+	return (int(intel) - 20) / 3
+}
+
+func shockStunBaseIntMagicHit(caster *world.PlayerInfo) int {
+	baseInt := int(caster.Intel) - caster.EquipBonuses.AddInt
+	for _, buff := range caster.ActiveBuffs {
+		baseInt -= int(buff.DeltaIntel)
+	}
+	if baseInt >= 25 && baseInt <= 44 {
+		return (baseInt - 15) / 10
+	}
+	if baseInt >= 45 {
+		return 5
+	}
+	return 0
+}
+
+func checkNpcCasterShockStunSuccess(caster *world.NpcInfo, target *world.PlayerInfo, leverage int) bool {
+	return world.RandInt(100) < shockStunNpcCasterProbability(caster, target, leverage)
+}
+
+func shockStunNpcCasterProbability(caster *world.NpcInfo, target *world.PlayerInfo, leverage int) int {
+	if caster == nil || target == nil {
+		return 0
+	}
+	if leverage <= 0 {
+		leverage = 10
+	}
+	prob := 30
+	if caster.Level > target.Level {
+		prob = 70
+	} else if caster.Level == target.Level {
+		prob = 50
+	}
+	prob = prob * leverage / 10
+	prob -= int(target.RegistStun)
+	if prob < 0 {
+		return 0
+	}
+	if prob > 90 {
+		return 90
+	}
+	return prob
 }
 
 func (s *SkillSystem) hasTwoHandSwordEquipped(player *world.PlayerInfo) bool {
@@ -117,12 +400,19 @@ func (s *SkillSystem) hasTwoHandSwordEquipped(player *world.PlayerInfo) bool {
 func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, npc *world.NpcInfo) {
 	ws := s.deps.World
 
-	maxRange := int32(skill.Ranged)
-	if maxRange <= 0 {
-		maxRange = 10
-	}
-	if chebyshevDist(player.X, player.Y, npc.X, npc.Y) > maxRange+2 {
-		return
+	dist := chebyshevDist(player.X, player.Y, npc.X, npc.Y)
+	if skill.SkillID == 87 {
+		if dist > shockStunRange(skill) {
+			return
+		}
+	} else {
+		maxRange := int32(skill.Ranged)
+		if maxRange <= 0 {
+			maxRange = 10
+		}
+		if dist > maxRange+2 {
+			return
+		}
 	}
 
 	player.Heading = CalcHeading(player.X, player.Y, npc.X, npc.Y)
@@ -132,9 +422,17 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
 
-	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	if skill.SkillID != 87 {
+		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	}
 
 	switch skill.SkillID {
+	case 23: // 能量感測 — Java: 依 NPC weakAttr bitmask 廣播地/火/水/風弱點特效
+		if npc.Impl != "L1Monster" {
+			return
+		}
+		broadcastWeakElementalEffects(npc, nearby)
+
 	case handler.SkillShapeChange: // Owner: skill_polymorph.go
 		s.executeShapeChangeNpc(sess, player, skill, npc, nearby)
 
@@ -169,20 +467,38 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 		s.deps.Log.Info(fmt.Sprintf("壞物術  施法者=%s  NPC=%s", player.Name, npc.Name))
 
 	case 87: // 衝擊之暈 — 需要雙手劍
-		if !s.hasTwoHandSwordEquipped(player) {
-			handler.SendGlobalChat(sess, 9, "\\f3請使用雙手劍。")
+		s.queueShockStunOnAction(sess, npc.ID)
+		clearShockStunNpcSleepEffects(npc)
+		clearShockStunNpcEraseMagic(npc)
+		if s.shockStunSafetyZoneBlocked(sess, player.MapID, player.X, player.Y, npc.MapID, npc.X, npc.Y) {
 			return
 		}
-		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
-			s.sendCastFail(sess)
+		if npc.HasDebuff(50) || npc.HasDebuff(157) {
+			return
+		}
+		if !s.hasTwoHandSwordEquipped(player) {
+			handler.SendSystemMessage(sess, "請使用雙手劍")
+			return
+		}
+		if npc.HasDebuff(87) {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, 4434))
+			return
+		}
+		if !s.checkShockStunNpcSuccess(player, npc) {
 			return
 		}
 		dur := shockStunDurationSeconds()
-		npc.Paralyzed = true
-		npc.AddDebuff(87, dur*5)
-		if skill.CastGfx > 0 {
-			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
+		if player.AccessLevel >= 200 {
+			handler.SendNormalChat(sess, 0, fmt.Sprintf("此次衝暈秒數為%d秒..只有GM看的到", dur))
 		}
+		if npc.Impl == "L1Monster" || npc.Impl == "L1Summon" || npc.Impl == "L1Pet" {
+			npc.Paralyzed = true
+		}
+		npc.AddDebuff(87, dur*5)
+		stunSkill := *skill
+		stunSkill.BuffDuration = dur
+		s.spawnGroundEffect(player, &stunSkill, shockStunEffectNpcID, world.GroundEffectShockStun, npc.X, npc.Y)
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, 4434))
 		s.deps.Log.Info(fmt.Sprintf("衝擊之暈  施法者=%s  NPC=%s  持續=%d秒", player.Name, npc.Name, dur))
 
 	case 157: // 大地屏障 — 凍結 + 灰色色調
@@ -251,12 +567,11 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 			s.sendCastFail(sess)
 			return
 		}
-		npc.PoisonDmgAmt = 5
-		npc.PoisonDmgTimer = 0
-		npc.PoisonAttackerSID = sess.ID // 仇恨歸屬
+		if !applyDamagePoisonToNpc(npc, sess.ID, 5, s.deps) {
+			return
+		}
 		AddHate(npc, sess.ID, 1)
 		npc.AddDebuff(11, 150) // 30 秒 = 150 ticks
-		handler.BroadcastToPlayers(nearby, handler.BuildPoison(npc.ID, 1))
 		if skill.CastGfx > 0 {
 			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
 		}
@@ -366,6 +681,9 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 	case 44: // 魔法相消術 — 解除 NPC 所有 debuff + 狀態（Java: CANCELLATION.java:158-167）
 		// 清除所有 debuffs
 		for debuffID := range npc.ActiveDebuffs {
+			if s.deps.Scripting.IsNonCancellable(int(debuffID)) {
+				continue
+			}
 			delete(npc.ActiveDebuffs, debuffID)
 		}
 		hadNpcPoly := npc.PolyOriginalGfxID != 0
@@ -387,6 +705,21 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 		if skill.CastGfx > 0 {
 			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
 		}
+	}
+}
+
+func broadcastWeakElementalEffects(npc *world.NpcInfo, nearby []*world.PlayerInfo) {
+	if npc.WeakAttr&weakElementalEarth == weakElementalEarth {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, 2169))
+	}
+	if npc.WeakAttr&weakElementalFire == weakElementalFire {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, 2167))
+	}
+	if npc.WeakAttr&weakElementalWater == weakElementalWater {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, 2166))
+	}
+	if npc.WeakAttr&weakElementalWind == weakElementalWind {
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, 2168))
 	}
 }
 
@@ -453,11 +786,11 @@ func (s *SkillSystem) calcArmorBreakProb(caster, target *world.PlayerInfo) bool 
 
 	var prob int
 	if atkLv > defLv {
-		prob = 5
+		prob = 60
 	} else if atkLv == defLv {
-		prob = 10
+		prob = 40
 	} else {
-		prob = 15
+		prob = 20
 	}
 
 	// Java: probability += magichit + INT 加成
@@ -482,11 +815,11 @@ func (s *SkillSystem) calcArmorBreakProbNpc(caster *world.PlayerInfo, npc *world
 
 	var prob int
 	if atkLv > defLv {
-		prob = 5
+		prob = 60
 	} else if atkLv == defLv {
-		prob = 10
+		prob = 40
 	} else {
-		prob = 15
+		prob = 20
 	}
 
 	baseInt := int(caster.Intel)
@@ -500,4 +833,21 @@ func (s *SkillSystem) calcArmorBreakProbNpc(caster *world.PlayerInfo, npc *world
 		prob = 1
 	}
 	return world.RandInt(100) < prob
+}
+
+func armorBreakProbabilityByLevel(attackLevel, defenseLevel, baseInt int) int {
+	var prob int
+	if attackLevel > defenseLevel {
+		prob = 60
+	} else if attackLevel == defenseLevel {
+		prob = 40
+	} else {
+		prob = 20
+	}
+	if baseInt >= 25 && baseInt <= 44 {
+		prob += (baseInt - 15) / 10
+	} else if baseInt >= 45 {
+		prob += 5
+	}
+	return prob
 }

@@ -18,6 +18,47 @@ func attachFinalBurnSkillTable(t *testing.T, s *SkillSystem) {
 	s.deps.Skills = skills
 }
 
+func TestSkillFinalBurnFinalBurnDamagesWithPreConsumeMP(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:   1,
+		Session:     newSkillTestSession(t, 1),
+		CharID:      1001,
+		Name:        "darkelf",
+		X:           100,
+		Y:           100,
+		MapID:       4,
+		HP:          250,
+		MaxHP:       300,
+		MP:          80,
+		MaxMP:       100,
+		KnownSpells: []int32{108},
+		AttackView:  false,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		HP:        200,
+		MaxHP:     200,
+	})
+	s := newSkillTestSystem(t, ws)
+	attachFinalBurnSkillTable(t, s)
+
+	s.processSkill(handler.SkillRequest{SessionID: caster.SessionID, SkillID: 108, TargetID: target.CharID})
+
+	if target.HP != 120 {
+		t.Fatalf("會心一擊應依 Java 使用施法前 MP 80 作為傷害，targetHP=%d", target.HP)
+	}
+	if caster.HP != 100 || caster.MP != 1 {
+		t.Fatalf("會心一擊造成傷害後才應將 HP/MP 扣到 100/1，caster HP/MP=%d/%d", caster.HP, caster.MP)
+	}
+}
+
 func TestSkillFinalBurnFinalBurnRequiresHpAbove100(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{

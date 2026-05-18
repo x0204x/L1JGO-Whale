@@ -1,9 +1,11 @@
 package system
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/l1jgo/server/internal/data"
+	"github.com/l1jgo/server/internal/net/packet"
 	"github.com/l1jgo/server/internal/world"
 )
 
@@ -66,6 +68,55 @@ func TestSkillStatusCancelCurseBlindRegistersBuffAndRemoveCurseClearsIt(t *testi
 	}
 }
 
+func TestSkillStatusCurseBlindUsesFloatingEyePacketType(t *testing.T) {
+	disablePlayerDebuffMRForStatusTest(t, 20)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+	})
+	target.AddBuff(&world.ActiveBuff{SkillID: 1012, TicksLeft: 100})
+	s := newSkillTestSystem(t, ws)
+
+	s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+		SkillID:      20,
+		Target:       "attack",
+		BuffDuration: 8,
+		ActionID:     18,
+	}, target.CharID)
+
+	blindType, ok := findCurseBlindPacketType(drainSkillTestPackets(target.Session))
+	if !ok {
+		t.Fatalf("闇盲咒術應送出 S_CurseBlind 封包")
+	}
+	if blindType != 2 {
+		t.Fatalf("有 STATUS_FLOATING_EYE(1012) 時 Java 送 S_CurseBlind(2)，got=%d", blindType)
+	}
+}
+
+func findCurseBlindPacketType(packets [][]byte) (uint16, bool) {
+	for _, pkt := range packets {
+		if len(pkt) >= 3 && pkt[0] == packet.S_OPCODE_CURSEBLIND {
+			return binary.LittleEndian.Uint16(pkt[1:3]), true
+		}
+	}
+	return 0, false
+}
+
 func TestSkillStatusCancelCancellationWorksOnSelfAndKeepsNonCancellableBuff(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{
@@ -92,6 +143,51 @@ func TestSkillStatusCancelCancellationWorksOnSelfAndKeepsNonCancellableBuff(t *t
 	}
 	if !player.HasBuff(21) {
 		t.Fatalf("魔法相消應保留不可取消的鎧甲護持 buff")
+	}
+}
+
+func TestSkillStatusCancelNpcKeepsShockStunDebuffLikeJava(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	npc := &world.NpcInfo{
+		ID:    2001,
+		Name:  "stunned-npc",
+		X:     101,
+		Y:     100,
+		MapID: 4,
+		HP:    100,
+		MaxHP: 100,
+		ActiveDebuffs: map[int32]int{
+			87: 25,
+			56: 25,
+		},
+		Paralyzed: true,
+	}
+	ws.AddNpc(npc)
+	s := newSkillTestSystem(t, ws)
+
+	s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+		SkillID:  44,
+		Target:   "attack",
+		ActionID: 18,
+	}, npc.ID)
+
+	if got := npc.ActiveDebuffs[87]; got != 25 {
+		t.Fatalf("Java CANCELLATION 會略過 L1SkillMode.isNotCancelable 的 SHOCK_STUN，got ticks=%d", got)
+	}
+	if npc.HasDebuff(56) {
+		t.Fatal("Java CANCELLATION 仍應移除可相消的 NPC debuff")
+	}
+	if npc.Paralyzed {
+		t.Fatal("Java CANCELLATION 對 NPC 會執行 setParalyzed(false)，即使 87 效果本身保留")
 	}
 }
 

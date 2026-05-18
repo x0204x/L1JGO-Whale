@@ -703,16 +703,7 @@ func (s *PetSystem) TameNpc(sess *net.Session, player *world.PlayerInfo, npc *wo
 	}
 
 	// 在玩家背包建立項圈物品
-	var collarInfo *world.InvItem
-	if s.deps.Items != nil {
-		collarTmpl := s.deps.Items.Get(petCollarNormal)
-		if collarTmpl != nil {
-			collarInfo = player.Inv.AddItem(petCollarNormal, 1,
-				collarTmpl.Name, collarTmpl.InvGfx, collarTmpl.Weight,
-				false, 0)
-			handler.SendAddItem(sess, collarInfo)
-		}
-	}
+	collarInfo := s.givePetCollarItem(sess, player, petCollarNormal)
 	if collarInfo == nil {
 		log.Printf("[TameNpc] 項圈建立失敗 — deps.Items=%v", s.deps.Items != nil)
 		return
@@ -799,6 +790,26 @@ const (
 	petCollarHigher int32 = 40316
 )
 
+func (s *PetSystem) givePetCollarItem(sess *net.Session, player *world.PlayerInfo, itemID int32) *world.InvItem {
+	if s.deps.ItemCreate != nil {
+		item, ok := s.deps.ItemCreate.GiveItem(sess, player, itemID, 1)
+		if !ok {
+			return nil
+		}
+		return item
+	}
+	if s.deps.Items == nil {
+		return nil
+	}
+	collarTmpl := s.deps.Items.Get(itemID)
+	if collarTmpl == nil {
+		return nil
+	}
+	item := player.Inv.AddItem(itemID, 1, collarTmpl.Name, collarTmpl.InvGfx, collarTmpl.Weight, false, 0)
+	handler.SendAddItem(sess, item)
+	return item
+}
+
 // evolvePet 處理寵物進化。
 func (s *PetSystem) evolvePet(sess *net.Session, player *world.PlayerInfo, pet *world.PetInfo, invItem *world.InvItem) {
 	ws := s.deps.World
@@ -831,16 +842,7 @@ func (s *PetSystem) evolvePet(sess *net.Session, player *world.PlayerInfo, pet *
 	}
 
 	// 建立高級項圈
-	var newCollar *world.InvItem
-	if s.deps.Items != nil {
-		collarTmpl := s.deps.Items.Get(petCollarHigher)
-		if collarTmpl != nil {
-			newCollar = player.Inv.AddItem(petCollarHigher, 1,
-				collarTmpl.Name, collarTmpl.InvGfx, collarTmpl.Weight,
-				false, 0)
-			handler.SendAddItem(sess, newCollar)
-		}
-	}
+	newCollar := s.givePetCollarItem(sess, player, petCollarHigher)
 	if newCollar == nil {
 		return
 	}

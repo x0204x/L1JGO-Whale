@@ -54,6 +54,38 @@ func TestItemDissolutionSuccessConsumesTargetAndSolventAndGivesCrystals(t *testi
 	}
 }
 
+func TestItemDissolutionUsesItemCreateForCrystals(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+	})
+	target := player.Inv.AddItemWithID(7001, 31, 1, "長劍", 0, 1000, false, 1)
+	solvent := player.Inv.AddItemWithID(7002, 41245, 2, "溶解劑", 2608, 0, true, 1)
+	itemCreate := &shopItemCreateStub{}
+	s := newDissolutionTestSystem(t, ws)
+	s.deps.ItemCreate = itemCreate
+
+	if !s.UseDissolutionWithRoll(player.Session, player, solvent, target.ObjectID, 75) {
+		t.Fatal("溶解應成功")
+	}
+
+	if itemCreate.calls != 1 {
+		t.Fatalf("ItemCreate 呼叫次數錯誤: got %d want 1", itemCreate.calls)
+	}
+	if itemCreate.itemID != 41246 || itemCreate.count != 90 {
+		t.Fatalf("ItemCreate 參數錯誤: got item=%d count=%d want item=41246 count=90", itemCreate.itemID, itemCreate.count)
+	}
+	if player.Inv.FindByObjectID(target.ObjectID) != nil {
+		t.Fatal("溶解成功後目標物品未被消耗")
+	}
+	if solvent.Count != 1 {
+		t.Fatalf("溶解成功後溶解劑數量錯誤: got=%d want=1", solvent.Count)
+	}
+}
+
 func TestItemDissolutionRejectsEnchantedWeapon(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{

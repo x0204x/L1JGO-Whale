@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/l1jgo/server/internal/data"
@@ -10,7 +11,8 @@ import (
 )
 
 type captureSkillManager struct {
-	reqs []SkillRequest
+	reqs                       []SkillRequest
+	cancelAbsoluteBarrierCalls int
 }
 
 func (m *captureSkillManager) QueueSkill(req SkillRequest) {
@@ -29,7 +31,9 @@ func (m *captureSkillManager) RemoveBuffAndRevert(_ *world.PlayerInfo, _ int32) 
 
 func (m *captureSkillManager) ApplyNpcDebuff(_ *world.PlayerInfo, _ *data.SkillInfo) {}
 
-func (m *captureSkillManager) CancelAbsoluteBarrier(_ *world.PlayerInfo) {}
+func (m *captureSkillManager) CancelAbsoluteBarrier(_ *world.PlayerInfo) {
+	m.cancelAbsoluteBarrierCalls++
+}
 
 func (m *captureSkillManager) CancelInvisibility(_ *world.PlayerInfo) {}
 
@@ -41,6 +45,56 @@ func (m *captureSkillManager) ConsumeSkillResources(_ *net.Session, _ *world.Pla
 }
 
 func (m *captureSkillManager) ApplyBuffStats(_ *world.PlayerInfo, _ *world.ActiveBuff) {}
+
+func TestHandleUseSpellBlockedByShockStunBeforeSkillQueueLikeJava(t *testing.T) {
+	ws := world.NewState()
+	sess := newHandlerTestSession(t, 1)
+	player := &world.PlayerInfo{
+		SessionID: sess.ID,
+		Session:   sess,
+		CharID:    1001,
+		Name:      "stunned",
+		Paralyzed: true,
+		Inv:       world.NewInventory(),
+	}
+	player.AddBuff(&world.ActiveBuff{SkillID: 87, TicksLeft: 25, SetParalyzed: true})
+	ws.AddPlayer(player)
+
+	mgr := &captureSkillManager{}
+	deps := &Deps{World: ws, Skill: mgr}
+
+	HandleUseSpell(sess, useSpellReader(87), deps)
+
+	if len(mgr.reqs) != 0 {
+		t.Fatalf("Java C_UseSkill 會以 isParalyzedX 擋下 SHOCK_STUN 中的施法，不應排入 SkillQueue，reqs=%+v", mgr.reqs)
+	}
+	if !hasHandlerServerMessage(drainHandlerTestPackets(sess), 285) {
+		t.Fatal("Java C_UseSkill 在 isParalyzedX 擋下施法時會送 S_ServerMessage(285)")
+	}
+}
+
+func TestHandleUseSpellBlockedByPrivateShopLikeJava(t *testing.T) {
+	ws := world.NewState()
+	sess := newHandlerTestSession(t, 1)
+	player := &world.PlayerInfo{
+		SessionID:   sess.ID,
+		Session:     sess,
+		CharID:      1001,
+		Name:        "seller",
+		PrivateShop: true,
+		Inv:         world.NewInventory(),
+	}
+	ws.AddPlayer(player)
+
+	mgr := &captureSkillManager{}
+	deps := &Deps{World: ws, Skill: mgr}
+
+	HandleUseSpell(sess, useSpellReader(87), deps)
+
+	if len(mgr.reqs) != 0 {
+		t.Fatalf("Java C_UseSkill 會在 pc.isPrivateShop() 時直接返回，不應排入 SkillQueue，reqs=%+v", mgr.reqs)
+	}
+}
 
 func TestHandleUseSpellParsesTeleportBookmark(t *testing.T) {
 	req := parseUseSpellForTest(69, func(w *packet.Writer) {
@@ -130,4 +184,27 @@ func parseUseSpellForTest(skillID int32, writeRest func(*packet.Writer)) SkillRe
 		panic("expected exactly one queued skill request")
 	}
 	return mgr.reqs[0]
+}
+
+func useSpellReader(skillID int32) *packet.Reader {
+	row := byte((skillID - 1) / 8)
+	column := byte((skillID - 1) % 8)
+
+	w := packet.NewWriterWithOpcode(packet.C_OPCODE_USE_SPELL)
+	w.WriteC(row)
+	w.WriteC(column)
+	w.WriteD(0)
+	w.WriteH(0)
+	w.WriteH(0)
+	return packet.NewReader(w.RawBytes())
+}
+
+func hasHandlerServerMessage(packets [][]byte, msgID uint16) bool {
+	for _, pkt := range packets {
+		if len(pkt) >= 3 && pkt[0] == packet.S_OPCODE_MESSAGE_CODE &&
+			binary.LittleEndian.Uint16(pkt[1:3]) == msgID {
+			return true
+		}
+	}
+	return false
 }

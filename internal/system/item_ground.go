@@ -79,6 +79,7 @@ func (s *ItemGroundSystem) DropItem(sess *net.Session, player *world.PlayerInfo,
 	itemID := item.ItemID
 	itemName := item.Name
 	enchantLvl := item.EnchantLvl
+	itemSnapshot := cloneInventoryItemForGround(item, count)
 
 	removed := player.Inv.RemoveItem(objectID, count)
 	if removed {
@@ -114,6 +115,7 @@ func (s *ItemGroundSystem) DropItem(sess *net.Session, player *world.PlayerInfo,
 		ItemID:     itemID,
 		Count:      count,
 		EnchantLvl: enchantLvl,
+		Item:       itemSnapshot,
 		Name:       displayName,
 		GrdGfx:     grdGfx,
 		X:          player.X,
@@ -218,18 +220,14 @@ func (s *ItemGroundSystem) PickupItem(sess *net.Session, player *world.PlayerInf
 	if itemInfo != nil {
 		bless = byte(itemInfo.Bless)
 	}
-	invItem := player.Inv.AddItem(
-		gndItem.ItemID,
-		gndItem.Count,
-		itemName,
-		invGfx,
-		weight,
-		stackable,
-		bless,
-	)
-	invItem.EnchantLvl = gndItem.EnchantLvl
-	if itemInfo != nil {
-		invItem.UseType = itemInfo.UseTypeID
+	invItem := player.Inv.AddItem(gndItem.ItemID, gndItem.Count, itemName, invGfx, weight, stackable, bless)
+	if gndItem.Item != nil {
+		copyInventoryItemState(invItem, gndItem.Item)
+	} else {
+		invItem.EnchantLvl = gndItem.EnchantLvl
+		if itemInfo != nil {
+			invItem.UseType = itemInfo.UseTypeID
+		}
 	}
 
 	if wasExisting {
@@ -250,3 +248,25 @@ func (s *ItemGroundSystem) PickupItem(sess *net.Session, player *world.PlayerInf
 
 // SendAddItem 需要的匯出確認 — 已有 handler.SendAddItem（預設不帶 itemInfo 時使用 item 內部資料）。
 // 若未來需要自訂 itemInfo，可傳 optional 參數：handler.SendAddItem(sess, item, info)。
+
+func cloneInventoryItemForGround(item *world.InvItem, count int32) *world.InvItem {
+	if item == nil {
+		return nil
+	}
+	clone := *item
+	clone.Count = count
+	clone.Equipped = false
+	return &clone
+}
+
+func copyInventoryItemState(dst, src *world.InvItem) {
+	if dst == nil || src == nil {
+		return
+	}
+	objectID := dst.ObjectID
+	count := dst.Count
+	*dst = *src
+	dst.ObjectID = objectID
+	dst.Count = count
+	dst.Equipped = false
+}

@@ -461,32 +461,36 @@ func (s *CompanionAISystem) respawnOriginalNpc(f *world.FollowerInfo) {
 		return
 	}
 	npc := &world.NpcInfo{
-		ID:         world.NextNpcID(),
-		NpcID:      f.OrigNpcID,
-		Impl:       tmpl.Impl,
-		GfxID:      tmpl.GfxID,
-		Name:       tmpl.Name,
-		NameID:     tmpl.NameID,
-		Level:      tmpl.Level,
-		HP:         tmpl.HP,
-		MaxHP:      tmpl.HP,
-		MP:         tmpl.MP,
-		MaxMP:      tmpl.MP,
-		AC:         tmpl.AC,
-		STR:        tmpl.STR,
-		DEX:        tmpl.DEX,
-		Exp:        tmpl.Exp,
-		Lawful:     tmpl.Lawful,
-		Size:       tmpl.Size,
-		MR:         tmpl.MR,
-		Hard:       tmpl.Hard,
-		PoisonAtk:  tmpl.PoisonAtk,
-		X:          f.SpawnX,
-		Y:          f.SpawnY,
-		MapID:      f.SpawnMapID,
-		SpawnX:     f.SpawnX,
-		SpawnY:     f.SpawnY,
-		SpawnMapID: f.SpawnMapID,
+		ID:                world.NextNpcID(),
+		NpcID:             f.OrigNpcID,
+		Impl:              tmpl.Impl,
+		GfxID:             tmpl.GfxID,
+		Name:              tmpl.Name,
+		NameID:            tmpl.NameID,
+		Level:             tmpl.Level,
+		HP:                tmpl.HP,
+		MaxHP:             tmpl.HP,
+		MP:                tmpl.MP,
+		MaxMP:             tmpl.MP,
+		AC:                tmpl.AC,
+		STR:               tmpl.STR,
+		DEX:               tmpl.DEX,
+		Exp:               tmpl.Exp,
+		Lawful:            tmpl.Lawful,
+		Size:              tmpl.Size,
+		MR:                tmpl.MR,
+		Undead:            tmpl.Undead,
+		UndeadType:        tmpl.UndeadType,
+		TurnUndeadable:    tmpl.EffectiveTurnUndeadable(),
+		TurnUndeadableSet: true,
+		Hard:              tmpl.Hard,
+		PoisonAtk:         tmpl.PoisonAtk,
+		X:                 f.SpawnX,
+		Y:                 f.SpawnY,
+		MapID:             f.SpawnMapID,
+		SpawnX:            f.SpawnX,
+		SpawnY:            f.SpawnY,
+		SpawnMapID:        f.SpawnMapID,
 	}
 	s.world.AddNpc(npc)
 	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
@@ -1081,13 +1085,16 @@ func (s *CompanionAISystem) companionMoveToward(objID int32, curX, curY int32, m
 
 	maps := s.deps.MapData
 	ws := s.world
+	if maps == nil {
+		return
+	}
 
 	for _, c := range candidates {
 		if c.x == curX && c.y == curY {
 			continue
 		}
 		h := calcNpcHeading(curX, curY, c.x, c.y)
-		if maps != nil && !maps.IsPassable(mapID, curX, curY, int(h)) {
+		if !maps.IsPassable(mapID, curX, curY, int(h)) {
 			continue
 		}
 		// Allow companions to pass through other NPCs (only block on players)
@@ -1108,7 +1115,7 @@ func (s *CompanionAISystem) companionMoveToward(objID int32, curX, curY int32, m
 	}
 	// All blocked — try pass-through as last resort
 	h := calcNpcHeading(curX, curY, mx, my)
-	if maps == nil || maps.IsPassableIgnoreOccupant(mapID, curX, curY, int(h)) {
+	if maps.IsPassableIgnoreOccupant(mapID, curX, curY, int(h)) {
 		oldX, oldY := curX, curY
 		updatePos(objID, mx, my, h)
 		nearby := ws.GetNearbyPlayersAt(mx, my, mapID)

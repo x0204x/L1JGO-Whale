@@ -182,6 +182,13 @@ func (s *CastleSystem) Withdraw(sess *net.Session, player *world.PlayerInfo, cas
 	}
 
 	// 加金幣
+	if s.deps.ItemCreate != nil {
+		if _, ok := s.deps.ItemCreate.GiveItem(sess, player, world.AdenaItemID, amount); ok {
+			player.Dirty = true
+			handler.SendServerMessageArgs(sess, 142, handler.Itoa(amount))
+			return
+		}
+	}
 	itemInfo := s.deps.Items.Get(world.AdenaItemID)
 	destItem := player.Inv.AddItem(world.AdenaItemID, amount, "金幣", 0, 0, true, 0)
 	if itemInfo != nil {
@@ -381,6 +388,9 @@ func (s *CastleSystem) distributeWarGifts(castleID int32, ci *handler.CastleInfo
 	if entry == nil || len(entry.Items) == 0 {
 		return
 	}
+	if s.deps.ItemCreate == nil {
+		return
+	}
 
 	// 遍歷守城公會在線成員
 	s.deps.World.AllPlayers(func(p *world.PlayerInfo) {
@@ -389,17 +399,12 @@ func (s *CastleSystem) distributeWarGifts(castleID int32, ci *handler.CastleInfo
 		}
 
 		for _, gift := range entry.Items {
-			itemInfo := s.deps.Items.Get(gift.ItemID)
-			if itemInfo == nil {
+			item, ok := s.deps.ItemCreate.GiveItem(p.Session, p, gift.ItemID, gift.Count)
+			if !ok {
 				continue
 			}
-			item := p.Inv.AddItem(gift.ItemID, gift.Count, itemInfo.Name, itemInfo.InvGfx, itemInfo.Weight, itemInfo.Stackable, 0)
-			item.InvGfx = itemInfo.InvGfx
-			item.Weight = itemInfo.Weight
-			item.Name = itemInfo.Name
-			handler.SendAddItem(p.Session, item, itemInfo)
-			// 系統訊息：獲得攻城獎勵
-			handler.SendServerMessageArgs(p.Session, 403, itemInfo.Name)
+			// 發送取得物品訊息。
+			handler.SendServerMessageArgs(p.Session, 403, item.Name)
 		}
 	})
 
@@ -508,19 +513,19 @@ func (s *CastleSystem) OnTowerDeath(npc *world.NpcInfo) {
 		return
 	}
 	crown := &world.NpcInfo{
-		ID:      world.NextNpcID(),
-		NpcID:   81125,
-		Impl:    "L1Crown",
-		GfxID:   crownTmpl.GfxID,
-		Name:    crownTmpl.Name,
-		NameID:  crownTmpl.NameID,
-		X:       npc.X,
-		Y:       npc.Y,
-		MapID:   npc.MapID,
-		HP:      1,
-		MaxHP:   1,
-		SpawnX:  npc.X,
-		SpawnY:  npc.Y,
+		ID:         world.NextNpcID(),
+		NpcID:      81125,
+		Impl:       "L1Crown",
+		GfxID:      crownTmpl.GfxID,
+		Name:       crownTmpl.Name,
+		NameID:     crownTmpl.NameID,
+		X:          npc.X,
+		Y:          npc.Y,
+		MapID:      npc.MapID,
+		HP:         1,
+		MaxHP:      1,
+		SpawnX:     npc.X,
+		SpawnY:     npc.Y,
 		SpawnMapID: npc.MapID,
 	}
 	s.deps.World.AddNpc(crown)
@@ -810,17 +815,17 @@ var catapultCastleNpcBase = map[int32]int32{
 
 // catapultHTMLMap 投石車 NPC ID → 對話 HTML ID。
 var catapultHTMLMap = map[int32]string{
-	90327: "ckenta",  // 肯特攻擊
+	90327: "ckenta", // 肯特攻擊
 	90328: "ckenta",
-	90329: "ckentd",  // 肯特防守
+	90329: "ckentd", // 肯特防守
 	90330: "ckentd",
 	90331: "cgirana", // 奇巖攻擊
 	90332: "cgirana",
 	90333: "cgirand", // 奇巖防守
 	90334: "cgirand",
-	90335: "corca",   // 妖堡攻擊
+	90335: "corca", // 妖堡攻擊
 	90336: "corca",
-	90337: "corcd",   // 妖堡防守
+	90337: "corcd", // 妖堡防守
 }
 
 // IsCatapultAttacker 判斷投石車 NPC 是否為攻擊方。

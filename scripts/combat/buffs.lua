@@ -32,7 +32,7 @@ BUFF_DEFS = {
 
     [29] = { move_speed = 2, exclusions = {43, 54} },                        -- Slow
 
-    [31] = { ac = -2 },                                                      -- Magic Shield
+    [31] = {},                                                               -- Counter Magic (state only)
     [32] = { mpr = 5 },                                                      -- Meditation
     [33] = {},                                                                -- Mummy's Curse (debuff flag)
     [36] = {},                                                                -- Charm (flag only)
@@ -75,7 +75,7 @@ BUFF_DEFS = {
     [98]  = {},                                                               -- Venom (poison enchant flag)
     [99]  = { mr = 5 },                                                       -- Shadow Armor（Java: MR +5）
 
-    [101] = { brave_speed = 4, exclusions = {52, 150, 155, 186} },            -- Moving Acceleration
+    [101] = { brave_speed = 4, exclusions = {52, 150, 155, 186, 1000, 1016} }, -- Moving Acceleration
     [102] = {},                                                               -- Burning Spirit（觸發型增傷旗標）
     [103] = {},                                                               -- Dark Blind (debuff flag)
     [104] = {},                                                               -- Poison Resist (flag)

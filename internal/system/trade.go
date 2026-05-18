@@ -143,6 +143,9 @@ func (s *TradeSystem) AddItem(sess *net.Session, player *world.PlayerInfo, objec
 	// 儲存副本
 	tradeCopy := *invItem
 	tradeCopy.Count = count
+	if invItem.Stackable && count < invItem.Count {
+		tradeCopy.ObjectID = world.NextItemObjID()
+	}
 	player.TradeItems = append(player.TradeItems, &tradeCopy)
 
 	// 立即從背包扣除（Java 行為）
@@ -255,48 +258,7 @@ func (s *TradeSystem) CancelIfActive(player *world.PlayerInfo) {
 // executeTrade 執行物品+金幣交換。物品已在 AddItem 時從來源扣除。
 func (s *TradeSystem) executeTrade(p1, p2 *world.PlayerInfo) {
 	// 建構 WAL 條目
-	var walEntries []persist.WALEntry
-
-	for _, item := range p1.TradeItems {
-		walEntries = append(walEntries, persist.WALEntry{
-			TxType:     "trade",
-			FromChar:   p1.CharID,
-			ToChar:     p2.CharID,
-			ItemID:     item.ItemID,
-			Count:      item.Count,
-			EnchantLvl: int16(item.EnchantLvl),
-		})
-	}
-
-	for _, item := range p2.TradeItems {
-		walEntries = append(walEntries, persist.WALEntry{
-			TxType:     "trade",
-			FromChar:   p2.CharID,
-			ToChar:     p1.CharID,
-			ItemID:     item.ItemID,
-			Count:      item.Count,
-			EnchantLvl: int16(item.EnchantLvl),
-		})
-	}
-
-	if p1.TradeGold > 0 {
-		walEntries = append(walEntries, persist.WALEntry{
-			TxType:     "trade",
-			FromChar:   p1.CharID,
-			ToChar:     p2.CharID,
-			ItemID:     world.AdenaItemID,
-			GoldAmount: int64(p1.TradeGold),
-		})
-	}
-	if p2.TradeGold > 0 {
-		walEntries = append(walEntries, persist.WALEntry{
-			TxType:     "trade",
-			FromChar:   p2.CharID,
-			ToChar:     p1.CharID,
-			ItemID:     world.AdenaItemID,
-			GoldAmount: int64(p2.TradeGold),
-		})
-	}
+	walEntries := buildTradeWALEntries(p1, p2)
 
 	// 先寫入 WAL（安全保障）
 	if len(walEntries) > 0 && s.deps.WALRepo != nil {
@@ -334,6 +296,60 @@ func (s *TradeSystem) executeTrade(p1, p2 *world.PlayerInfo) {
 	s.deps.Log.Info(fmt.Sprintf("交易完成  玩家1=%s  玩家2=%s", p1.Name, p2.Name))
 }
 
+func buildTradeWALEntries(p1, p2 *world.PlayerInfo) []persist.WALEntry {
+	var walEntries []persist.WALEntry
+
+	for _, item := range p1.TradeItems {
+		walEntries = append(walEntries, persist.WALEntry{
+			TxType:     "trade",
+			FromChar:   p1.CharID,
+			ToChar:     p2.CharID,
+			ItemID:     tradeWALItemID(item),
+			Count:      item.Count,
+			EnchantLvl: int16(item.EnchantLvl),
+		})
+	}
+
+	for _, item := range p2.TradeItems {
+		walEntries = append(walEntries, persist.WALEntry{
+			TxType:     "trade",
+			FromChar:   p2.CharID,
+			ToChar:     p1.CharID,
+			ItemID:     tradeWALItemID(item),
+			Count:      item.Count,
+			EnchantLvl: int16(item.EnchantLvl),
+		})
+	}
+
+	if p1.TradeGold > 0 {
+		walEntries = append(walEntries, persist.WALEntry{
+			TxType:     "trade",
+			FromChar:   p1.CharID,
+			ToChar:     p2.CharID,
+			ItemID:     world.AdenaItemID,
+			GoldAmount: int64(p1.TradeGold),
+		})
+	}
+	if p2.TradeGold > 0 {
+		walEntries = append(walEntries, persist.WALEntry{
+			TxType:     "trade",
+			FromChar:   p2.CharID,
+			ToChar:     p1.CharID,
+			ItemID:     world.AdenaItemID,
+			GoldAmount: int64(p2.TradeGold),
+		})
+	}
+
+	return walEntries
+}
+
+func tradeWALItemID(item *world.InvItem) int32 {
+	if item.Stackable {
+		return item.ItemID
+	}
+	return item.ObjectID
+}
+
 // addTradeItemToPlayer 將交易物品加入接收方背包。
 func (s *TradeSystem) addTradeItemToPlayer(receiver *world.PlayerInfo, item *world.InvItem) {
 	itemInfo := s.deps.Items.Get(item.ItemID)
@@ -351,11 +367,12 @@ func (s *TradeSystem) addTradeItemToPlayer(receiver *world.PlayerInfo, item *wor
 	existing := receiver.Inv.FindByItemID(item.ItemID)
 	wasExisting := existing != nil && stackable
 
-	newItem := receiver.Inv.AddItem(item.ItemID, item.Count, name, invGfx, weight, stackable, item.Bless)
-	newItem.EnchantLvl = item.EnchantLvl
-	if itemInfo != nil {
-		newItem.UseType = itemInfo.UseTypeID
+	objID := int32(0)
+	if !stackable {
+		objID = item.ObjectID
 	}
+	newItem := receiver.Inv.AddItemWithID(objID, item.ItemID, item.Count, name, invGfx, weight, stackable, item.Bless)
+	copyInventoryItemState(newItem, item)
 	if wasExisting {
 		handler.SendItemCountUpdate(receiver.Session, newItem)
 	} else {
@@ -414,11 +431,12 @@ func (s *TradeSystem) restoreTradeItems(p *world.PlayerInfo) {
 		existing := p.Inv.FindByItemID(item.ItemID)
 		wasExisting := existing != nil && stackable
 
-		newItem := p.Inv.AddItem(item.ItemID, item.Count, name, invGfx, weight, stackable, item.Bless)
-		newItem.EnchantLvl = item.EnchantLvl
-		if itemInfo != nil {
-			newItem.UseType = itemInfo.UseTypeID
+		objID := int32(0)
+		if !stackable {
+			objID = item.ObjectID
 		}
+		newItem := p.Inv.AddItemWithID(objID, item.ItemID, item.Count, name, invGfx, weight, stackable, item.Bless)
+		copyInventoryItemState(newItem, item)
 		if wasExisting {
 			handler.SendItemCountUpdate(p.Session, newItem)
 		} else {

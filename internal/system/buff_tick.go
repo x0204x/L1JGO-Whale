@@ -39,32 +39,43 @@ func (s *BuffTickSystem) Update(_ time.Duration) {
 // tickItemMagicEnchants 遞減裝備魔法附魔計時器。
 // 到期時歸零並重新計算裝備屬性。
 func tickItemMagicEnchants(p *world.PlayerInfo, deps *handler.Deps) {
-	changed := false
-
-	// 武器附魔計時
-	weapon := p.Equip.Weapon()
-	if weapon != nil && weapon.DmgMagicExpiry > 0 {
-		weapon.DmgMagicExpiry--
-		if weapon.DmgMagicExpiry <= 0 {
-			weapon.DmgByMagic = 0
-			weapon.HitByMagic = 0
-			weapon.DmgMagicExpiry = 0
-			changed = true
+	equippedChanged := false
+	if p.Inv == nil {
+		return
+	}
+	for _, item := range p.Inv.Items {
+		if item == nil {
+			continue
+		}
+		changed := tickItemMagicEnchant(item)
+		if changed && item.Equipped {
+			equippedChanged = true
 		}
 	}
 
-	// 防具附魔計時
-	armor := p.Equip.Get(world.SlotArmor)
-	if armor != nil && armor.AcMagicExpiry > 0 {
-		armor.AcMagicExpiry--
-		if armor.AcMagicExpiry <= 0 {
-			armor.AcByMagic = 0
-			armor.AcMagicExpiry = 0
-			changed = true
-		}
-	}
-
-	if changed && p.Session != nil && deps.Equip != nil {
+	if equippedChanged && p.Session != nil && deps.Equip != nil {
 		deps.Equip.RecalcEquipStats(p.Session, p)
 	}
+}
+
+func tickItemMagicEnchant(item *world.InvItem) bool {
+	changed := false
+	if item.DmgMagicExpiry > 0 {
+		item.DmgMagicExpiry--
+		if item.DmgMagicExpiry <= 0 {
+			item.DmgByMagic = 0
+			item.HitByMagic = 0
+			item.DmgMagicExpiry = 0
+			changed = true
+		}
+	}
+	if item.AcMagicExpiry > 0 {
+		item.AcMagicExpiry--
+		if item.AcMagicExpiry <= 0 {
+			item.AcByMagic = 0
+			item.AcMagicExpiry = 0
+			changed = true
+		}
+	}
+	return changed
 }

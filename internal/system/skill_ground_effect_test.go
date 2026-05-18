@@ -65,6 +65,40 @@ func TestSkillGroundEffectLifeStreamCreatesGroundEffect(t *testing.T) {
 	}
 }
 
+func TestSkillGroundEffectLifeStreamStoresJavaEffectSkillIDZero(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:   1,
+		Session:     newSkillTestSession(t, 1),
+		CharID:      1001,
+		Name:        "caster",
+		X:           100,
+		Y:           100,
+		MapID:       4,
+		MP:          100,
+		MaxMP:       100,
+		KnownSpells: []int32{63},
+		Inv:         world.NewInventory(),
+	})
+	player.Inv.AddItem(40318, 1, "magic gem", 0, 0, true, 1)
+	s := newGroundEffectTestSystem(t, ws)
+
+	s.processSkill(handler.SkillRequest{
+		SessionID: player.SessionID,
+		SkillID:   63,
+		TargetX:   105,
+		TargetY:   100,
+	})
+
+	effects := ws.GetNearbyGroundEffects(105, 100, 4)
+	if len(effects) != 1 {
+		t.Fatalf("生命之泉應建立 1 個地面效果，got=%d", len(effects))
+	}
+	if effects[0].SkillID != 0 {
+		t.Fatalf("Java 生命之泉 spawnEffect skill id 應為 0，got=%d", effects[0].SkillID)
+	}
+}
+
 func TestSkillGroundEffectFireWallCreatesLineGroundEffects(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{
@@ -97,6 +131,41 @@ func TestSkillGroundEffectFireWallCreatesLineGroundEffects(t *testing.T) {
 	}
 	if !ws.HasGroundEffectAt(101, 100, 4, 81157) {
 		t.Fatal("火牢第一格應出現在施法者前方")
+	}
+}
+
+func TestSkillGroundEffectFireWallRecalculatesDirectionFromLastEffect(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:   1,
+		Session:     newSkillTestSession(t, 1),
+		CharID:      1001,
+		Name:        "caster",
+		X:           100,
+		Y:           100,
+		MapID:       4,
+		MP:          100,
+		MaxMP:       100,
+		KnownSpells: []int32{58},
+		Inv:         world.NewInventory(),
+	})
+	s := newGroundEffectTestSystem(t, ws)
+
+	s.processSkill(handler.SkillRequest{
+		SessionID: player.SessionID,
+		SkillID:   58,
+		TargetX:   103,
+		TargetY:   101,
+	})
+
+	if !ws.HasGroundEffectAt(101, 101, 4, 81157) {
+		t.Fatal("火牢第一格應依施法者到目標方向生成在東南格")
+	}
+	if !ws.HasGroundEffectAt(102, 101, 4, 81157) {
+		t.Fatal("Java 火牢第二格會從上一個效果重新朝目標計算方向，不應固定斜線到 102,102")
+	}
+	if ws.HasGroundEffectAt(102, 102, 4, 81157) {
+		t.Fatal("Go 不應用初始方向一路斜向生成火牢")
 	}
 }
 

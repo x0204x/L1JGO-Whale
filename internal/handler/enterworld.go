@@ -383,6 +383,11 @@ func loadInventoryFromDB(player *world.PlayerInfo, deps *Deps) {
 	}
 
 	// No saved items — give starting gold (bless=1 = normal)
+	if deps.ItemCreate != nil {
+		if _, ok := deps.ItemCreate.GiveItem(nil, player, world.AdenaItemID, 20000); ok {
+			return
+		}
+	}
 	adenaInfo := deps.Items.Get(world.AdenaItemID)
 	if adenaInfo != nil {
 		player.Inv.AddItem(world.AdenaItemID, 20000, adenaInfo.Name, adenaInfo.InvGfx, 0, true, byte(adenaInfo.Bless))

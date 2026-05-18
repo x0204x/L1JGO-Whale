@@ -463,9 +463,12 @@ func restoreTradeItemsOnDisconnect(p *world.PlayerInfo) {
 		existing := p.Inv.FindByItemID(item.ItemID)
 		wasExisting := existing != nil && item.Stackable
 
-		newItem := p.Inv.AddItem(item.ItemID, item.Count, item.Name, item.InvGfx, item.Weight, item.Stackable, item.Bless)
-		newItem.EnchantLvl = item.EnchantLvl
-		newItem.UseType = item.UseType // preserve original use_type
+		objID := int32(0)
+		if !item.Stackable {
+			objID = item.ObjectID
+		}
+		newItem := p.Inv.AddItemWithID(objID, item.ItemID, item.Count, item.Name, item.InvGfx, item.Weight, item.Stackable, item.Bless)
+		copyInventoryItemState(newItem, item)
 		if wasExisting {
 			sendChangeItemUsePacket(p.Session, newItem)
 		} else {

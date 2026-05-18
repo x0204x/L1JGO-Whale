@@ -31,6 +31,20 @@ func HandleUseSpell(sess *net.Session, r *packet.Reader, deps *Deps) {
 	column := int32(r.ReadC())
 	skillID := row*8 + column + 1
 
+	if deps.World != nil {
+		player := deps.World.GetBySession(sess.ID)
+		if player == nil {
+			return
+		}
+		if player.PrivateShop {
+			return
+		}
+		if player.Paralyzed || player.Sleeped {
+			sendServerMessage(sess, 285)
+			return
+		}
+	}
+
 	var targetID int32
 	var targetX int32
 	var targetY int32
@@ -171,15 +185,25 @@ func sendBuffIcon(target *world.PlayerInfo, skillID int32, durationSec uint16, d
 	case "shield":
 		sendIconShield(sess, durationSec, icon.Param)
 	case "strup":
-		sendIconStrup(sess, durationSec, byte(target.Str), icon.Param)
+		iconParam := icon.Param
+		if durationSec == 0 && skillID == 109 {
+			iconParam = 3
+		}
+		sendIconStrup(sess, durationSec, byte(target.Str), iconParam)
 	case "dexup":
-		sendIconDexup(sess, durationSec, byte(target.Dex), icon.Param)
+		iconParam := icon.Param
+		if durationSec == 0 && skillID == 110 {
+			iconParam = 3
+		}
+		sendIconDexup(sess, durationSec, byte(target.Dex), iconParam)
 	case "aura":
 		iconID := byte(skillID - 1)
 		if icon.Param > 0 {
 			iconID = icon.Param // 自訂 iconID（如破壞盔甲 = 119）
 		}
 		sendIconAura(sess, iconID, durationSec)
+	case "gfx":
+		sendIconGfx(sess, icon.Param, durationSec)
 	case "invis":
 		sendInvisible(sess, target.CharID, durationSec > 0)
 	case "wisdom":

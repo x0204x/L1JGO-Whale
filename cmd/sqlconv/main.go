@@ -29,30 +29,34 @@ type npcListYAML struct {
 	Npcs []npcEntryYAML `yaml:"npcs"`
 }
 type npcEntryYAML struct {
-	NpcID        int32  `yaml:"npc_id"`
-	Name         string `yaml:"name"`
-	NameID       string `yaml:"nameid"`
-	Impl         string `yaml:"impl"`
-	GfxID        int32  `yaml:"gfx_id"`
-	Level        int16  `yaml:"level"`
-	HP           int32  `yaml:"hp"`
-	MP           int32  `yaml:"mp"`
-	AC           int16  `yaml:"ac"`
-	STR          int16  `yaml:"str"`
-	DEX          int16  `yaml:"dex"`
-	CON          int16  `yaml:"con"`
-	WIS          int16  `yaml:"wis"`
-	Intel        int16  `yaml:"intel"`
-	MR           int16  `yaml:"mr"`
-	Exp          int32  `yaml:"exp"`
-	Lawful       int32  `yaml:"lawful"`
-	Size         string `yaml:"size"`
-	Ranged       int16  `yaml:"ranged"`
-	AtkSpeed     int16  `yaml:"atk_speed"`
-	PassiveSpeed int16  `yaml:"passive_speed"`
-	Undead       bool   `yaml:"undead"`
-	Agro         bool   `yaml:"agro"`
-	Tameable     bool   `yaml:"tameable"`
+	NpcID          int32  `yaml:"npc_id"`
+	Name           string `yaml:"name"`
+	NameID         string `yaml:"nameid"`
+	Impl           string `yaml:"impl"`
+	GfxID          int32  `yaml:"gfx_id"`
+	Level          int16  `yaml:"level"`
+	HP             int32  `yaml:"hp"`
+	MP             int32  `yaml:"mp"`
+	AC             int16  `yaml:"ac"`
+	STR            int16  `yaml:"str"`
+	DEX            int16  `yaml:"dex"`
+	CON            int16  `yaml:"con"`
+	WIS            int16  `yaml:"wis"`
+	Intel          int16  `yaml:"intel"`
+	MR             int16  `yaml:"mr"`
+	Exp            int32  `yaml:"exp"`
+	Lawful         int32  `yaml:"lawful"`
+	Size           string `yaml:"size"`
+	WeakAttr       int16  `yaml:"weak_attr"`
+	Ranged         int16  `yaml:"ranged"`
+	AtkSpeed       int16  `yaml:"atk_speed"`
+	SubMagicSpeed  int16  `yaml:"sub_magic_speed,omitempty"`
+	PassiveSpeed   int16  `yaml:"passive_speed"`
+	Undead         bool   `yaml:"undead"`
+	UndeadType     int16  `yaml:"undead_type"`
+	TurnUndeadable bool   `yaml:"turn_undeadable"`
+	Agro           bool   `yaml:"agro"`
+	Tameable       bool   `yaml:"tameable"`
 }
 
 // --- Spawn ---
@@ -60,15 +64,25 @@ type spawnListYAML struct {
 	Spawns []spawnEntryYAML `yaml:"spawns"`
 }
 type spawnEntryYAML struct {
-	NpcID        int32 `yaml:"npc_id"`
-	MapID        int16 `yaml:"map_id"`
-	X            int32 `yaml:"x"`
-	Y            int32 `yaml:"y"`
-	Count        int   `yaml:"count"`
-	RandomX      int32 `yaml:"randomx"`
-	RandomY      int32 `yaml:"randomy"`
-	Heading      int16 `yaml:"heading"`
-	RespawnDelay int   `yaml:"respawn_delay"`
+	NpcID         int32  `yaml:"npc_id"`
+	MapID         int16  `yaml:"map_id"`
+	X             int32  `yaml:"x"`
+	Y             int32  `yaml:"y"`
+	Count         int    `yaml:"count"`
+	RandomX       int32  `yaml:"randomx"`
+	RandomY       int32  `yaml:"randomy"`
+	LocX1         int32  `yaml:"locx1"`
+	LocY1         int32  `yaml:"locy1"`
+	LocX2         int32  `yaml:"locx2"`
+	LocY2         int32  `yaml:"locy2"`
+	Heading       int16  `yaml:"heading"`
+	RespawnDelay  int    `yaml:"respawn_delay"`
+	MobGroupID    int32  `yaml:"mob_group_id"`
+	RespawnScreen bool   `yaml:"respawn_screen"`
+	MovementDist  int    `yaml:"movement_distance"`
+	Rest          bool   `yaml:"rest"`
+	AvoidPC       bool   `yaml:"avoid_pc"`
+	Spread        string `yaml:"spread,omitempty"`
 }
 
 // --- Drop ---
@@ -480,6 +494,87 @@ func writeYAML(path string, data interface{}, comment string) error {
 	return err
 }
 
+func loadNpcIDsFromYAML(path string) (map[int32]bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var f npcListYAML
+	if err := yaml.Unmarshal(raw, &f); err != nil {
+		return nil, err
+	}
+	ids := make(map[int32]bool, len(f.Npcs))
+	for _, npc := range f.Npcs {
+		ids[npc.NpcID] = true
+	}
+	return ids, nil
+}
+
+func loadNpcImplsFromYAML(path string) (map[int32]string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var f npcListYAML
+	if err := yaml.Unmarshal(raw, &f); err != nil {
+		return nil, err
+	}
+	impls := make(map[int32]string, len(f.Npcs))
+	for _, npc := range f.Npcs {
+		impls[npc.NpcID] = npc.Impl
+	}
+	return impls, nil
+}
+
+func filterSpawnsByNpcList(spawns []spawnEntryYAML, npcImpls map[int32]string) ([]spawnEntryYAML, int) {
+	if len(npcImpls) == 0 {
+		return spawns, 0
+	}
+	out := spawns[:0]
+	removed := 0
+	for _, spawn := range spawns {
+		if _, ok := npcImpls[spawn.NpcID]; ok {
+			out = append(out, spawn)
+			continue
+		}
+		removed++
+	}
+	return out, removed
+}
+
+func loadSpawnListYAML(path string) ([]spawnEntryYAML, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var f spawnListYAML
+	if err := yaml.Unmarshal(raw, &f); err != nil {
+		return nil, err
+	}
+	return f.Spawns, nil
+}
+
+func mergeBaseNormalNpcSpawns(spawns []spawnEntryYAML, base []spawnEntryYAML, npcImpls map[int32]string) ([]spawnEntryYAML, int) {
+	added := 0
+	for _, spawn := range base {
+		if !isNormalNpcSpawn(spawn, npcImpls) {
+			continue
+		}
+		spawns = append(spawns, spawn)
+		added++
+	}
+	return spawns, added
+}
+
+func isNormalNpcSpawn(spawn spawnEntryYAML, npcImpls map[int32]string) bool {
+	impl, ok := npcImpls[spawn.NpcID]
+	return ok && impl != "L1Monster"
+}
+
+func spawnKey(spawn spawnEntryYAML) string {
+	return fmt.Sprintf("%d:%d:%d:%d", spawn.NpcID, spawn.MapID, spawn.X, spawn.Y)
+}
+
 // ---------------------------------------------------------------------------
 // Converters
 // ---------------------------------------------------------------------------
@@ -497,69 +592,77 @@ func convertNpc(sqlDir, outDir string) error {
 			// gfxid(6) lvl(7) hp(8) mp(9) ac(10) str(11) con(12) dex(13)
 			// wis(14) intel(15) mr(16) exp(17) lawful(18) size(19) weakAttr(20)
 			// ranged(21) tamable(22) passispeed(23) atkspeed(24) ...
-			// undead(27) ... agro(30)
-			if len(r) < 31 {
+			// undead(27) ... agro(30) ... IsTU(54)
+			if len(r) < 55 {
 				continue
 			}
 			entry = npcEntryYAML{
-				NpcID:        parseInt32(r[0]),
-				Name:         r[1],
-				NameID:       r[2],
-				Impl:         r[5],
-				GfxID:        parseInt32(r[6]),
-				Level:        parseInt16(r[7]),
-				HP:           parseInt32(r[8]),
-				MP:           parseInt32(r[9]),
-				AC:           parseInt16(r[10]),
-				STR:          parseInt16(r[11]),
-				CON:          parseInt16(r[12]),
-				DEX:          parseInt16(r[13]),
-				WIS:          parseInt16(r[14]),
-				Intel:        parseInt16(r[15]),
-				MR:           parseInt16(r[16]),
-				Exp:          parseInt32(r[17]),
-				Lawful:       parseInt32(r[18]),
-				Size:         r[19],
-				Ranged:       parseInt16(r[21]),
-				AtkSpeed:     parseInt16(r[24]),
-				PassiveSpeed: parseInt16(r[23]),
-				Undead:       parseBool01(r[27]),
-				Agro:         parseBool01(r[30]),
-				Tameable:     parseBool01(r[22]),
+				NpcID:          parseInt32(r[0]),
+				Name:           r[1],
+				NameID:         r[2],
+				Impl:           r[5],
+				GfxID:          parseInt32(r[6]),
+				Level:          parseInt16(r[7]),
+				HP:             parseInt32(r[8]),
+				MP:             parseInt32(r[9]),
+				AC:             parseInt16(r[10]),
+				STR:            parseInt16(r[11]),
+				CON:            parseInt16(r[12]),
+				DEX:            parseInt16(r[13]),
+				WIS:            parseInt16(r[14]),
+				Intel:          parseInt16(r[15]),
+				MR:             parseInt16(r[16]),
+				Exp:            parseInt32(r[17]),
+				Lawful:         parseInt32(r[18]),
+				Size:           r[19],
+				WeakAttr:       parseInt16(r[20]),
+				Ranged:         parseInt16(r[21]),
+				AtkSpeed:       parseInt16(r[24]),
+				SubMagicSpeed:  parseInt16(r[26]),
+				PassiveSpeed:   parseInt16(r[23]),
+				Undead:         parseBool01(r[27]),
+				UndeadType:     parseInt16(r[27]),
+				TurnUndeadable: parseBool01(r[54]),
+				Agro:           parseBool01(r[30]),
+				Tameable:       parseBool01(r[22]),
 			}
 		} else {
 			// Taiwan: npcid(0) name(1) nameid(2) note(3) impl(4) gfxid(5)
 			// lvl(6) hp(7) mp(8) ac(9) str(10) con(11) dex(12) wis(13)
 			// intel(14) mr(15) exp(16) lawful(17) size(18) ... ranged(20)
-			// tamable(21) passispeed(22) atkspeed(23) ... undead(27) ... agro(30)
-			if len(r) < 31 {
+			// tamable(21) passispeed(22) atkspeed(23) ... undead(27) ... agro(30) ... IsTU(54)
+			if len(r) < 55 {
 				continue
 			}
 			entry = npcEntryYAML{
-				NpcID:        parseInt32(r[0]),
-				Name:         r[1],
-				NameID:       r[2],
-				Impl:         r[4],
-				GfxID:        parseInt32(r[5]),
-				Level:        parseInt16(r[6]),
-				HP:           parseInt32(r[7]),
-				MP:           parseInt32(r[8]),
-				AC:           parseInt16(r[9]),
-				STR:          parseInt16(r[10]),
-				DEX:          parseInt16(r[12]),
-				CON:          parseInt16(r[11]),
-				WIS:          parseInt16(r[13]),
-				Intel:        parseInt16(r[14]),
-				MR:           parseInt16(r[15]),
-				Exp:          parseInt32(r[16]),
-				Lawful:       parseInt32(r[17]),
-				Size:         r[18],
-				Ranged:       parseInt16(r[20]),
-				AtkSpeed:     parseInt16(r[23]),
-				PassiveSpeed: parseInt16(r[22]),
-				Undead:       parseBool01(r[27]),
-				Agro:         parseBool01(r[30]),
-				Tameable:     parseBool01(r[21]),
+				NpcID:          parseInt32(r[0]),
+				Name:           r[1],
+				NameID:         r[2],
+				Impl:           r[4],
+				GfxID:          parseInt32(r[5]),
+				Level:          parseInt16(r[6]),
+				HP:             parseInt32(r[7]),
+				MP:             parseInt32(r[8]),
+				AC:             parseInt16(r[9]),
+				STR:            parseInt16(r[10]),
+				DEX:            parseInt16(r[12]),
+				CON:            parseInt16(r[11]),
+				WIS:            parseInt16(r[13]),
+				Intel:          parseInt16(r[14]),
+				MR:             parseInt16(r[15]),
+				Exp:            parseInt32(r[16]),
+				Lawful:         parseInt32(r[17]),
+				Size:           r[18],
+				WeakAttr:       parseInt16(r[19]),
+				Ranged:         parseInt16(r[20]),
+				AtkSpeed:       parseInt16(r[23]),
+				SubMagicSpeed:  parseInt16(r[25]),
+				PassiveSpeed:   parseInt16(r[22]),
+				Undead:         parseBool01(r[27]),
+				UndeadType:     parseInt16(r[27]),
+				TurnUndeadable: parseBool01(r[54]),
+				Agro:           parseBool01(r[30]),
+				Tameable:       parseBool01(r[21]),
 			}
 		}
 		npcs = append(npcs, entry)
@@ -579,7 +682,7 @@ func convertSpawn(sqlDir, outDir string) error {
 	}
 	var spawns []spawnEntryYAML
 	for _, r := range rows {
-		if len(r) < 17 {
+		if len(r) < 21 {
 			continue
 		}
 		count := parseInt(r[2])
@@ -593,48 +696,81 @@ func convertSpawn(sqlDir, outDir string) error {
 			delay = minDelay
 		}
 		spawns = append(spawns, spawnEntryYAML{
-			NpcID:        parseInt32(r[3]),
-			MapID:        parseInt16(r[16]),
-			X:            parseInt32(r[5]),
-			Y:            parseInt32(r[6]),
-			Count:        count,
-			RandomX:      parseInt32(r[7]),
-			RandomY:      parseInt32(r[8]),
-			Heading:      parseInt16(r[13]),
-			RespawnDelay: delay,
+			NpcID:         parseInt32(r[3]),
+			MapID:         parseInt16(r[16]),
+			X:             parseInt32(r[5]),
+			Y:             parseInt32(r[6]),
+			Count:         count,
+			RandomX:       parseInt32(r[7]),
+			RandomY:       parseInt32(r[8]),
+			LocX1:         parseInt32(r[9]),
+			LocY1:         parseInt32(r[10]),
+			LocX2:         parseInt32(r[11]),
+			LocY2:         parseInt32(r[12]),
+			Heading:       parseInt16(r[13]),
+			RespawnDelay:  delay,
+			MobGroupID:    parseInt32(r[4]),
+			RespawnScreen: parseBool01(r[17]),
+			MovementDist:  parseInt(r[18]),
+			Rest:          parseBool01(r[19]),
+			AvoidPC:       parseBool01(r[20]),
 		})
 	}
 	monsterCount := len(spawns)
 	fmt.Printf("  spawn (monsters): %d entries (from %d rows)\n", monsterCount, len(rows))
 
-	// --- NPC spawns from spawnlist_npc.sql (merchants, guards, etc.) ---
-	npcRows, err := parseAllInserts(filepath.Join(sqlDir, "spawnlist_npc.sql"))
-	if err != nil {
-		fmt.Printf("  spawn (npcs): skipped (file not found)\n")
-	} else {
-		npcCount := 0
-		for _, r := range npcRows {
-			if len(r) < 11 {
-				continue
-			}
-			count := parseInt(r[2])
-			if count == 0 {
-				continue
-			}
-			spawns = append(spawns, spawnEntryYAML{
-				NpcID:        parseInt32(r[3]),  // npc_templateid
-				MapID:        parseInt16(r[10]), // mapid
-				X:            parseInt32(r[4]),  // locx
-				Y:            parseInt32(r[5]),  // locy
-				Count:        count,
-				RandomX:      parseInt32(r[6]),  // randomx
-				RandomY:      parseInt32(r[7]),  // randomy
-				Heading:      parseInt16(r[8]),  // heading
-				RespawnDelay: parseInt(r[9]),    // respawn_delay
-			})
-			npcCount++
+	npcImpls, err := loadNpcImplsFromYAML(filepath.Join(outDir, "npc_list.yaml"))
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("load npc_list for spawn merge: %w", err)
+	}
+
+	if existing, err := loadSpawnListYAML(filepath.Join(outDir, "spawn_list.yaml")); err == nil && len(npcImpls) > 0 {
+		var added int
+		spawns, added = mergeBaseNormalNpcSpawns(spawns, existing, npcImpls)
+		if added > 0 {
+			fmt.Printf("  spawn preserve: restored %d base normal NPC entries\n", added)
 		}
-		fmt.Printf("  spawn (npcs): %d entries (from %d rows)\n", npcCount, len(npcRows))
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("load existing spawn_list for base NPC preserve: %w", err)
+	} else {
+		// Fallback for first-time conversion when no base spawn_list.yaml exists.
+		npcRows, err := parseAllInserts(filepath.Join(sqlDir, "spawnlist_npc.sql"))
+		if err != nil {
+			fmt.Printf("  spawn (npcs): skipped (file not found)\n")
+		} else {
+			npcCount := 0
+			for _, r := range npcRows {
+				if len(r) < 11 {
+					continue
+				}
+				count := parseInt(r[2])
+				if count == 0 {
+					continue
+				}
+				spawns = append(spawns, spawnEntryYAML{
+					NpcID:        parseInt32(r[3]),  // npc_templateid
+					MapID:        parseInt16(r[10]), // mapid
+					X:            parseInt32(r[4]),  // locx
+					Y:            parseInt32(r[5]),  // locy
+					Count:        count,
+					RandomX:      parseInt32(r[6]), // randomx
+					RandomY:      parseInt32(r[7]), // randomy
+					Heading:      parseInt16(r[8]), // heading
+					RespawnDelay: parseInt(r[9]),   // respawn_delay
+					MovementDist: parseInt(r[11]),  // movement_distance
+				})
+				npcCount++
+			}
+			fmt.Printf("  spawn (npcs): %d entries (from %d rows)\n", npcCount, len(npcRows))
+		}
+	}
+
+	if len(npcImpls) > 0 {
+		var removed int
+		spawns, removed = filterSpawnsByNpcList(spawns, npcImpls)
+		if removed > 0 {
+			fmt.Printf("  spawn filter: removed %d entries with missing npc templates\n", removed)
+		}
 	}
 
 	sort.Slice(spawns, func(i, j int) bool {
@@ -1657,18 +1793,18 @@ func convertPetItem(sqlDir, outDir string) error {
 
 // --- XML structs for Teleporter.xml ---
 type xmlNpcActionList struct {
-	XMLName   xml.Name       `xml:"NpcActionList"`
-	Actions   []xmlAction    `xml:"Action"`
-	ShowHtmls []xmlShowHtml  `xml:"ShowHtml"`
-	MakeItems []xmlMakeItem  `xml:"MakeItem"` // standalone MakeItem (e.g., Tower of Insolence)
+	XMLName   xml.Name      `xml:"NpcActionList"`
+	Actions   []xmlAction   `xml:"Action"`
+	ShowHtmls []xmlShowHtml `xml:"ShowHtml"`
+	MakeItems []xmlMakeItem `xml:"MakeItem"` // standalone MakeItem (e.g., Tower of Insolence)
 }
 type xmlAction struct {
-	Name     string        `xml:"Name,attr"`
-	NpcId    string        `xml:"NpcId,attr"`
-	LevelMin int           `xml:"LevelMin,attr"`
-	LevelMax int           `xml:"LevelMax,attr"`
-	Teleport *xmlTeleport  `xml:"Teleport"`
-	MakeItem *xmlMakeItem  `xml:"MakeItem"` // nested MakeItem (item-gated teleport)
+	Name     string       `xml:"Name,attr"`
+	NpcId    string       `xml:"NpcId,attr"`
+	LevelMin int          `xml:"LevelMin,attr"`
+	LevelMax int          `xml:"LevelMax,attr"`
+	Teleport *xmlTeleport `xml:"Teleport"`
+	MakeItem *xmlMakeItem `xml:"MakeItem"` // nested MakeItem (item-gated teleport)
 }
 type xmlTeleport struct {
 	X       int32 `xml:"X,attr"`

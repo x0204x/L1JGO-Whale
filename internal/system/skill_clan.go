@@ -1,6 +1,8 @@
 package system
 
 import (
+	"time"
+
 	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/handler"
 	"github.com/l1jgo/server/internal/net"
@@ -8,8 +10,12 @@ import (
 )
 
 const (
-	targetToClan  = 4
-	targetToParty = 8
+	targetToClan         = 4
+	targetToParty        = 8
+	braveAvatarMasteryID = int32(119)
+	braveAvatarSkillID   = int32(8065)
+	braveAvatarRange     = int32(16)
+	braveAvatarInterval  = 5 * time.Second
 )
 
 func (s *SkillSystem) applyRoyalAuraSkill(player *world.PlayerInfo, skill *data.SkillInfo, nearby []*world.PlayerInfo) bool {
@@ -80,6 +86,72 @@ func braveAuraDamageWithRoll(attacker *world.PlayerInfo, damage int32, roll int)
 		return damage
 	}
 	return damage * 3 / 2
+}
+
+func (s *SkillSystem) updateBraveAvatarAura() {
+	if s == nil || s.deps == nil || s.deps.World == nil {
+		return
+	}
+	s.deps.World.AllPlayers(func(player *world.PlayerInfo) {
+		if player == nil {
+			return
+		}
+		if s.shouldHaveBraveAvatar(player) {
+			s.applyBraveAvatar(player)
+			return
+		}
+		s.removeBraveAvatar(player)
+	})
+}
+
+func (s *SkillSystem) shouldHaveBraveAvatar(player *world.PlayerInfo) bool {
+	party := s.deps.World.Parties.GetParty(player.CharID)
+	if party == nil || len(party.Members) < 2 {
+		return false
+	}
+	leader := s.deps.World.GetByCharID(party.LeaderID)
+	if leader == nil || leader.ClassType != 0 || !s.playerKnowsSpell(leader, braveAvatarMasteryID) {
+		return false
+	}
+	if leader.MapID != player.MapID {
+		return false
+	}
+	return chebyshevDist(leader.X, leader.Y, player.X, player.Y) <= braveAvatarRange
+}
+
+func (s *SkillSystem) applyBraveAvatar(player *world.PlayerInfo) {
+	if player.HasBuff(braveAvatarSkillID) {
+		return
+	}
+	buff := &world.ActiveBuff{
+		SkillID:            braveAvatarSkillID,
+		TicksLeft:          0,
+		DeltaStr:           1,
+		DeltaDex:           1,
+		DeltaIntel:         1,
+		DeltaMR:            10,
+		DeltaRegistStun:    2,
+		DeltaRegistSustain: 2,
+	}
+	player.Str += buff.DeltaStr
+	player.Dex += buff.DeltaDex
+	player.Intel += buff.DeltaIntel
+	player.MR += buff.DeltaMR
+	player.RegistStun += buff.DeltaRegistStun
+	player.RegistSustain += buff.DeltaRegistSustain
+	player.AddBuff(buff)
+	handler.SendPlayerStatus(player.Session, player)
+	handler.SendNoneTimeIcon(player.Session, true, 479)
+	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, 9009))
+}
+
+func (s *SkillSystem) removeBraveAvatar(player *world.PlayerInfo) {
+	if !player.HasBuff(braveAvatarSkillID) {
+		return
+	}
+	s.removeBuffAndRevert(player, braveAvatarSkillID)
+	handler.SendNoneTimeIcon(player.Session, false, 479)
 }
 
 func (s *SkillSystem) applyTrueTargetEffect(caster, target *world.PlayerInfo, skill *data.SkillInfo, text string) {

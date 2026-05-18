@@ -110,6 +110,13 @@ func (s *ItemUseSystem) UseMagicScroll(sess *net.Session, player *world.PlayerIn
 }
 
 func (s *ItemUseSystem) addItemWithPacket(sess *net.Session, player *world.PlayerInfo, itemInfo *data.ItemInfo, count int32) *world.InvItem {
+	if s.deps.ItemCreate != nil {
+		item, ok := s.deps.ItemCreate.GiveItem(sess, player, itemInfo.ItemID, count)
+		if ok {
+			return item
+		}
+		return nil
+	}
 	existing := player.Inv.FindByItemID(itemInfo.ItemID)
 	added := player.Inv.AddItem(itemInfo.ItemID, count, itemInfo.Name, itemInfo.InvGfx, itemInfo.Weight, itemInfo.Stackable, byte(itemInfo.Bless))
 	if existing != nil && added.ObjectID == existing.ObjectID {

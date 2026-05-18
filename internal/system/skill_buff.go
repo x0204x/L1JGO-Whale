@@ -1,15 +1,16 @@
 package system
 
 import (
-	"fmt"
-
 	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/handler"
 	"github.com/l1jgo/server/internal/net"
 	"github.com/l1jgo/server/internal/world"
 )
 
-const immuneToHarmSkillID int32 = 68
+const (
+	immuneToHarmSkillID  int32 = 68
+	advanceSpiritSkillID int32 = 79
+)
 
 func applyImmuneToHarmDamage(target *world.PlayerInfo, damage int32) int32 {
 	if target == nil || damage <= 0 || !target.HasBuff(immuneToHarmSkillID) {
@@ -23,6 +24,31 @@ func (s *SkillSystem) validateSolidCarriage(player *world.PlayerInfo) bool {
 		return false
 	}
 	return player.Equip.Get(world.SlotShield) != nil || player.Equip.Get(world.SlotGuarder) != nil
+}
+
+func (s *SkillSystem) calcAdvanceSpiritDeltas(target *world.PlayerInfo) (int32, int32) {
+	if target == nil {
+		return 0, 0
+	}
+	baseMaxHP := target.MaxHP - int32(target.EquipBonuses.AddHP)
+	baseMaxMP := target.MaxMP - int32(target.EquipBonuses.AddMP)
+	for _, buff := range target.ActiveBuffs {
+		baseMaxHP -= buff.DeltaMaxHP
+		baseMaxMP -= buff.DeltaMaxMP
+	}
+	if s != nil && s.deps != nil && s.deps.World != nil {
+		for _, doll := range s.deps.World.GetDollsByOwner(target.CharID) {
+			baseMaxHP -= int32(doll.BonusHP)
+			baseMaxMP -= int32(doll.BonusMP)
+		}
+	}
+	if baseMaxHP < 0 {
+		baseMaxHP = 0
+	}
+	if baseMaxMP < 0 {
+		baseMaxMP = 0
+	}
+	return baseMaxHP / 5, baseMaxMP / 5
 }
 
 // ========================================================================
@@ -43,11 +69,21 @@ func (s *SkillSystem) sendBuffIcon(target *world.PlayerInfo, skillID int32, dura
 	case "shield":
 		handler.SendIconShield(sess, durationSec, icon.Param)
 	case "strup":
-		handler.SendIconStrup(sess, durationSec, byte(target.Str), icon.Param)
+		iconParam := icon.Param
+		if durationSec == 0 && skillID == 109 {
+			iconParam = 3
+		}
+		handler.SendIconStrup(sess, durationSec, byte(target.Str), iconParam)
 	case "dexup":
-		handler.SendIconDexup(sess, durationSec, byte(target.Dex), icon.Param)
+		iconParam := icon.Param
+		if durationSec == 0 && skillID == 110 {
+			iconParam = 3
+		}
+		handler.SendIconDexup(sess, durationSec, byte(target.Dex), iconParam)
 	case "aura":
 		handler.SendIconAura(sess, byte(skillID-1), durationSec)
+	case "gfx":
+		handler.SendIconGfx(sess, icon.Param, durationSec)
 	case "invis":
 		handler.SendInvisible(sess, target.CharID, durationSec > 0)
 	case "wisdom":
@@ -91,6 +127,9 @@ func (s *SkillSystem) applyBuffEffect(target *world.PlayerInfo, skill *data.Skil
 		buff.DeltaCha = int16(eff.Cha)
 		buff.DeltaMaxHP = int32(eff.MaxHP)
 		buff.DeltaMaxMP = int32(eff.MaxMP)
+		if skill.SkillID == advanceSpiritSkillID {
+			buff.DeltaMaxHP, buff.DeltaMaxMP = s.calcAdvanceSpiritDeltas(target)
+		}
 		buff.DeltaHitMod = int16(eff.HitMod)
 		buff.DeltaDmgMod = int16(eff.DmgMod)
 		buff.DeltaSP = int16(eff.SP)
@@ -172,7 +211,11 @@ func (s *SkillSystem) applyBuffEffect(target *world.PlayerInfo, skill *data.Skil
 		}
 		// Dodge 變化通知（龍之眼等）
 		if buff.DeltaDodge > 0 {
-			handler.SendDodgeIcon(target.Session, target.Dodge, true)
+			if skill.SkillID == 111 {
+				handler.SendUpdateER(target.Session, target.Dodge)
+			} else {
+				handler.SendDodgeIcon(target.Session, target.Dodge, true)
+			}
 		}
 		if eff.Invisible {
 			buff.SetInvisible = true
@@ -418,7 +461,11 @@ func (s *SkillSystem) revertBuffStats(target *world.PlayerInfo, buff *world.Acti
 	target.Dodge -= buff.DeltaDodge
 	// Dodge 減少通知（龍之眼解除等）
 	if buff.DeltaDodge > 0 && target.Session != nil {
-		handler.SendDodgeIcon(target.Session, target.Dodge, false)
+		if buff.SkillID == 111 {
+			handler.SendUpdateER(target.Session, target.Dodge)
+		} else {
+			handler.SendDodgeIcon(target.Session, target.Dodge, false)
+		}
 	}
 	target.RegistSustain -= buff.DeltaRegistSustain
 	target.RegistFreeze -= buff.DeltaRegistFreeze
@@ -783,11 +830,21 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 			if other.MapID != player.MapID || other.Dead {
 				return
 			}
-			if chebyshevDist(player.X, player.Y, other.X, other.Y) > 20 {
+			maxRange := int32(20)
+			if skill.SkillID == 87 {
+				maxRange = shockStunRange(skill)
+			}
+			if chebyshevDist(player.X, player.Y, other.X, other.Y) > maxRange {
 				return
 			}
 			target = other
 		}
+	}
+	if skill.SkillID == 87 && target.CharID != player.CharID && isGMInvisible(target) {
+		return
+	}
+	if skill.SkillID == 87 && target.CharID != player.CharID && target.AbsoluteBarrier {
+		return
 	}
 
 	// 魔法屏障攔截：對其他玩家施放非豁免技能時，檢查目標是否有 Counter Magic（buff 31）
@@ -797,12 +854,34 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 		return
 	}
+	if skill.SkillID == 87 && target.CharID != player.CharID {
+		s.queueShockStunOnAction(sess, target.CharID)
+		s.clearShockStunSleepEffects(target)
+		s.clearShockStunEraseMagic(target)
+		if s.shockStunSafetyZoneBlocked(sess, player.MapID, player.X, player.Y, target.MapID, target.X, target.Y) {
+			return
+		}
+		if target.HasBuff(50) || target.HasBuff(157) {
+			return
+		}
+	}
 
 	// 玩家 debuff MR 抗性判定：對其他玩家施放 debuff 時必須通過 MR 檢查
 	if target.CharID != player.CharID && playerDebuffSkills[skill.SkillID] {
-		if !s.checkPlayerMRResist(player, target) {
-			s.sendCastFail(sess)
-			// 仍播放施法動畫（Java: 即使 miss 也會播放動畫）
+		success := false
+		if skill.SkillID == 87 {
+			success = s.checkShockStunPlayerSuccess(player, target)
+		} else {
+			success = s.checkPlayerMRResist(player, target)
+		}
+		if !success {
+			if skill.SkillID != 87 {
+				s.sendCastFail(sess)
+			}
+			if skill.SkillID == 87 {
+				return
+			}
+			// 仍播放施法動畫（Java: 一般 debuff miss 會播放動畫）
 			nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 			handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 			if skill.CastGfx > 0 {
@@ -815,7 +894,9 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 
 	// 廣播施法動畫
-	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	if skill.SkillID != 87 {
+		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
+	}
 
 	// 變形術：開啟怪物列表對話框
 	if skill.SkillID == handler.SkillShapeChange {
@@ -828,31 +909,33 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 	switch skill.SkillID {
 	case 9: // 解毒術
 		CurePoison(target, s.deps)
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+		}
 		return
 
 	case 11: // 毒咒 — 對玩家施加傷害毒（Java: L1DamagePoison.doInfection(attacker, target, 3000, 5)）
-		if target.CharID != player.CharID && target.PoisonType == 0 {
-			target.PoisonType = 1
-			target.PoisonTicksLeft = 150 // 30 秒 = 150 ticks
-			target.PoisonDmgTimer = 0
-			target.PoisonDmgAmount = 5 // 毒咒：每 3 秒扣 5 HP
-			target.PoisonAttacker = sess.ID
-			BroadcastPlayerPoison(target, 1, s.deps) // 綠色
-		}
-
-	case 23: // 能量感測 — 顯示目標的等級、HP/MP、屬性抗性等資訊
 		if target.CharID != player.CharID {
-			msg := fmt.Sprintf("\\f2【%s】 Lv.%d  HP:%d/%d  MP:%d/%d  AC:%d  MR:%d  火:%d 水:%d 風:%d 地:%d",
-				target.Name, target.Level, target.HP, target.MaxHP, target.MP, target.MaxMP,
-				target.AC, target.MR, target.FireRes, target.WaterRes, target.WindRes, target.EarthRes)
-			handler.SendGlobalChat(sess, 9, msg)
+			applyDamagePoisonToPlayer(target, sess.ID, 5, s.deps)
 		}
 
 	case 27: // 壞物術 — Owner: skill_weapon.go；破壞玩家目標已裝備武器耐久
 		weapon := target.Equip.Weapon()
-		if applyWeaponBreakDurability(weapon, calcWeaponBreakDurabilityDamage(player)) {
-			handler.SendServerMessageArgs(target.Session, 268, weapon.Name)
-			handler.SendItemCountUpdate(target.Session, weapon)
+		if weapon != nil {
+			changed := applyWeaponBreakDurability(weapon, calcWeaponBreakDurabilityDamage(player))
+			handler.SendServerMessageArgs(target.Session, 268, itemLogName(weapon))
+			if s.deps.Items != nil {
+				if itemInfo := s.deps.Items.Get(weapon.ItemID); itemInfo != nil {
+					handler.SendItemStatusUpdate(target.Session, weapon, itemInfo)
+				} else {
+					handler.SendItemCountUpdate(target.Session, weapon)
+				}
+			} else {
+				handler.SendItemCountUpdate(target.Session, weapon)
+			}
+			if changed {
+				target.Dirty = true
+			}
 		}
 
 	case 20, 40: // 闇盲咒術 / 黑闇之影 — Owner: skill_status.go
