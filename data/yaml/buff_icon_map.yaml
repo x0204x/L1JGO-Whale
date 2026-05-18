@@ -28,18 +28,22 @@ buff_icons:
     param: 10
 
   # ========== STR buff icons (S_Strup opcode 166) ==========
-  - skill_id: 109    # Dress Mighty
+  - skill_id: 109    # Dress Mighty — yiwei `L1SkillUse.java:2456` cast 改為 type=2
+                     # (comment `原本3修改2 琮善`)；`L1SkillStop.java:441` stop 仍 type=3。
+                     # Cast 走 yaml param=2，cancel(durationSec=0) 由 sendBuffIcon 覆寫為 3。
     type: strup
     param: 2
-  - skill_id: 42     # Physical Enchant STR
+  - skill_id: 42     # Physical Enchant STR — Java `L1SkillUse.java`/`L1SkillUse2.java:1459` type=5
     type: strup
     param: 5
 
   # ========== DEX buff icons (S_Dexup opcode 188) ==========
-  - skill_id: 110    # Dress Dexterity
+  - skill_id: 110    # Dress Dexterity — yiwei `L1SkillUse.java:2449` cast 改為 type=2
+                     # (comment `原本3修改2 琮善`)；`L1SkillStop.java:433` stop 仍 type=3。
+                     # Cast 走 yaml param=2，cancel(durationSec=0) 由 sendBuffIcon 覆寫為 3。
     type: dexup
     param: 2
-  - skill_id: 26     # Physical Enchant DEX
+  - skill_id: 26     # Physical Enchant DEX — Java type=5
     type: dexup
     param: 5
 
@@ -54,6 +58,8 @@ buff_icons:
   - skill_id: 148    # Fire Weapon
     type: aura
   - skill_id: 149    # Wind Shot
+    type: aura
+  - skill_id: 155    # Fire Bless (烈炎氣息) — Java FIRE_BLESS.start() S_PacketBoxIconAura(154, ...)
     type: aura
   - skill_id: 156    # Storm Eye
     type: aura

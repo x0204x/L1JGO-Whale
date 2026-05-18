@@ -122,3 +122,39 @@ func TestClearNpcCancellationStateClearsWeaponBreak(t *testing.T) {
 		t.Fatal("相消術應清除 NPC 壞物術狀態")
 	}
 }
+
+// Java `L1AttackPc.damagePcWeaponDurability()` 第 3400-3410 行排除三類武器：
+//   _weaponType == 0（赤手）/ == 20（弓）/ == 62（鐵手甲）
+// 三者皆 return 不做破壞判定。Go 原本只排除 bow，缺少 claw（鐵手甲）排除，
+// 導致鋼爪攻擊 buff 89 玩家時錯誤觸發武器破壞。本測試鎖定 PvP 路徑下 claw
+// 不會進入破壞判定，攻擊者武器耐久維持 0。
+func TestDamageEquippedWeaponDurabilityExcludesClawInPvpLikeJava(t *testing.T) {
+	ws := world.NewState()
+	attacker := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "claw-attacker",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	// item_id 152 = 青銅鋼爪，type=claw，對應 Java _weaponType=62
+	claw := attacker.Inv.AddItemWithID(5001, 152, 1, "青銅鋼爪", 0, 0, false, 0)
+	claw.Equipped = true
+	claw.Durability = 0
+	attacker.Equip.Set(world.SlotWeapon, claw)
+
+	s := newSkillTestSystem(t, ws)
+	attachShockStunItemTable(t, s)
+
+	// pvp=true 模擬攻擊 buff 89 玩家的 PvP 路徑
+	damageEquippedWeaponDurability(attacker, s.deps, true)
+
+	if claw.Durability != 0 {
+		t.Fatalf("Java 排除 _weaponType=62（鐵手甲），PvP 攻擊 buff 89 玩家時鋼爪不應損壞，got Durability=%d", claw.Durability)
+	}
+	if hasServerMessage(drainSkillTestPackets(attacker.Session), 268) {
+		t.Fatal("Java 排除 claw 時不應送武器損壞訊息 268")
+	}
+}

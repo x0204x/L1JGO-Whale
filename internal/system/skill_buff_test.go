@@ -398,6 +398,46 @@ func TestSkillBuffImmuneToHarmHelperHalvesPhysicalDamage(t *testing.T) {
 	}
 }
 
+// Java REDUCTION_ARMOR(88, 增幅防禦) 在 5 條傷害路徑都做 flat 傷害減免：
+// `L1AttackPc.java:1617-1620` (PvP physical) 為 `dmg -= (max(targetLvl,50)-50)/5 + 10`，
+// `L1AttackNpc.java:437-440` (NPC→PC physical) / `L1MagicPc.java:1148,1296` / `L1MagicNpc.java:357`
+// 為 `dmg -= (max(targetLvl,50)-50)/5 + 1`。Go 原本誤實作為 `ac = -4` Lua buff（完全不同機制），
+// 本步補上 `applyReductionArmorDamage` helper 並先套用至 `npcMeleeAttack` (NPC→PC physical)。
+// 測試覆蓋公式三個關鍵點：等級 50 邊界（floor）、+1/+10 路徑差、無 buff 不影響。
+func TestSkillBuffReductionArmorDamageHelperMatchesJavaFormula(t *testing.T) {
+	// 無 buff 88：不減免
+	clean := &world.PlayerInfo{Level: 60}
+	if got := applyReductionArmorDamage(clean, 100, false); got != 100 {
+		t.Fatalf("無 buff 88 不應減免，got=%d", got)
+	}
+
+	// Level 50，NPC→PC physical：(50-50)/5 + 1 = 1 → 100-1=99
+	lvl50 := &world.PlayerInfo{Level: 50}
+	lvl50.AddBuff(&world.ActiveBuff{SkillID: 88, TicksLeft: 100})
+	if got := applyReductionArmorDamage(lvl50, 100, false); got != 99 {
+		t.Fatalf("Level 50 NPC→PC physical 應扣 1（(50-50)/5+1=1），got=%d", got)
+	}
+
+	// Level 50，PvP physical：(50-50)/5 + 10 = 10 → 100-10=90
+	if got := applyReductionArmorDamage(lvl50, 100, true); got != 90 {
+		t.Fatalf("Level 50 PvP physical 應扣 10（(50-50)/5+10=10），got=%d", got)
+	}
+
+	// Level 75，NPC→PC physical：(75-50)/5 + 1 = 6 → 100-6=94
+	lvl75 := &world.PlayerInfo{Level: 75}
+	lvl75.AddBuff(&world.ActiveBuff{SkillID: 88, TicksLeft: 100})
+	if got := applyReductionArmorDamage(lvl75, 100, false); got != 94 {
+		t.Fatalf("Level 75 NPC→PC physical 應扣 6（(75-50)/5+1=6），got=%d", got)
+	}
+
+	// Level 30（< 50）走 Java `Math.max(level, 50)` floor：等同 Level 50
+	lvl30 := &world.PlayerInfo{Level: 30}
+	lvl30.AddBuff(&world.ActiveBuff{SkillID: 88, TicksLeft: 100})
+	if got := applyReductionArmorDamage(lvl30, 100, false); got != 99 {
+		t.Fatalf("Level 30 應 floor 至 50（Java Math.max），扣 1，got=%d", got)
+	}
+}
+
 func TestSkillBuffAdvanceSpiritUsesJavaBaseMax(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{

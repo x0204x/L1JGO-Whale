@@ -141,6 +141,9 @@ func (s *SkillSystem) applyBraveAvatar(player *world.PlayerInfo) {
 	player.RegistSustain += buff.DeltaRegistSustain
 	player.AddBuff(buff)
 	handler.SendPlayerStatus(player.Session, player)
+	// Java `BraveAvatarTimer.run()` 第 54 行 `pc.sendPackets(new S_SPMR(pc))`：MR 改變需另送 S_SPMR，
+	// `SendPlayerStatus`(S_STATUS) 不含 MR/SP。`applyBraveAvatar` 走獨立路徑非 `applyBuffEffect`，需手動補。
+	handler.SendMagicStatus(player.Session, byte(player.SP), uint16(player.MR))
 	handler.SendNoneTimeIcon(player.Session, true, 479)
 	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, 9009))

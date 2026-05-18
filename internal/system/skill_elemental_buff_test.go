@@ -108,13 +108,14 @@ func TestSkillElementalBuffElfArmorAndWaterBuffsUseJavaValues(t *testing.T) {
 		t.Fatalf("大地防護應依 Java 給 AC -6，AC=%d", player.AC)
 	}
 	s.applyBuffEffect(player, &data.SkillInfo{SkillID: 159, BuffDuration: 960})
-	if player.HasBuff(151) || player.AC != 10 {
-		t.Fatalf("大地的祝福在義維 Java 只送圖示不改 AC，且應取代大地防護，buff151=%v AC=%d",
-			player.GetBuff(151), player.AC)
+	if !player.HasBuff(151) || !player.HasBuff(159) || player.AC != 4 {
+		t.Fatalf("大地的祝福在義維 Java 只送圖示不改 AC，且不在 REPEATEDSKILLS 任何群組不應移除大地防護，buff151=%v buff159=%v AC=%d",
+			player.GetBuff(151), player.GetBuff(159), player.AC)
 	}
 	s.applyBuffEffect(player, &data.SkillInfo{SkillID: 168, BuffDuration: 960})
-	if player.HasBuff(159) || player.AC != 0 {
-		t.Fatalf("鋼鐵防護應取代大地系防護並給 AC -10，buff159=%v AC=%d", player.GetBuff(159), player.AC)
+	if player.HasBuff(151) || !player.HasBuff(159) || player.AC != 0 {
+		t.Fatalf("鋼鐵防護依 Java REPEATEDSKILLS[1] 只與大地防護互斥，應移除 151 並保留 159，AC=10-10=0，buff151=%v buff159=%v AC=%d",
+			player.GetBuff(151), player.GetBuff(159), player.AC)
 	}
 
 	s.applyBuffEffect(player, &data.SkillInfo{SkillID: 160, BuffDuration: 960})

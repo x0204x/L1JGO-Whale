@@ -1072,6 +1072,16 @@ func SendWindShackle(sess *net.Session, charID int32, durationSec int) {
 	sess.Send(w.Bytes())
 }
 
+// SendWaterLifeCancel 發送水之元氣狀態圖示取消。
+// Java: S_PacketBoxWaterLife — opcode 250, sub 59 (ICON_WATER_LIFE_CANCEL), H(0)。
+// L1SkillStop case 170 於 WATER_LIFE buff 結束時送出，清除客戶端水之元氣圖示。
+func SendWaterLifeCancel(sess *net.Session) {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_EVENT)
+	w.WriteC(59) // ICON_WATER_LIFE_CANCEL
+	w.WriteH(0)
+	sess.Send(w.Bytes())
+}
+
 // SendDodgeIcon 發送 S_PacketBoxIcon1 閃避率圖示更新。
 // Java: S_PacketBoxIcon1 — opcode 250, subcode 0x58（增加）或 0x65（減少）。
 // dodge 為當前總閃避值。increase=true 為增加通知，false 為減少通知。

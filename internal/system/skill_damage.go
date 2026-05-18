@@ -111,6 +111,14 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 		s.applyDragonKnightFreezeAttackEffect(player, p, skill)
 	}
 
+	// 132 TRIPLE_ARROW：Java `TRIPLE_ARROW.start()` 第 45-46 行收尾廣播
+	// `S_SkillSound(srcpc.getId(), 4394)`（加速封包）+ `S_SkillSound(srcpc.getId(), 11764)`（特效動畫）。
+	if skill.SkillID == 132 {
+		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
+		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))
+	}
+
 	if skill.Area > 0 {
 		for _, npc := range s.deps.World.GetNearbyNpcs(target.X, target.Y, target.MapID) {
 			if npc.Dead || chebyshevDist(target.X, target.Y, npc.X, npc.Y) > int32(skill.Area) {
@@ -162,6 +170,7 @@ func (s *SkillSystem) applySkillDamageToPlayer(sess *net.Session, player, target
 		dmg = 0
 	}
 	dmg = applyImmuneToHarmDamage(target, dmg)
+	dmg = applyReductionArmorDamage(target, dmg, false)
 	dmg = s.applyCounterMirrorMagicDamage(player, target, dmg, world.RandInt(100), nearby)
 
 	gfxID := int32(skill.CastGfx)
@@ -277,6 +286,37 @@ const (
 
 func darkElfPhysicalDamage(attacker *world.PlayerInfo, damage int32, weaponType string) int32 {
 	return darkElfPhysicalDamageWithRolls(attacker, damage, weaponType, world.RandInt(100), world.RandInt(100))
+}
+
+// burningSlashDamage 套用燃燒擊砍（182）一次性 +10 傷害並消耗 buff。
+// Java `L1AttackPc.calcBuffDamage` 第 2434-2438 行：
+//
+//	if (_pc.hasSkillEffect(BURNING_SLASH)) {
+//	    dmg += 10.0D;
+//	    _pc.sendPacketsX10(new S_EffectLocation(_targetX, _targetY, 6591));
+//	    _pc.killSkillEffectTimer(BURNING_SLASH);
+//	}
+//
+// `calcBuffDamage` 前置條件（同函數第 2408-2416 行）：weaponType 不為 bow(20)、gauntlet(62)、ki-koru(17)
+// — 對齊以 `isRangedWeaponType` 早返回排除 bow/gauntlet（Go 暫無 ki-koru 類型）。
+// 視覺特效廣播由呼叫方負責（需要 targetX/Y 與 nearby）。
+//
+// 回傳 (新傷害, 是否消耗 buff)；caller 若 consumed=true 應廣播 S_EffectLocation。
+func burningSlashDamage(deps *handler.Deps, attacker *world.PlayerInfo, damage int32, weaponType string) (int32, bool) {
+	if attacker == nil || damage <= 0 {
+		return damage, false
+	}
+	if isRangedWeaponType(weaponType) {
+		return damage, false
+	}
+	if !attacker.HasBuff(182) {
+		return damage, false
+	}
+	damage += 10
+	if deps != nil {
+		handler.RemoveBuffAndRevert(attacker, 182, deps)
+	}
+	return damage, true
 }
 
 func darkElfPhysicalDamageWithRolls(attacker *world.PlayerInfo, damage int32, weaponType string, burningRoll, doubleBreakRoll int) int32 {
@@ -605,6 +645,14 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		}
 	}
 
+	// 132 TRIPLE_ARROW：Java `TRIPLE_ARROW.start()` 第 45-46 行收尾廣播
+	// `S_SkillSound(srcpc.getId(), 4394)`（加速封包）+ `S_SkillSound(srcpc.getId(), 11764)`（特效動畫）。
+	if skill.SkillID == 132 {
+		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
+		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))
+	}
+
 	// 吸血系技能：傷害轉為治療（Java: CHILL_TOUCH / VAMPIRIC_TOUCH — heal = this._dmg）
 	if skill.SkillID == 28 || skill.SkillID == 10 {
 		totalDmg := int32(0)
@@ -648,16 +696,32 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		}
 	}
 
-	// 奪命之雷（192）：傷害後束縛 NPC（Java: THUNDER_GRAB.java — S_Paralysis type 6）
+	// 奪命之雷（192）：傷害後束縛 NPC（Java: THUNDER_GRAB.java:54-83）
+	// Java 對 NPC 目標：a) STATUS_FREEZE(4000) 免疫；b) bindtime stack with cap 4；
+	// c) 廣播 S_SkillSound(4184) + spawnEffect(81182, bindtime, npc.X, npc.Y)；
+	// d) **不**呼叫 setParalyzed（明確 commented out），改用 setPassispeed(0) 速度鎖。
+	// Go 目前缺 passispeed 欄位，暫以 npc.Paralyzed 替代（broader gap：NPC passispeed 系統未實作）。
 	if skill.SkillID == 192 {
 		for _, t := range hits {
 			if t.npc.Dead || t.npc.Paralyzed {
 				continue
 			}
+			if t.npc.HasDebuff(4000) {
+				continue
+			}
 			if s.checkNpcMRResist(player, t.npc, 192) {
-				dur := world.RandInt(4) + 1 // 1-4 秒
-				t.npc.Paralyzed = true
-				t.npc.AddDebuff(192, dur*5)
+				bindSec := world.RandInt(4) + 1
+				if rem, ok := t.npc.ActiveDebuffs[192]; ok && rem > 0 {
+					bindSec += rem / 5
+				}
+				if bindSec > 4 {
+					bindSec = 4
+				}
+				t.npc.Paralyzed = true // broader gap: 應為 passispeed=0 而非 Paralyzed
+				t.npc.AddDebuff(192, bindSec*5)
+				nearby := s.deps.World.GetNearbyPlayersAt(t.npc.X, t.npc.Y, t.npc.MapID)
+				handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(t.npc.ID, 4184))
+				s.spawnThunderGrabGroundEffect(player, t.npc.X, t.npc.Y, t.npc.MapID, bindSec)
 			}
 		}
 	}

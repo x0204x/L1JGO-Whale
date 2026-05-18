@@ -80,6 +80,10 @@ func HandleChat(sess *net.Session, r *packet.Reader, deps *Deps) {
 		}
 
 	case ChatWorld:
+		// Java C_ChatGlobal.java:69-88 阻擋沉默狀態 (SILENCE/AREA_OF_SILENCE/STATUS_POISON_SILENCE) 廣播，GM 不受限。
+		if player.Silenced && player.AccessLevel < 200 {
+			return
+		}
 		// World/Global chat requires food and costs food (configurable)
 		if player.Food < int16(deps.Config.Gameplay.WorldChatMinFood) {
 			return

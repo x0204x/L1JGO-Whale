@@ -5836,7 +5836,7 @@ skills:
     item_consume_id: 49157
     item_consume_count: 1
     reuse_delay: 0
-    buff_duration: 0
+    buff_duration: 600
     target: none
     target_to: 0
     damage_value: 0

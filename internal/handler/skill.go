@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strings"
+	"time"
 
 	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/net"
@@ -36,13 +37,35 @@ func HandleUseSpell(sess *net.Session, r *packet.Reader, deps *Deps) {
 		if player == nil {
 			return
 		}
+		if player.Dead {
+			return
+		}
+		if player.HasTeleport {
+			return
+		}
 		if player.PrivateShop {
 			return
+		}
+		if player.Inv != nil && player.Inv.Weight242(world.PlayerMaxWeight(player)) >= 197 {
+			sendServerMessage(sess, 316)
+			return
+		}
+		if deps.MapData != nil {
+			if mi := deps.MapData.GetInfo(player.MapID); mi != nil && !mi.UsableSkill {
+				sendServerMessage(sess, 563)
+				return
+			}
 		}
 		if player.Paralyzed || player.Sleeped {
 			sendServerMessage(sess, 285)
 			return
 		}
+		if time.Now().Before(player.SkillDelayUntil) {
+			return
+		}
+	}
+	if skillID > 239 {
+		return
 	}
 
 	var targetID int32

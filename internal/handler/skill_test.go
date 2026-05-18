@@ -2,7 +2,11 @@ package handler
 
 import (
 	"encoding/binary"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/net"
@@ -73,6 +77,34 @@ func TestHandleUseSpellBlockedByShockStunBeforeSkillQueueLikeJava(t *testing.T) 
 	}
 }
 
+// Java `C_UseSkill.start()` 第 106-108 行 `if (pc.isTeleport()) return;` 在 isDead
+// 與 isPrivateShop 之間，傳送待確認狀態（已預備好 C_TELEPORT 確認）下任何技能
+// 都會被靜默阻擋（無訊息回饋，與 isSkillDelay 對齊）。鎖定 Go `HandleUseSpell`
+// 在 `player.HasTeleport=true` 時不排入 SkillQueue，避免玩家在傳送預備中仍施放
+// SHOCK_STUN。
+func TestHandleUseSpellBlockedByPendingTeleportLikeJava(t *testing.T) {
+	ws := world.NewState()
+	sess := newHandlerTestSession(t, 1)
+	player := &world.PlayerInfo{
+		SessionID:   sess.ID,
+		Session:     sess,
+		CharID:      1001,
+		Name:        "teleporter",
+		HasTeleport: true,
+		Inv:         world.NewInventory(),
+	}
+	ws.AddPlayer(player)
+
+	mgr := &captureSkillManager{}
+	deps := &Deps{World: ws, Skill: mgr}
+
+	HandleUseSpell(sess, useSpellReader(87), deps)
+
+	if len(mgr.reqs) != 0 {
+		t.Fatalf("Java C_UseSkill 會在 pc.isTeleport() 時直接返回，不應排入 SkillQueue，reqs=%+v", mgr.reqs)
+	}
+}
+
 func TestHandleUseSpellBlockedByPrivateShopLikeJava(t *testing.T) {
 	ws := world.NewState()
 	sess := newHandlerTestSession(t, 1)
@@ -93,6 +125,132 @@ func TestHandleUseSpellBlockedByPrivateShopLikeJava(t *testing.T) {
 
 	if len(mgr.reqs) != 0 {
 		t.Fatalf("Java C_UseSkill 會在 pc.isPrivateShop() 時直接返回，不應排入 SkillQueue，reqs=%+v", mgr.reqs)
+	}
+}
+
+func TestHandleUseSpellBlockedByDeadPlayerLikeJava(t *testing.T) {
+	ws := world.NewState()
+	sess := newHandlerTestSession(t, 1)
+	player := &world.PlayerInfo{
+		SessionID: sess.ID,
+		Session:   sess,
+		CharID:    1001,
+		Name:      "dead",
+		Dead:      true,
+		Inv:       world.NewInventory(),
+	}
+	ws.AddPlayer(player)
+
+	mgr := &captureSkillManager{}
+	deps := &Deps{World: ws, Skill: mgr}
+
+	HandleUseSpell(sess, useSpellReader(87), deps)
+
+	if len(mgr.reqs) != 0 {
+		t.Fatalf("Java C_UseSkill 會在 pc.isDead() 時直接返回，不應排入 SkillQueue，reqs=%+v", mgr.reqs)
+	}
+}
+
+func TestHandleUseSpellBlockedBySkillDelayLikeJava(t *testing.T) {
+	ws := world.NewState()
+	sess := newHandlerTestSession(t, 1)
+	player := &world.PlayerInfo{
+		SessionID:       sess.ID,
+		Session:         sess,
+		CharID:          1001,
+		Name:            "delayed",
+		SkillDelayUntil: time.Now().Add(time.Second),
+		Inv:             world.NewInventory(),
+	}
+	ws.AddPlayer(player)
+
+	mgr := &captureSkillManager{}
+	deps := &Deps{World: ws, Skill: mgr}
+
+	HandleUseSpell(sess, useSpellReader(87), deps)
+
+	if len(mgr.reqs) != 0 {
+		t.Fatalf("Java C_UseSkill 會在 pc.isSkillDelay() 時直接返回，不應排入 SkillQueue，reqs=%+v", mgr.reqs)
+	}
+}
+
+func TestHandleUseSpellBlockedByOverweightLikeJava(t *testing.T) {
+	ws := world.NewState()
+	sess := newHandlerTestSession(t, 1)
+	player := &world.PlayerInfo{
+		SessionID: sess.ID,
+		Session:   sess,
+		CharID:    1001,
+		Name:      "heavy",
+		Str:       1,
+		Con:       1,
+		Inv:       world.NewInventory(),
+	}
+	player.Inv.AddItem(40001, 2500, "heavy item", 0, 1000, true, 0)
+	ws.AddPlayer(player)
+
+	mgr := &captureSkillManager{}
+	deps := &Deps{World: ws, Skill: mgr}
+
+	HandleUseSpell(sess, useSpellReader(87), deps)
+
+	if len(mgr.reqs) != 0 {
+		t.Fatalf("Java C_UseSkill 在 getWeight240 >= 197 時會拒絕施法，不應排入 SkillQueue，reqs=%+v", mgr.reqs)
+	}
+	if !hasHandlerServerMessage(drainHandlerTestPackets(sess), 316) {
+		t.Fatal("Java C_UseSkill 負重過高時應送 S_ServerMessage(316)")
+	}
+}
+
+func TestHandleUseSpellBlockedByUnusableSkillMapLikeJava(t *testing.T) {
+	ws := world.NewState()
+	sess := newHandlerTestSession(t, 1)
+	player := &world.PlayerInfo{
+		SessionID: sess.ID,
+		Session:   sess,
+		CharID:    1001,
+		Name:      "noskillmap",
+		MapID:     9900,
+		Inv:       world.NewInventory(),
+	}
+	ws.AddPlayer(player)
+
+	mgr := &captureSkillManager{}
+	deps := &Deps{
+		World:   ws,
+		Skill:   mgr,
+		MapData: newHandlerSkillMapData(t, player.MapID, false),
+	}
+
+	HandleUseSpell(sess, useSpellReader(87), deps)
+
+	if len(mgr.reqs) != 0 {
+		t.Fatalf("Java C_UseSkill 在 !pc.getMap().isUsableSkill() 時會拒絕施法，不應排入 SkillQueue，reqs=%+v", mgr.reqs)
+	}
+	if !hasHandlerServerMessage(drainHandlerTestPackets(sess), 563) {
+		t.Fatal("Java C_UseSkill 在不可使用技能地圖應送 S_ServerMessage(563)")
+	}
+}
+
+func TestHandleUseSpellRejectsSkillIDOverJavaMax(t *testing.T) {
+	ws := world.NewState()
+	sess := newHandlerTestSession(t, 1)
+	player := &world.PlayerInfo{
+		SessionID: sess.ID,
+		Session:   sess,
+		CharID:    1001,
+		Name:      "invalidskill",
+		Inv:       world.NewInventory(),
+	}
+	ws.AddPlayer(player)
+
+	mgr := &captureSkillManager{}
+	deps := &Deps{World: ws, Skill: mgr}
+
+	HandleUseSpell(sess, useSpellRawReader(30, 0), deps)
+
+	if len(mgr.reqs) != 0 {
+		t.Fatalf("Java C_UseSkill 在 skillId > 239 時直接返回，不應排入 SkillQueue，reqs=%+v", mgr.reqs)
 	}
 }
 
@@ -190,6 +348,10 @@ func useSpellReader(skillID int32) *packet.Reader {
 	row := byte((skillID - 1) / 8)
 	column := byte((skillID - 1) % 8)
 
+	return useSpellRawReader(row, column)
+}
+
+func useSpellRawReader(row, column byte) *packet.Reader {
 	w := packet.NewWriterWithOpcode(packet.C_OPCODE_USE_SPELL)
 	w.WriteC(row)
 	w.WriteC(column)
@@ -197,6 +359,42 @@ func useSpellReader(skillID int32) *packet.Reader {
 	w.WriteH(0)
 	w.WriteH(0)
 	return packet.NewReader(w.RawBytes())
+}
+
+func newHandlerSkillMapData(t *testing.T, mapID int16, usableSkill bool) *data.MapDataTable {
+	t.Helper()
+
+	dir := t.TempDir()
+	tileDir := filepath.Join(dir, "maps")
+	if err := os.Mkdir(tileDir, 0o755); err != nil {
+		t.Fatalf("建立測試地圖目錄失敗: %v", err)
+	}
+
+	yamlPath := filepath.Join(dir, "map_list.yaml")
+	yaml := fmt.Sprintf(`maps:
+  - map_id: %d
+    name: test
+    start_x: 0
+    end_x: 0
+    start_y: 0
+    end_y: 0
+    usable_skill: %t
+`, mapID, usableSkill)
+	if err := os.WriteFile(yamlPath, []byte(yaml), 0o644); err != nil {
+		t.Fatalf("寫入測試 map_list.yaml 失敗: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tileDir, fmt.Sprintf("%d.txt", mapID)), []byte("0\n"), 0o644); err != nil {
+		t.Fatalf("寫入測試地圖 tile 失敗: %v", err)
+	}
+
+	maps, err := data.LoadMapData(yamlPath, tileDir)
+	if err != nil {
+		t.Fatalf("載入測試地圖失敗: %v", err)
+	}
+	if maps.GetInfo(mapID) == nil {
+		t.Fatalf("測試地圖 %d 未載入", mapID)
+	}
+	return maps
 }
 
 func hasHandlerServerMessage(packets [][]byte, msgID uint16) bool {

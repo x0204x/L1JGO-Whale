@@ -9,21 +9,15 @@ import (
 
 func TestSkillDragonKnightStatusResistFearAppliesDodgePenaltyOnly(t *testing.T) {
 	ws := world.NewState()
+	// Java skillmode/RESIST_FEAR.java:18 `if (!cha.hasSkillEffect(188) && cha instanceof L1PcInstance)` 對 PC 目標套用 dodge_down+5。
+	// 走自我施放路徑：skill_buff.go:940 的 MR 抗性閘對 `caster.CharID == target.CharID` 自動跳過，
+	// 與 playerDebuffSkills[188] 新增的 MR 機率（50±）解耦，避免測試變成概率性。
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 1,
 		Session:   newSkillTestSession(t, 1),
 		CharID:    1001,
 		Name:      "caster",
 		X:         100,
-		Y:         100,
-		MapID:     4,
-	})
-	target := addSkillTestPlayer(ws, &world.PlayerInfo{
-		SessionID: 2,
-		Session:   newSkillTestSession(t, 2),
-		CharID:    1002,
-		Name:      "target",
-		X:         101,
 		Y:         100,
 		MapID:     4,
 		Str:       12,
@@ -40,13 +34,13 @@ func TestSkillDragonKnightStatusResistFearAppliesDodgePenaltyOnly(t *testing.T) 
 		CastGfx:      6586,
 	}
 
-	s.executeBuffSkill(caster.Session, caster, skill, target.CharID)
+	s.executeBuffSkill(caster.Session, caster, skill, caster.CharID)
 
-	if target.Dodge != -2 {
-		t.Fatalf("恐懼無助應降低閃避 5，Dodge=%d", target.Dodge)
+	if caster.Dodge != -2 {
+		t.Fatalf("恐懼無助應降低閃避 5，Dodge=%d", caster.Dodge)
 	}
-	if target.Str != 12 || target.Intel != 13 {
-		t.Fatalf("恐懼無助不應調整 STR/INT，Str=%d Int=%d", target.Str, target.Intel)
+	if caster.Str != 12 || caster.Intel != 13 {
+		t.Fatalf("恐懼無助不應調整 STR/INT，Str=%d Int=%d", caster.Str, caster.Intel)
 	}
 }
 

@@ -191,6 +191,50 @@ func TestSkillStatusCancelNpcKeepsShockStunDebuffLikeJava(t *testing.T) {
 	}
 }
 
+// Java `L1SkillMode.isNotCancelable()` 第 33 行明確列出 `SHOCK_STUN`，
+// `CANCELLATION.java` 對玩家或 NPC 目標 buff 迴圈內若 `isNotCancelable(skillNum) && !cha.isDead()`
+// 會略過該效果。NPC 目標已有 TestSkillStatusCancelNpcKeepsShockStunDebuffLikeJava；
+// 本測試補上玩家目標的對等回歸，鎖定 Go `cancelAllBuffs` 透過 `IsNonCancellable(87)`
+// 同樣略過 87 buff，但仍會解除其他可相消 buff。
+func TestSkillStatusCancelPlayerKeepsShockStunBuffLikeJava(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "stunned-player",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+	})
+	target.AddBuff(&world.ActiveBuff{SkillID: 87, TicksLeft: 25, SetParalyzed: true})
+	target.Paralyzed = true
+	s := newSkillTestSystem(t, ws)
+	s.applyBuffEffect(target, &data.SkillInfo{SkillID: 29, BuffDuration: 120})
+
+	s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+		SkillID:  44,
+		Target:   "buff",
+		ActionID: 18,
+	}, target.CharID)
+
+	if !target.HasBuff(87) {
+		t.Fatal("Java CANCELLATION 對玩家會略過 L1SkillMode.isNotCancelable 的 SHOCK_STUN，buff 87 不應被解除")
+	}
+	if target.HasBuff(29) {
+		t.Fatal("Java CANCELLATION 仍應移除可相消的玩家 buff（緩速 29）")
+	}
+}
+
 func TestSkillStatusCancelHasteOnSlowedTargetOnlyCancelsSlow(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{

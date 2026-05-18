@@ -96,13 +96,26 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 	damage = elfMeleeDamage(attacker, damage, weaponType)
 	damage = braveAuraDamage(attacker, damage)
 	damage = applyImmuneToHarmDamage(target, damage)
+	damage = applyReductionArmorDamage(target, damage, true)
 
 	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+
+	// 燃燒擊砍（182）：一次性 +10 + 廣播 S_EffectLocation + 消耗 buff（Java L1AttackPc.calcBuffDamage:2434-2438）
+	if damage > 0 {
+		newDmg, consumed := burningSlashDamage(s.deps, attacker, damage, weaponType)
+		damage = newDmg
+		if consumed {
+			handler.BroadcastToPlayers(nearby, buildEffectLocation(target.X, target.Y, 6591))
+		}
+	}
 
 	// 反擊屏障（skill 91）：PvP 近戰機率反彈（Java: L1AttackPc.calcCounterBarrierDamage）
 	if damage > 0 && target.HasBuff(91) {
 		if world.RandInt(100)+1 <= 25 {
 			cbDmg := s.calcCounterBarrierDmg(target)
+			// Java `L1AttackPc.commitCounterBarrier()` 第 3339-3341 行：若攻擊者持有 IMMUNE_TO_HARM(68)
+			// 反彈傷害減半。Go 套用同一濾鏡（applyImmuneToHarmDamage 以接受傷害者為對象）。
+			cbDmg = applyImmuneToHarmDamage(attacker, cbDmg)
 			if cbDmg > 0 {
 				attacker.HP -= int32(cbDmg)
 				if attacker.HP < 0 {
@@ -115,6 +128,16 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 					s.deps.Death.KillPlayer(attacker)
 				}
 			}
+		}
+	}
+
+	// 致命身軀（skill 191）：PvP 近戰 23% 機率反彈 40 傷害
+	// 對齊 Java `L1PcInstance.java:2775-2798`：在 CounterBarrier 後檢查（`if (!isCounterBarrier)`），
+	// 若觸發 → 攻擊者扣 40 HP（聖界 68 減半），原始傷害歸零。
+	if newDmg, reflected := mortalBodyReflectPvP(target, attacker, damage, nearby); reflected {
+		damage = newDmg
+		if attacker.HP <= 0 {
+			s.deps.Death.KillPlayer(attacker)
 		}
 	}
 
@@ -266,6 +289,7 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 	damage = strikerGaleRangedDamage(target, damage)
 	damage = braveAuraDamage(attacker, damage)
 	damage = applyImmuneToHarmDamage(target, damage)
+	damage = applyReductionArmorDamage(target, damage, true)
 
 	handler.SendArrowAttackPacket(attacker.Session, attacker.CharID, target.CharID, damage, attacker.Heading,
 		attacker.X, attacker.Y, target.X, target.Y)

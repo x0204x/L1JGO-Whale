@@ -71,6 +71,19 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 			}
 		}
 
+	case 97: // 暗隱術 — 黑妖隱形（與 60 同分支），duration 由 yaml buff_duration 決定
+		// Java `L1SkillUse2.java:2511-2514` 把 INVISIBILITY 與 BLIND_HIDING 放在同一個 if：
+		// `pc.sendPackets(new S_Invis(pc.getId(), 1))` + `pc.broadcastPacketAll(new S_RemoveObject(pc))`。
+		// Go buff 屬性走 applyBuffEffect（buffs.lua `[97] = { invisible = true }` + yaml 32s），
+		// 此處只需補 self-packet 與 RemoveObject 廣播；否則施法者 UI 不切換、附近玩家畫面不移除。
+		handler.SendInvisible(sess, player.CharID, true)
+		removeData97 := handler.BuildRemoveObject(player.CharID)
+		for _, viewer := range nearby {
+			if viewer.CharID != player.CharID {
+				viewer.Session.Send(removeData97)
+			}
+		}
+
 	case 78: // 絕對屏障 — 免疫所有傷害，停止 HP/MP 回復
 		// Java: 攻擊/施法/使用道具/裝備武器時解除；移動時不解除
 		player.AbsoluteBarrier = true
@@ -99,7 +112,9 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 
 	case 90: // 堅固防護 — Java 需要盾牌/臂甲，效果為 ER +15
 		if !s.validateSolidCarriage(player) {
-			s.sendCastFail(sess)
+			// Java `SOLID_CARRIAGE.start()` 第 20/28 行送 `S_ServerMessage("你並未裝備盾牌")`
+			// 而非 standard msg 280 "施展魔法失敗"，給玩家明確的盾牌缺失回饋。
+			handler.SendNormalChat(sess, 0, "你並未裝備盾牌")
 			return
 		}
 
@@ -110,9 +125,10 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 		}
 		sendMpUpdate(sess, player)
 
-	case 146: // 魂體轉換 — 增加當前 MP（Java: BLOODY_SOUL，使用 skill_level 匹配客戶端顯示）
-		addMP := int32(skill.SkillLevel)
-		player.MP += addMP
+	case 146: // 魂體轉換 — Java `BLOODY_SOUL.start()` 第 19 行
+		// `setCurrentMp(currentMp + ConfigElfSkill.BLOODY_SOULADDMP)`，
+		// yiwei `各職業技能相關設置.properties: BLOODY_SOULADDMP = 20`（不是 skill.skill_level=19）。
+		player.MP += 20
 		if player.MP > player.MaxMP {
 			player.MP = player.MaxMP
 		}
@@ -173,8 +189,22 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 				}
 				sendHpUpdate(sess, player)
 			}
+			// Java L1SkillUse.isInTarget() 877-880：target_to=8 (TARGET_TO_PARTY) 只對隊伍成員生效，自己永遠通過 671-676。
+			// 目前僅 164 NATURES_BLESSING 屬 target_to=8 + type=16；非隊員 nearby 不應受惠。
+			var partyMembers map[int32]bool
+			if skill.TargetTo == 8 {
+				if party := s.deps.World.Parties.GetParty(player.CharID); party != nil {
+					partyMembers = make(map[int32]bool, len(party.Members))
+					for _, mid := range party.Members {
+						partyMembers[mid] = true
+					}
+				}
+			}
 			for _, p := range nearby {
 				if p.SessionID == sess.ID {
+					continue
+				}
+				if skill.TargetTo == 8 && (partyMembers == nil || !partyMembers[p.CharID]) {
 					continue
 				}
 				h := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterSP))

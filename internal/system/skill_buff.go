@@ -10,6 +10,7 @@ import (
 const (
 	immuneToHarmSkillID  int32 = 68
 	advanceSpiritSkillID int32 = 79
+	reductionArmorSkillID int32 = 88
 )
 
 func applyImmuneToHarmDamage(target *world.PlayerInfo, damage int32) int32 {
@@ -17,6 +18,29 @@ func applyImmuneToHarmDamage(target *world.PlayerInfo, damage int32) int32 {
 		return damage
 	}
 	return damage / 2
+}
+
+// applyReductionArmorDamage 套用 REDUCTION_ARMOR(88, 增幅防禦) flat 傷害減免。
+// Java `L1AttackPc.java:1617-1620` (PvP physical) 公式為 `dmg -= (max(targetLvl,50)-50)/5 + 10`，
+// 其他三條路徑（L1AttackNpc NPC→PC physical、L1MagicPc/L1MagicNpc magic）公式為
+// `dmg -= (max(targetLvl,50)-50)/5 + 1`。pvpPhysical=true 套用 +10，否則 +1。
+func applyReductionArmorDamage(target *world.PlayerInfo, damage int32, pvpPhysical bool) int32 {
+	if target == nil || damage <= 0 || !target.HasBuff(reductionArmorSkillID) {
+		return damage
+	}
+	lvl := int32(target.Level)
+	if lvl < 50 {
+		lvl = 50
+	}
+	reduction := (lvl-50)/5 + 1
+	if pvpPhysical {
+		reduction = (lvl-50)/5 + 10
+	}
+	damage -= reduction
+	if damage < 0 {
+		damage = 0
+	}
+	return damage
 }
 
 func (s *SkillSystem) validateSolidCarriage(player *world.PlayerInfo) bool {
@@ -69,12 +93,16 @@ func (s *SkillSystem) sendBuffIcon(target *world.PlayerInfo, skillID int32, dura
 	case "shield":
 		handler.SendIconShield(sess, durationSec, icon.Param)
 	case "strup":
+		// yiwei `L1SkillUse.java:2456` 對 DRESS_MIGHTY(109) cast 改為 type=2（`原本3修改2 琮善`），
+		// `L1SkillStop.java:441` stop 仍 type=3。Cast 走 yaml param=2，cancel 覆寫為 3。
 		iconParam := icon.Param
 		if durationSec == 0 && skillID == 109 {
 			iconParam = 3
 		}
 		handler.SendIconStrup(sess, durationSec, byte(target.Str), iconParam)
 	case "dexup":
+		// yiwei `L1SkillUse.java:2449` 對 DRESS_DEXTERITY(110) cast 改為 type=2，
+		// `L1SkillStop.java:433` stop 仍 type=3。Cast 走 yaml param=2，cancel 覆寫為 3。
 		iconParam := icon.Param
 		if durationSec == 0 && skillID == 110 {
 			iconParam = 3
@@ -261,6 +289,17 @@ func (s *SkillSystem) applyBuffEffect(target *world.PlayerInfo, skill *data.Skil
 		buff.DeltaDmgMod != 0 || buff.DeltaHitMod != 0 {
 		handler.SendPlayerStatus(target.Session, target)
 	}
+	// MR/SP 變化時送 S_SPMR (Java: SHADOW_ARMOR/RESIST_MAGIC/ILLUSION_LICH 等
+	// `pc.sendPackets(new S_SPMR(pc))` 對齊；原本只送 S_STATUS 不含 MR/SP)。
+	if buff.DeltaMR != 0 || buff.DeltaSP != 0 {
+		handler.SendMagicStatus(target.Session, byte(target.SP), uint16(target.MR))
+	}
+	// 元素抗性變化時送 S_OwnCharAttrDef（Java `L1SkillUse.java:2545` RESIST_ELEMENTAL cast
+	// `pc.sendPackets(new S_OwnCharAttrDef(pc))` 對齊；同時為 ELEMENTAL_PROTECTION/147 cast 補上
+	// Java 漏送的 UI 更新——client 顯示與資料一致，行為比 Java 嚴格收緊）。
+	if target.Session != nil && (buff.DeltaFireRes != 0 || buff.DeltaWaterRes != 0 || buff.DeltaWindRes != 0 || buff.DeltaEarthRes != 0) {
+		handler.SendAbilityScores(target.Session, target)
+	}
 
 	s.sendBuffIcon(target, skill.SkillID, uint16(skill.BuffDuration))
 
@@ -413,6 +452,22 @@ func (s *SkillSystem) removeBuffAndRevert(target *world.PlayerInfo, skillID int3
 		if skillID == 167 {
 			handler.SendWindShackle(target.Session, target.CharID, 0)
 		}
+		// 水之元氣（技能 170）：buff 被取消後送出 S_PacketBoxWaterLife 取消圖示
+		// 對齊 Java L1SkillStop case 170。
+		if skillID == 170 {
+			handler.SendWaterLifeCancel(target.Session)
+		}
+		// 精準射擊（技能 174）：buff 被取消後送出 UPDATE_ER 還原客戶端 ER 顯示
+		// 對齊 Java L1SkillStop case STRIKER_GALE。
+		if skillID == 174 {
+			handler.SendUpdateER(target.Session, target.Dodge)
+		}
+		// 法利昂覺醒（190）外部移除（exclusions/解除）時連帶清除 Physical Power（169）。
+		// 對齊 Java `skillmode/AWAKEN_FAFURION.java:36-40 stop()` 的 `killSkillEffectTimer(169)`，
+		// 與 `tickPlayerBuffs:803-806` 自然到期路徑共用此 cleanup（避免 185 exclusions 移除 190 後 169 殘留）。
+		if skillID == 190 {
+			s.removeBuffAndRevert(target, 169)
+		}
 
 		if s.deps.Skills != nil {
 			if sk := s.deps.Skills.Get(skillID); sk != nil && sk.SysMsgStop > 0 {
@@ -494,6 +549,17 @@ func (s *SkillSystem) revertBuffStats(target *world.PlayerInfo, buff *world.Acti
 	}
 	if buff.SetAbsoluteBarrier {
 		target.AbsoluteBarrier = false
+	}
+	// MR/SP 還原時送 S_SPMR (對齊 Java SHADOW_ARMOR/RESIST_MAGIC 等 stop()
+	// `pc.sendPackets(new S_SPMR(pc))`；否則玩家 UI 仍顯示 buff 期間的 MR/SP)。
+	if target.Session != nil && (buff.DeltaMR != 0 || buff.DeltaSP != 0) {
+		handler.SendMagicStatus(target.Session, byte(target.SP), uint16(target.MR))
+	}
+	// 元素抗性還原時送 S_OwnCharAttrDef（Java `L1SkillStop` 133/138/147 與
+	// `ELEMENTAL_FALL_DOWN.stop()` 對 PC 都在 `addEarth/Fire/Water/Wind` 後送 `S_OwnCharAttrDef(pc)`；
+	// 否則玩家 UI 仍顯示 buff 期間的低抗性）。
+	if target.Session != nil && (buff.DeltaFireRes != 0 || buff.DeltaWaterRes != 0 || buff.DeltaWindRes != 0 || buff.DeltaEarthRes != 0) {
+		handler.SendAbilityScores(target.Session, target)
 	}
 }
 
@@ -728,6 +794,16 @@ func (s *SkillSystem) tickPlayerBuffs(p *world.PlayerInfo) {
 			// 風之枷鎖（技能 167）：到期後清除客戶端效果
 			if skillID == 167 {
 				handler.SendWindShackle(p.Session, p.CharID, 0)
+			}
+			// 水之元氣（技能 170）：到期後送出 S_PacketBoxWaterLife 取消圖示
+			// 對齊 Java L1SkillStop case 170。
+			if skillID == 170 {
+				handler.SendWaterLifeCancel(p.Session)
+			}
+			// 精準射擊（技能 174）：到期後送出 UPDATE_ER 還原客戶端 ER 顯示
+			// 對齊 Java L1SkillStop case STRIKER_GALE。
+			if skillID == 174 {
+				handler.SendUpdateER(p.Session, p.Dodge)
 			}
 
 			// 法利昂覺醒（190）到期時連帶清除 Physical Power（169）
@@ -1071,36 +1147,27 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		return
 	}
 
-	// 覺醒系統（185/190/195）：再施放同一覺醒 → 解除；互斥由 buffs.lua exclusions 處理
+	// 覺醒系統（185/190/195）：對齊 Java skillmode AWAKEN_ANTHARAS/FAFURION/VALAKAS
+	// - 首次施放：套用屬性 buff（exclusions 由 buffs.lua 處理）+ 廣播音效 + 同步狀態
+	// - 再施放（已有效）：僅廣播音效，不刷新計時器（Java skillmode 的 `if (!hasSkillEffect(N))` 守衛跳過 setSkillEffect/stat 修改，但 sendPacketsX8 仍執行）
+	// Java 並無「再施放解除」行為（_awakeSkillId 從未被 setAwakeSkillId 設定，L1SkillUse2:1678 條件永遠為 false）
 	if skill.SkillID == 185 || skill.SkillID == 190 || skill.SkillID == 195 {
-		if target.HasBuff(skill.SkillID) {
-			// 再施放 → 解除覺醒（Java: toggle off）
-			s.removeBuffAndRevert(target, skill.SkillID)
-			// 法利昂（190）解除時連帶清除 Physical Power（169）
+		if !target.HasBuff(skill.SkillID) {
+			s.applyBuffEffect(target, skill)
+			// 法利昂（190）啟動時同時設定 Physical Power（169）timer（Java AWAKEN_FAFURION skillmode setSkillEffect(169)）
 			if skill.SkillID == 190 {
-				s.removeBuffAndRevert(target, 169)
-			}
-			// 播放解除 GFX
-			if skill.CastGfx > 0 {
-				handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+				if sk169 := s.deps.Skills.Get(169); sk169 != nil {
+					s.applyBuffEffect(target, sk169)
+				}
 			}
 			handler.SendPlayerStatus(target.Session, target)
-			return
-		}
-		// 首次施放覺醒 → 走正常流程（exclusions 會先清除其他覺醒）
-		s.applyBuffEffect(target, skill)
-		if skill.CastGfx > 0 {
-			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
-		}
-		// 法利昂（190）啟動時同時設定 Physical Power（169）timer
-		if skill.SkillID == 190 {
-			if sk169 := s.deps.Skills.Get(169); sk169 != nil {
-				s.applyBuffEffect(target, sk169)
+			if skill.SysMsgHappen > 0 {
+				handler.SendServerMessage(target.Session, uint16(skill.SysMsgHappen))
 			}
 		}
-		handler.SendPlayerStatus(target.Session, target)
-		if skill.SysMsgHappen > 0 {
-			handler.SendServerMessage(target.Session, uint16(skill.SysMsgHappen))
+		// 無論首次或再施放都廣播音效（Java skillmode sendPacketsX8）
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
 		}
 		return
 	}
@@ -1143,6 +1210,14 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 
 	// 套用 buff 效果
 	s.applyBuffEffect(target, skill)
+
+	// 174 STRIKER_GALE：Java `L1PcInstance.getEr()` 第 3396-3398 行對持有 STRIKER_GALE 的玩家
+	// 直接 `return 0`，L1SkillUse2 第 1498 行通用 cast 路徑送出 `S_PacketBox(UPDATE_ER, getEr())`
+	// 使客戶端 ER 顯示變 0。Go 端 player.Dodge 為儲存值，無 getter override，需在 174 套用後
+	// 顯式送 UPDATE_ER(0)。對齊 Java 行為。
+	if skill.SkillID == 174 && target.Session != nil {
+		handler.SendUpdateER(target.Session, 0)
+	}
 
 	// 效果 GFX
 	if skill.CastGfx > 0 {

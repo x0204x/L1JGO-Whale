@@ -216,6 +216,15 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 	// 取附近玩家用於廣播
 	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
 
+	// 燃燒擊砍（182）：一次性 +10 + 廣播 S_EffectLocation + 消耗 buff（Java L1AttackPc.calcBuffDamage:2434-2438）
+	if damage > 0 {
+		newDmg, consumed := burningSlashDamage(s.deps, player, damage, weaponType)
+		damage = newDmg
+		if consumed {
+			handler.BroadcastToPlayers(nearby, buildEffectLocation(npc.X, npc.Y, 6591))
+		}
+	}
+
 	// 武器技能觸發（命中時機率觸發額外傷害 + GFX）
 	if damage > 0 {
 		if wpn := player.Equip.Weapon(); wpn != nil {
@@ -910,7 +919,11 @@ func damageEquippedWeaponDurability(player *world.PlayerInfo, deps *handler.Deps
 	if !itemInfo.CanBeDamaged {
 		return
 	}
-	if pvp && itemInfo.Type == "bow" {
+	// Java `L1AttackPc.damagePcWeaponDurability()` 第 3400-3410 行排除三類武器：
+	//   _weaponType == 0（赤手）/ == 20（弓）/ == 62（鐵手甲），三者皆 return 不做破壞判定。
+	// Go category 過濾已涵蓋赤手（無 weapon equipped），bow 對應 weaponType 20，
+	// claw 對應 weaponType 62（鐵手甲），兩者於 PvP 對 buff 89 目標皆不應損壞攻擊者武器。
+	if pvp && (itemInfo.Type == "bow" || itemInfo.Type == "claw") {
 		return
 	}
 	if player.HasBuff(175) {

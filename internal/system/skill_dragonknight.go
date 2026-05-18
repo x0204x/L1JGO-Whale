@@ -39,10 +39,20 @@ func calcDragonKnightDebuffProbability(caster, target *world.PlayerInfo, skill *
 }
 
 func (s *SkillSystem) applyThunderGrabBind(caster, target *world.PlayerInfo) {
-	if target.HasBuff(skillThunderGrab) {
+	// Java `THUNDER_GRAB.java:35 if (!cha.hasSkillEffect(4000))` 對 STATUS_FREEZE 目標免疫。
+	if target.HasBuff(4000) {
 		return
 	}
+	// Java `THUNDER_GRAB.java:23-32`：bindtime = random(4)+1；若已持 192，加上殘餘秒數，最多 4 秒上限。
 	bindSeconds := world.RandInt(4) + 1
+	if old := target.GetBuff(skillThunderGrab); old != nil {
+		// `cha.getSkillEffectTimeSec(192)` 殘餘秒數（Go buff.TicksLeft 為 0.2 秒精度，÷5 換算秒）
+		remainingSec := int(old.TicksLeft / 5)
+		bindSeconds += remainingSec
+	}
+	if bindSeconds > 4 {
+		bindSeconds = 4
+	}
 	buff := &world.ActiveBuff{
 		SkillID:      skillThunderGrab,
 		TicksLeft:    bindSeconds * 5,
@@ -57,7 +67,47 @@ func (s *SkillSystem) applyThunderGrabBind(caster, target *world.PlayerInfo) {
 
 	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, 4184))
+	// Java `THUNDER_GRAB.java:40 spawnEffect(81182, bindtime, pc.X, pc.Y, mapId, srcpc, 0)` —
+	// 在目標位置生成 81182 視覺地面效果，存活時間 = bindtime（秒）。
+	if caster != nil {
+		s.spawnThunderGrabGroundEffect(caster, target.X, target.Y, target.MapID, bindSeconds)
+	}
 }
+
+// spawnThunderGrabGroundEffect 在指定位置生成 81182 視覺地面效果，存活時間 = bindSec 秒。
+// 對齊 Java `L1SpawnUtil.spawnEffect(81182, bindtime, x, y, mapId, srcpc, 0)`。
+func (s *SkillSystem) spawnThunderGrabGroundEffect(caster *world.PlayerInfo, x, y int32, mapID int16, bindSec int) {
+	if s.deps == nil || s.deps.Npcs == nil || s.deps.World == nil {
+		return
+	}
+	tpl := s.deps.Npcs.Get(thunderGrabEffectNpcID)
+	if tpl == nil {
+		return
+	}
+	effect := &world.GroundEffect{
+		ID:           world.NextGroundEffectID(),
+		SkillID:      skillThunderGrab,
+		NpcID:        thunderGrabEffectNpcID,
+		GfxID:        tpl.GfxID,
+		Type:         world.GroundEffectThunderGrab,
+		X:            x,
+		Y:            y,
+		MapID:        mapID,
+		OwnerCharID:  caster.CharID,
+		OwnerSession: caster.SessionID,
+		OwnerName:    caster.Name,
+		OwnerIntel:   caster.Intel,
+		OwnerClanID:  caster.ClanID,
+		TicksLeft:    bindSec * groundEffectTickSec,
+	}
+	if effect.TicksLeft <= 0 {
+		effect.TicksLeft = groundEffectTickSec
+	}
+	s.deps.World.AddGroundEffect(effect)
+	s.broadcastGroundEffect(effect)
+}
+
+const thunderGrabEffectNpcID = int32(81182)
 
 const skillFreezingBreath = int32(194)
 
@@ -109,25 +159,94 @@ const (
 	foeSlayerDefaultStunSec  = 30
 )
 
+const (
+	skillMortalBody = int32(191)
+
+	mortalBodyChance      = 23 // Java `_random.nextInt(100) < 23` 觸發率
+	mortalBodyDamage      = 40 // Java `int dmg = 40` 反彈基礎傷害
+	mortalBodyEffectGfx   = 10710
+	mortalBodyAttackerGfx = 2 // Java `S_DoActionGFX(attacker.getId(), 2)`
+)
+
+// mortalBodyReflectPvP 處理 PvP 路徑下致命身軀（191）反彈邏輯。
+// 對齊 Java `L1PcInstance.java:2775-2798`：當 target 持有 191 buff 且 attacker 非自身、
+// 23% 機率觸發 → 攻擊者承受 40 傷害（聖界 IMMUNE_TO_HARM=68 減半）+ 廣播音效，
+// 原始攻擊傷害歸零（Java 用 `return` 跳過後續 receiveDamage）。
+// 回傳：(可能被歸零的傷害, 是否觸發反彈)。
+func mortalBodyReflectPvP(target, attacker *world.PlayerInfo, damage int32, nearby []*world.PlayerInfo) (int32, bool) {
+	if damage <= 0 || target == nil || attacker == nil || target.CharID == attacker.CharID {
+		return damage, false
+	}
+	if !target.HasBuff(skillMortalBody) {
+		return damage, false
+	}
+	if world.RandInt(100) >= mortalBodyChance {
+		return damage, false
+	}
+	reflectDmg := int32(mortalBodyDamage)
+	reflectDmg = applyImmuneToHarmDamage(attacker, reflectDmg)
+	if reflectDmg > 0 {
+		attacker.HP -= reflectDmg
+		if attacker.HP < 0 {
+			attacker.HP = 0
+		}
+		handler.SendHpUpdate(attacker.Session, attacker)
+	}
+	// Java `attackPc.sendPacketsAll(S_DoActionGFX(attackPc.getId(), 2))` + `this.sendPacketsAll(S_SkillSound(this.getId(), 10710))`
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(attacker.CharID, mortalBodyAttackerGfx))
+	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, mortalBodyEffectGfx))
+	return 0, true
+}
+
+// mortalBodyReflectFromNpc 處理 NPC 攻擊玩家時的致命身軀反彈邏輯（npc_ai.go 攻擊管線）。
+// 對齊 Java `L1PcInstance:2788-2796` else-if `attackNpc != null` 分支：
+// attackNpc.receiveDamage(this, dmg) + broadcastPacketAll(S_DoActionGFX(npc.getId(), 2))。
+// 回傳：(可能被歸零的傷害, 是否觸發反彈)。
+func mortalBodyReflectFromNpc(target *world.PlayerInfo, npc *world.NpcInfo, damage int32, nearby []*world.PlayerInfo) (int32, bool) {
+	if damage <= 0 || target == nil || npc == nil {
+		return damage, false
+	}
+	if !target.HasBuff(skillMortalBody) {
+		return damage, false
+	}
+	if world.RandInt(100) >= mortalBodyChance {
+		return damage, false
+	}
+	reflectDmg := int32(mortalBodyDamage)
+	// 注意：Java `attackNpc.hasSkillEffect(68)` 對 NPC 也檢查（NPC 也可被施 IMMUNE_TO_HARM）。
+	// Go npc.HasDebuff(68) 為 NPC 旗標路徑；目前 Go 無對 NPC 套用 IMMUNE_TO_HARM 的場景，但保留 hook。
+	if npc.HasDebuff(immuneToHarmSkillID) {
+		reflectDmg /= 2
+	}
+	if reflectDmg > 0 {
+		npc.HP -= reflectDmg
+		if npc.HP < 0 {
+			npc.HP = 0
+		}
+	}
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(npc.ID, mortalBodyAttackerGfx))
+	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, mortalBodyEffectGfx))
+	return 0, true
+}
+
 func (s *SkillSystem) executeFoeSlayerOnPlayer(sess *net.Session, caster *world.PlayerInfo, skill *data.SkillInfo, target *world.PlayerInfo, nearby []*world.PlayerInfo) {
 	if caster == nil || target == nil || skill == nil || target.Dead {
 		return
 	}
 	defer clearDragonKnightWeakness(caster)
+	// Java skillmode/FOE_SLAYER.java:27-34 `for (int i = 0; i < 3; i++) { cha.onAction(srcpc); }` 三次攻擊無論目標死亡與否都跑完，
+	// 隨後不論目標死活都廣播 7020/12119 並嘗試 COPY_SHOCK_STUN（dead target 的 setParalyzed 為 no-op，但 buff 仍會被 setSkillEffect）。
 	for range foeSlayerHitCount {
 		damage := s.calcFoeSlayerPlayerHitDamage(caster, target)
 		s.broadcastFoeSlayerAttack(caster, target.CharID, damage, nearby)
 		s.applyFoeSlayerPlayerDamage(sess, caster, target, damage)
-		if target.Dead || target.HP <= 0 {
-			return
-		}
 	}
 	bonus := foeSlayerRandomBonus(skill)
 	if bonus > 0 {
 		s.applyFoeSlayerPlayerDamage(sess, caster, target, bonus)
 	}
 	s.broadcastFoeSlayerEffects(caster.CharID, target.CharID, nearby)
-	s.applyFoeSlayerPlayerStun(target, skill, nearby)
+	s.applyFoeSlayerPlayerStun(caster, target, skill, nearby)
 }
 
 func (s *SkillSystem) executeFoeSlayerOnNpc(sess *net.Session, caster *world.PlayerInfo, skill *data.SkillInfo, npc *world.NpcInfo, nearby []*world.PlayerInfo) {
@@ -135,13 +254,12 @@ func (s *SkillSystem) executeFoeSlayerOnNpc(sess *net.Session, caster *world.Pla
 		return
 	}
 	defer clearDragonKnightWeakness(caster)
+	// Java skillmode/FOE_SLAYER.java:61-66 NPC caster 與 PC caster 共用「不中斷三段」邏輯；
+	// applyFoeSlayerNpcDamage 對 npc.Dead 已有 guard，迴圈後段呼叫安全 no-op。
 	for range foeSlayerHitCount {
 		damage := s.calcFoeSlayerNpcHitDamage(caster, npc)
 		s.broadcastFoeSlayerAttack(caster, npc.ID, damage, nearby)
 		s.applyFoeSlayerNpcDamage(sess, caster, npc, damage, nearby)
-		if npc.Dead || npc.HP <= 0 {
-			return
-		}
 	}
 	bonus := foeSlayerRandomBonus(skill)
 	if bonus > 0 {
@@ -273,7 +391,7 @@ func (s *SkillSystem) applyFoeSlayerNpcDamage(sess *net.Session, caster *world.P
 	}
 }
 
-func (s *SkillSystem) applyFoeSlayerPlayerStun(target *world.PlayerInfo, skill *data.SkillInfo, nearby []*world.PlayerInfo) {
+func (s *SkillSystem) applyFoeSlayerPlayerStun(caster, target *world.PlayerInfo, skill *data.SkillInfo, nearby []*world.PlayerInfo) {
 	if target.HasBuff(skillCopyShockStun) || !foeSlayerStunSuccess(skill) {
 		return
 	}
@@ -289,13 +407,22 @@ func (s *SkillSystem) applyFoeSlayerPlayerStun(target *world.PlayerInfo, skill *
 	target.Paralyzed = true
 	handler.SendParalysis(target.Session, handler.StunApply)
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, 81162))
+	// Java skillmode/FOE_SLAYER.java:48 `L1PinkName.onAction(pc, srcpc)` — PC 目標被 COPY_SHOCK_STUN 命中時觸發粉紅名。
+	if s.deps != nil && s.deps.PvP != nil && caster != nil {
+		s.deps.PvP.TriggerPinkName(caster, target)
+	}
 }
 
 func (s *SkillSystem) applyFoeSlayerNpcStun(npc *world.NpcInfo, skill *data.SkillInfo, nearby []*world.PlayerInfo) {
 	if npc.HasDebuff(skillCopyShockStun) || !foeSlayerStunSuccess(skill) {
 		return
 	}
-	npc.Paralyzed = true
+	// Java skillmode/FOE_SLAYER.java:49-53 `else if Monster/Summon/Pet → setParalyzed(true)`：
+	// 只對 Monster/Summon/Pet 設 Paralyzed，Guardian/Guard/Tower 等其他 NPC 類型只設 COPY_SHOCK_STUN 計時器與 81162 效果，
+	// 不會觸發 setParalyzed（與 SHOCK_STUN NPC 目標處理對齊，見 skill_status.go:508）。
+	if npc.Impl == "L1Monster" || npc.Impl == "L1Summon" || npc.Impl == "L1Pet" {
+		npc.Paralyzed = true
+	}
 	npc.AddDebuff(skillCopyShockStun, foeSlayerStunSeconds(skill)*5)
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, 81162))
 }
@@ -337,7 +464,9 @@ func foeSlayerStunSuccess(skill *data.SkillInfo) bool {
 	if chance > 100 {
 		chance = 100
 	}
-	return world.RandInt(100) < chance
+	// Java skillmode/FOE_SLAYER.java:40 `_random.nextInt(100) <= FOE_SLAYER_RND`：
+	// 邊界為 inclusive，roll 0..FOE_SLAYER_RND 皆視為命中（預設 15 為 16/100=16% 機率）。
+	return world.RandInt(100) <= chance
 }
 
 func foeSlayerStunSeconds(skill *data.SkillInfo) int {

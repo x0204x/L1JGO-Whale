@@ -134,8 +134,11 @@ function calc_physical_skill(ctx)
         -- Skill-specific bonuses
         if sid == 108 then      -- Critical Strike: guaranteed extra damage
             damage = damage + level + math.floor(str / 3)
-        elseif sid == 132 then  -- Triple Arrow: 3 separate hits
+        elseif sid == 132 then  -- Triple Arrow: 3 separate hits, each × yiwei TRIPLE_ARROW_DMG=5
+            -- Java L1AttackPc.java:1512/2002 `if (_pc.getIsTRIPLE_ARROW()) dmg *= ConfigSkill.TRIPLE_ARROW_DMG`
+            -- yiwei config `各職業技能相關設置.properties: Triple_Arrow_Dmg = 5.0`
             hit_count = 3
+            damage = damage * 5
         elseif sid == 203 then  -- Smash/Rampage
             damage = damage + math.floor(level / 3)
         elseif sid == 208 then  -- Bone Break/Skull Destruction

@@ -499,6 +499,7 @@ func (s *NpcAISystem) npcMeleeAttack(npc *world.NpcInfo, target *world.PlayerInf
 	}
 	damage = applyNpcWeaponBreakDamage(npc, damage)
 	damage = applyImmuneToHarmDamage(target, damage)
+	damage = applyReductionArmorDamage(target, damage, false)
 
 	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
 
@@ -538,6 +539,25 @@ func (s *NpcAISystem) npcMeleeAttack(npc *world.NpcInfo, target *world.PlayerInf
 				handler.BroadcastToPlayers(nearby, handler.BuildHpMeter(npc.ID, hpRatio))
 			}
 		}
+	}
+
+	// 致命身軀（skill 191）：NPC 近戰 23% 機率反彈 40 傷害給 NPC
+	// 對齊 Java `L1PcInstance.java:2788-2796` else-if `attackNpc != null` 分支：
+	// 在 CounterBarrier 後檢查，若觸發 → NPC 扣 40 HP，原始傷害歸零。
+	if newDmg, reflected := mortalBodyReflectFromNpc(target, npc, damage, nearby); reflected {
+		damage = newDmg
+		if npc.HP <= 0 {
+			hpData := handler.BuildHpMeter(npc.ID, 0)
+			handler.BroadcastToPlayers(nearby, hpData)
+			handleNpcDeath(npc, target, nearby, s.deps)
+			npc.AggroTarget = 0
+			return
+		}
+		hpRatio := int16(0)
+		if npc.MaxHP > 0 {
+			hpRatio = int16((npc.HP * 100) / npc.MaxHP)
+		}
+		handler.BroadcastToPlayers(nearby, handler.BuildHpMeter(npc.ID, hpRatio))
 	}
 
 	atkData := buildNpcAttack(npc.ID, target.CharID, damage, npc.Heading)
@@ -606,6 +626,7 @@ func (s *NpcAISystem) npcRangedAttack(npc *world.NpcInfo, target *world.PlayerIn
 	}
 	damage = applyNpcWeaponBreakDamage(npc, damage)
 	damage = applyImmuneToHarmDamage(target, damage)
+	damage = applyReductionArmorDamage(target, damage, false)
 
 	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
 	rngData := buildNpcRangedAttack(npc.ID, target.CharID, damage, npc.Heading,
@@ -640,6 +661,16 @@ func (s *NpcAISystem) npcRangedAttack(npc *world.NpcInfo, target *world.PlayerIn
 // executeNpcSkill handles an NPC using a skill on a player.
 // leverage > 0 表示 type 1 物理技能，傷害 = STR * leverage / 10。
 func (s *NpcAISystem) executeNpcSkill(npc *world.NpcInfo, target *world.PlayerInfo, skillID, actID, gfxID, leverage int) {
+	if target == nil {
+		return
+	}
+	if skillID == 87 && (target.Dead || target.MapID != npc.MapID || isGMInvisible(target)) {
+		return
+	}
+	if skillID == 87 && target.AbsoluteBarrier {
+		return
+	}
+
 	// 目標絕對屏障：免疫所有傷害和 debuff
 	if target.AbsoluteBarrier {
 		npc.AggroTarget = 0
@@ -656,6 +687,9 @@ func (s *NpcAISystem) executeNpcSkill(npc *world.NpcInfo, target *world.PlayerIn
 	skill := s.deps.Skills.Get(int32(skillID))
 	if skill == nil {
 		s.npcMeleeAttack(npc, target)
+		return
+	}
+	if skillID == 87 && skill.Ranged > 0 && chebyshev32(npc.X, npc.Y, target.X, target.Y) > int32(skill.Ranged) {
 		return
 	}
 
@@ -755,6 +789,7 @@ func (s *NpcAISystem) executeNpcSkill(npc *world.NpcInfo, target *world.PlayerIn
 				damage = 1
 			}
 			damage = applyImmuneToHarmDamage(target, damage)
+			damage = applyReductionArmorDamage(target, damage, false)
 
 			skillAtkData := buildNpcUseAttackSkill(npc.ID, target.CharID,
 				int16(damage), npc.Heading, gfx, 6,
@@ -843,6 +878,7 @@ func (s *NpcAISystem) executeNpcPhysicalSkill(npc *world.NpcInfo, target *world.
 		damage = 1
 	}
 	damage = applyImmuneToHarmDamage(target, damage)
+	damage = applyReductionArmorDamage(target, damage, false)
 
 	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
 
@@ -1238,6 +1274,10 @@ func setNpcAtkCooldown(npc *world.NpcInfo) {
 			atkCooldown = 3
 		}
 	}
+	// Java L1NpcInstance.java:2629-2633：WIND_SHACKLE(167) 對 NPC ATTACK_SPEED/MAGIC_SPEED +25% sleepTime。
+	if npc.HasDebuff(167) {
+		atkCooldown += atkCooldown / 4
+	}
 	npc.AttackTimer = atkCooldown
 }
 
@@ -1249,6 +1289,9 @@ func setNpcSubMagicCooldown(npc *world.NpcInfo) {
 	cooldown := int(npc.SubMagicSpeed) / 200
 	if cooldown < 3 {
 		cooldown = 3
+	}
+	if npc.HasDebuff(167) {
+		cooldown += cooldown / 4
 	}
 	npc.AttackTimer = cooldown
 }

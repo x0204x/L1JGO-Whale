@@ -274,9 +274,21 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 
 	// --- 驗證 ---
 
-	// 絕對屏障：施法時自動解除（Java: C_UseSkill.java 第 353-358 行）
-	if player.AbsoluteBarrier {
-		s.cancelAbsoluteBarrier(player)
+	// Java C_UseSkill 先檢查變形是否可施法，再判斷隱身技能限制。
+	if player.PolyID != 0 && s.deps.Polys != nil {
+		poly := s.deps.Polys.GetByID(player.PolyID)
+		if poly != nil && !poly.CanUseSkill {
+			handler.SendServerMessage(sess, 285) // 此狀態下不能使用魔法
+			s.failTeleportSkill(sess, skillID)
+			return
+		}
+	}
+
+	// Java C_UseSkill 會先以不可施法狀態回覆 285，再判斷隱身技能限制。
+	if player.Paralyzed || player.Sleeped || (player.Silenced && !isCastableWhileSilenced(skillID)) {
+		handler.SendServerMessage(sess, 285)
+		s.failTeleportSkill(sess, skillID)
+		return
 	}
 
 	if player.Invisible && skillID == 87 {
@@ -289,26 +301,8 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 		s.cancelInvisibility(player)
 	}
 
-	// 麻痺/暈眩/凍結/睡眠/沉默時無法施法
-	if player.Paralyzed || player.Sleeped || (player.Silenced && !isCastableWhileSilenced(skillID)) {
-		s.failTeleportSkill(sess, skillID)
-		return
-	}
-
-	// 變形限制：部分形態無法施法
-	if player.PolyID != 0 && s.deps.Polys != nil {
-		poly := s.deps.Polys.GetByID(player.PolyID)
-		if poly != nil && !poly.CanUseSkill {
-			handler.SendServerMessage(sess, 285) // "此形態無法使用魔法。"
-			s.failTeleportSkill(sess, skillID)
-			return
-		}
-	}
-
 	// 檢查是否已學會此法術
 	if !s.playerKnowsSpell(player, skillID) {
-		s.sendCastFail(sess)
-		s.failTeleportSkill(sess, skillID)
 		return
 	}
 
@@ -318,6 +312,12 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 		s.failTeleportSkill(sess, skillID)
 		return
 	}
+
+	// 絕對屏障：合法施法時自動解除（Java: C_UseSkill 在合法性檢查後解除）
+	if player.AbsoluteBarrier {
+		s.cancelAbsoluteBarrier(player)
+	}
+	s.removeBuffAndRevert(player, 32)
 
 	// HP 消耗檢查
 	if skillID == 108 && player.HP <= 100 {
@@ -384,6 +384,19 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 	if skillID == 5 || skillID == 69 {
 		// Owner: skill_teleport.go
 		s.executeTeleportSpell(sess, player, skill, req.BookmarkID)
+		return
+	}
+
+	// 131 TELEPORT_TO_MATHER：Java `TELEPORT_TO_MATHER.start()` 第 23-35 行在傳送前依序檢查
+	// 230(亡命之徒) / 4000(束縛) / 192(奪命之雷) 與 `pc.getMap().isEscapable()`；
+	// 在 MP 消耗前返回（與 skill 5/69 模式一致）。
+	if skillID == 131 && s.teleportToMatherBlockedBeforeConsume(sess, player) {
+		return
+	}
+
+	// 132 TRIPLE_ARROW：Java `TRIPLE_ARROW.start()` 第 32-33 行 `getCurrentWeapon() != 20 → return 0`
+	// 嚴格要求裝備弓（visual byte = 20）；不裝備時整段 skipped。在 MP 消耗前返回（Go pre-consume 模式）。
+	if skillID == 132 && player.CurrentWeapon != 20 {
 		return
 	}
 

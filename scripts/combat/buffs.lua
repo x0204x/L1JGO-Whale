@@ -87,7 +87,7 @@ BUFF_DEFS = {
     -- ==================== Knight/Royal Skills (87-91, 109-118) ====================
 
     [87]  = { paralyzed = true },                                             -- Shock Stun
-    [88]  = { ac = -4 },                                                      -- Reduction Armor（增幅防禦）
+    [88]  = {},                                                               -- Reduction Armor（增幅防禦）— Java 是 flat 傷害減免（npc_ai/pvp/magic 路徑套用 applyReductionArmorDamage），不是 AC 加成
     [89]  = { hit_mod = 6 },                                                  -- Spiked Armor（尖刺盔甲，HIT+6 + PvP 武器破壞）
     [90]  = { dodge = 15 },                                                   -- Solid Carriage（堅固防護，Java: ER +15）
     [91]  = { ac = -2 },                                                      -- Counter Barrier（反擊屏障）— AC-2 + 近戰反彈
@@ -111,49 +111,52 @@ BUFF_DEFS = {
     [138] = { fire_res = 10, water_res = 10, wind_res = 10, earth_res = 10 }, -- Resist Elemental
     [147] = {},                                                               -- Elemental Protection（Go 依 ElfAttr 動態加單一屬性 +50）
 
-    [148] = { dmg_mod = 4, exclusions = {163} },                              -- Fire Weapon
-    [149] = { bow_hit = 6, exclusions = {166} },                              -- Wind Shot
-    [150] = { brave_speed = 4, exclusions = {52, 101, 155, 186} },            -- Wind Walk
+    [148] = { dmg_mod = 4, exclusions = {149, 156, 163, 166} },               -- Fire Weapon（Java REPEATEDSKILLS[0]={148,149,156,163,166}）
+    [149] = { bow_hit = 6, exclusions = {148, 156, 163, 166} },               -- Wind Shot（Java REPEATEDSKILLS[0]={148,149,156,163,166}）
+    [150] = { brave_speed = 4, exclusions = {52, 101, 155, 186, 1000, 1016} },-- Wind Walk（Java REPEATEDSKILLS[2]={52,101,150,1000,1016,186,155}）
 
-    [151] = { ac = -6, exclusions = {3, 21, 24, 99, 159, 168} },             -- Earth Skin
+    [151] = { ac = -6, exclusions = {168} },                                 -- Earth Skin（Java REPEATEDSKILLS[1]={151,168} 只與 168 互斥）
     [152] = { move_speed = 2, exclusions = {43, 54} },                        -- Entangle (slow)
 
-    [155] = { brave_speed = 1, exclusions = {52, 101, 150, 186} },            -- Fire Bless（烈炎氣息）
-    [156] = { bow_hit = 2, bow_dmg = 3 },                                    -- Eye of Storm
+    [155] = { brave_speed = 1, exclusions = {52, 101, 150, 186, 1000, 1016} },-- Fire Bless（烈炎氣息，Java REPEATEDSKILLS[2]={52,101,150,1000,1016,186,155}）
+    [156] = { bow_hit = 2, bow_dmg = 3, exclusions = {148, 149, 163, 166} }, -- Eye of Storm（Java REPEATEDSKILLS[0]={148,149,156,163,166}）
     [157] = { paralyzed = true },                                              -- Earth Barrier
-    [158] = { hpr = 4 },                                                      -- Spring of Life
+    [158] = { hpr = 15 },                                                     -- Spring of Life（Java HprExecutor.java:55 NATURES_TOUCH=15，每 tick +15 HPR）
 
-    [159] = { exclusions = {151, 168} },                                      -- Earth Bless（義維 Java 只送盾牌圖示）
+    [159] = {},                                                               -- Earth Bless（義維 Java 只送盾牌圖示 S_SkillIconShield(7,...)，不在 REPEATEDSKILLS 任何群組）
     [160] = { dodge = 5 },                                                    -- Water Protection（Java getEr: ER +5）
     [161] = {},                                                               -- Area of Silence（Go 範圍沉默旗標）
 
-    [163] = { dmg_mod = 6, hit_mod = 3, exclusions = {148} },                -- Burning Weapon
-    [166] = { bow_dmg = 5, bow_hit = -1, exclusions = {149} },               -- Storm Shot
+    [163] = { dmg_mod = 6, hit_mod = 3, exclusions = {148, 149, 156, 166} }, -- Burning Weapon（Java REPEATEDSKILLS[0]={148,149,156,163,166}）
+    [166] = { bow_dmg = 5, bow_hit = -1, exclusions = {148, 149, 156, 163} },-- Storm Shot（Java REPEATEDSKILLS[0]={148,149,156,163,166}）
     [167] = {},                                                               -- Wind Shackle (flag)
 
-    [168] = { ac = -10, exclusions = {3, 21, 24, 151, 159} },                -- Iron Skin
-    [169] = { str = 5 },                                                      -- Physical Power (Elf)
+    [168] = { ac = -10, exclusions = {151} },                                -- Iron Skin（Java REPEATEDSKILLS[1]={151,168} 只與 EARTH_SKIN 互斥）
+    [169] = {},                                                               -- Exotic Vitalize（體能激發；Java 僅負重 HP/MP 回復旗標，無屬性加成）
     [170] = {},                                                               -- Water Life（下一次治療加倍後移除）
     [171] = {},                                                               -- Elemental Fire（近戰觸發型增傷）
     [173] = {},                                                               -- Pollute Water (debuff flag)
     [174] = {},                                                               -- Striker Gale（遠程承傷加成旗標）
     [175] = {},                                                               -- Soul of Flame（近戰增傷旗標）
-    [176] = { str = 2, dex = 2 },                                            -- Elemental Energy
+    [176] = {},                                                               -- Additional Fire（能量激發；Java 僅負重 HP/MP 回復旗標，無屬性加成）
 
     -- ==================== Dragon Knight Skills (181-195) ====================
 
     [181] = { ac = -5 },                                                      -- Dragon Armor
-    [182] = { dmg_mod = 5 },                                                  -- Burning Slash
-    [183] = { ac = 5, dmg_mod = -3 },                                        -- Guard Break (debuff)
+    [182] = {},                                                               -- Burning Slash（燃燒擊砍；Java 一次性 +10 + 消耗 buff，於 burningSlashDamage 處理，無 passive 屬性）
+    [183] = { ac = 10 },                                                      -- Guard Brake（護衛毀滅；Java L1SkillUse2:2271-2275 cast addAc(10), L1SkillStop:669-673 stop addAc(-10), 無 DmgMod 影響）
 
     [185] = { ac = -3, regist_sustain = 10, exclusions = {190, 195} },         -- Awaken Antharas（安塔瑞斯覺醒：AC-3, 持傷抗+10）
-    [186] = { dmg_mod = 6, hit_mod = 3, ac = 5, brave_speed = 1,
-              exclusions = {52, 101, 150, 155} },                            -- Blood Lust（血之渴望：DMG+6, HIT+3, AC+5, 勇敢速度+1）
+    [186] = { brave_speed = 1,
+              exclusions = {52, 101, 150, 155, 1000, 1016} },                -- Blood Lust（血之渴望：純勇敢速度+1，對齊 Java skillmode/BLOODLUST.java 只 setBraveSpeed(1)；exclusions 對齊 L1BuffUtil.braveStart() 清單 {52,101,150,1000,1016,155}）
     [188] = { dodge = -5 },                                                   -- Resist Fear
-    [189] = { ac = -5 },                                                      -- Shock Skin (+ reflect flag)
+    -- 189 無 buff effect — Java codebase 對 SHOCK_SKIN(189) 唯一引用是 `L1BuffUtil.java:59 if (hasSkillEffect(SHOCK_SKIN)) 阻擋傳送卷軸`，
+    -- 但 yiwei/fly skills.sql 第 189 列實際為 `岩漿之箭`（type=64 attack），沒有任何 Java 路徑會 setSkillEffect(189)，是 L1BuffUtil 的 dead code。
+    -- Go yaml `[189] type=64 area=2 damage_value=45` 走 `executeSelfAreaAttackSkill` 自身 AOE 攻擊路徑（已 return 不到 applyBuffEffect），
+    -- 原本的 `[189] = { ac = -5 }` 為 dead entry，移除避免誤導後續對齊。
     [190] = { regist_freeze = 10, exclusions = {185, 195} },                  -- Awaken Fafurion（法利昂覺醒：凍結抗+10）
-    [191] = { brave_speed = 4 },                                              -- Underground Path
-    [193] = { str = -1, con = -1, dex = -1, wis = -1, intel = -1 },          -- Fear (debuff)
+    [191] = {},                                                               -- Mortal Body（致命身軀：純旗標，無屬性加成；Java L1PcInstance:2776 在 receiveDamage 內 23% 機率反彈 40 傷害）
+    [193] = { str = -3, intel = -3 },                                         -- 驚悚死神 HORROR_OF_DEATH（Java L1SkillUse:2290/L1SkillUse2:2277：對 PC addStr(-3)+addInt(-3)，L1SkillStop case 193 解除時 +3 還原）
     [195] = { hit_mod = 5, regist_stun = 10, exclusions = {185, 190} },       -- Awaken Valakas（巴拉卡斯覺醒：HIT+5, 暈眩抗+10）
 
     -- ==================== Illusionist Skills (201-220) ====================

@@ -27,6 +27,12 @@ func TestSkillClanAuraSolidCarriageRequiresShieldOrGuarderAndAddsER(t *testing.T
 	if player.HasBuff(90) || player.Dodge != 2 || player.AC != 10 {
 		t.Fatalf("未裝備盾/臂甲時堅固防護不應套用，buff90=%v Dodge=%d AC=%d", player.GetBuff(90), player.Dodge, player.AC)
 	}
+	// Java `SOLID_CARRIAGE.start()` 第 20/28 行送 `S_ServerMessage("你並未裝備盾牌")`
+	// 而非 standard msg 280。鎖定 Go 改送 SendNormalChat 帶字串而非 sendCastFail(280)，
+	// 玩家拿到明確的盾牌缺失回饋而非通用「施展魔法失敗」訊息。
+	if !hasNormalChatText(drainSkillTestPackets(player.Session), "你並未裝備盾牌") {
+		t.Fatal("Java SOLID_CARRIAGE 無盾時送 S_ServerMessage(\"你並未裝備盾牌\")，Go 應對應 SendNormalChat 而非 msg 280")
+	}
 
 	player.Equip.Set(world.SlotShield, &world.InvItem{ObjectID: 5001, ItemID: 20230, Equipped: true})
 	s.executeSelfSkill(player.Session, player, skill)

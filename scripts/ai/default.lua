@@ -112,13 +112,13 @@ function try_use_skill(ctx)
             end
         end
 
-        -- MP check
-        if ok and sk.mp_consume > 0 and sk.mp_consume > ctx.mp then
+        -- MP check. Java areashock_stun(type 5) does not check or consume MP.
+        if ok and sk.type ~= 5 and sk.mp_consume > 0 and sk.mp_consume > ctx.mp then
             ok = false
         end
 
-        -- Probability roll
-        if ok and sk.trigger_random < 100 and math.random(100) > sk.trigger_random then
+        -- Probability roll. Java uses rnd > 0 && rnd <= random(1..100).
+        if ok and (sk.trigger_random <= 0 or sk.trigger_random > math.random(100)) then
             ok = false
         end
 

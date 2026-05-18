@@ -62,6 +62,14 @@ func (s *ItemUseSystem) UseConsumable(sess *net.Session, player *world.PlayerInf
 				if healAmt < 1 {
 					healAmt = 1
 				}
+				// Java `UserAddHp.java:69-71 / UserAddHp_FR.java:91-93`：
+				// 持有 POLLUTE_WATER(173) 時藥水 HP 回復量減半。
+				if player.HasBuff(173) {
+					healAmt /= 2
+					if healAmt < 1 {
+						healAmt = 1
+					}
+				}
 				if player.HP < player.MaxHP {
 					player.HP += int32(healAmt)
 					if player.HP > player.MaxHP {

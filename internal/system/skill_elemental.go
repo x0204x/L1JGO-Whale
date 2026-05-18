@@ -179,7 +179,10 @@ func elfMeleeDamageWithRoll(attacker *world.PlayerInfo, damage int32, weaponType
 		return damage
 	}
 	if attacker.HasBuff(skillSoulOfFlame) {
-		damage *= 2
+		// Java `L1AttackPc.java:1455-1457 / 1945-1947`：近戰非暴擊時
+		// `_weaponDamage = weaponMaxDamage * SOUL_OF_FLAME_DAMAGE`，yiwei 配置 1.5。
+		// Go 簡化：以 1.5x 套用於已計算的傷害（weaponMax 取代屬於 broader 武器傷害管線缺口）。
+		damage = damage * 3 / 2
 	}
 	if attacker.HasBuff(skillElementalFire) && elementalFireRoll < elementalFireChance {
 		damage = damage * 3 / 2

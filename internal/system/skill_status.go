@@ -119,7 +119,10 @@ func (s *SkillSystem) ApplyNpcShockStun(caster *world.NpcInfo, target *world.Pla
 	if caster == nil || target == nil || skill == nil {
 		return
 	}
-	if isGMInvisible(target) {
+	if target.Dead || target.MapID != caster.MapID || isGMInvisible(target) || target.AbsoluteBarrier {
+		return
+	}
+	if skill.Ranged > 0 && chebyshevDist(caster.X, caster.Y, target.X, target.Y) > int32(skill.Ranged) {
 		return
 	}
 	targetGfx := npcShockStunTargetGfx(skill)
@@ -154,11 +157,14 @@ func (s *SkillSystem) clearShockStunSleepEffects(target *world.PlayerInfo) {
 	if target == nil {
 		return
 	}
-	hadSleep := target.Sleeped || target.HasBuff(62) || target.HasBuff(66) || target.HasBuff(103)
+	// Java L1SkillUse.runSkill() 第 1966-1968 行明確清除 FOG_OF_SLEEPING(66) / PHANTASM(212) / 103；
+	// 62 為本專案沉睡視覺輔助 buff，與其他 sleep 路徑（pvp.breakPlayerSleep）保持一致。
+	hadSleep := target.Sleeped || target.HasBuff(62) || target.HasBuff(66) || target.HasBuff(103) || target.HasBuff(212)
 	target.Sleeped = false
 	target.RemoveBuff(62)
 	target.RemoveBuff(66)
 	target.RemoveBuff(103)
+	target.RemoveBuff(212)
 	if hadSleep && target.Session != nil {
 		handler.SendParalysis(target.Session, handler.SleepRemove)
 	}
@@ -175,10 +181,12 @@ func clearShockStunNpcSleepEffects(target *world.NpcInfo) {
 	if target == nil {
 		return
 	}
+	// Java L1SkillUse.runSkill() 第 1966-1968 行明確清除 FOG_OF_SLEEPING(66) / PHANTASM(212) / 103。
 	target.Sleeped = false
 	target.RemoveDebuff(62)
 	target.RemoveDebuff(66)
 	target.RemoveDebuff(103)
+	target.RemoveDebuff(212)
 }
 
 func clearShockStunNpcEraseMagic(target *world.NpcInfo) {
@@ -200,7 +208,7 @@ func (s *SkillSystem) ApplyNpcAreaShockStun(caster *world.NpcInfo, targets []*wo
 		return
 	}
 	for _, target := range targets {
-		if target == nil || target.Dead || target.HasBuff(87) || isGMInvisible(target) {
+		if target == nil || target.HasBuff(87) || isGMInvisible(target) {
 			continue
 		}
 		dur := areaShockStunDurationSeconds()
@@ -233,7 +241,7 @@ func (s *SkillSystem) shockStunInvalidTargetBeforeConsume(player *world.PlayerIn
 		return false
 	}
 	if target := s.deps.World.GetByCharID(targetID); target != nil {
-		if target.Dead || target.MapID != player.MapID || isGMInvisible(target) {
+		if target.Dead || target.MapID != player.MapID || isGMInvisible(target) || target.AbsoluteBarrier {
 			return true
 		}
 		return chebyshevDist(player.X, player.Y, target.X, target.Y) > shockStunRange(skill)
@@ -468,6 +476,12 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 87: // 衝擊之暈 — 需要雙手劍
 		s.queueShockStunOnAction(sess, npc.ID)
+		// Java `L1SkillUse.isTargetFailure()` 對 L1TowerInstance 回傳 true，
+		// TYPE_PROBABILITY 流程在 iter 階段就 remove，沒有清睡眠、解 ERASE_MAGIC、
+		// 概率判定、套用 87 或送 4434；onAction 仍會在迴圈外觸發。
+		if npc.Impl == "L1Tower" {
+			return
+		}
 		clearShockStunNpcSleepEffects(npc)
 		clearShockStunNpcEraseMagic(npc)
 		if s.shockStunSafetyZoneBlocked(sess, player.MapID, player.X, player.Y, npc.MapID, npc.X, npc.Y) {
@@ -678,6 +692,24 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 		handler.SendGlobalChat(sess, 9, "\\f2破壞盔甲 施放成功!")
 		s.deps.Log.Info(fmt.Sprintf("破壞盔甲  施法者=%s  NPC=%s  持續=%d秒", player.Name, npc.Name, dur))
 
+	case 167: // 風之枷鎖 — Java WIND_SHACKLE.start(NPC) 對 cha=L1NpcInstance 走 setSkillEffect(167, integer*1000)
+		if npc.HasDebuff(167) {
+			return // Java：hasSkillEffect(167) 已存在則略過
+		}
+		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
+			s.sendCastFail(sess)
+			return
+		}
+		dur := skill.BuffDuration
+		if dur <= 0 {
+			dur = 16
+		}
+		npc.AddDebuff(167, dur*5)
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
+		}
+		s.deps.Log.Info(fmt.Sprintf("風之枷鎖  施法者=%s  NPC=%s  持續=%d秒", player.Name, npc.Name, dur))
+
 	case 44: // 魔法相消術 — 解除 NPC 所有 debuff + 狀態（Java: CANCELLATION.java:158-167）
 		// 清除所有 debuffs
 		for debuffID := range npc.ActiveDebuffs {
@@ -755,8 +787,12 @@ var playerDebuffSkills = map[int32]bool{
 	152: true, // 究極緩速術
 	157: true, // 大地屏障
 	161: true, // 封印禁地
+	167: true, // 風之枷鎖
 	173: true, // 污濁之水
 	174: true, // 精準射擊
+	183: true, // 護衛毀滅（Java L1MagicNpc.calcProbabilityMagic case GUARD_BRAKE 標準等級差公式；只對 PC 套用 AC+10）
+	188: true, // 恐懼無助（Java L1MagicNpc.calcProbabilityMagic case RESIST_FEAR 與 GUARD_BRAKE 共用標準等級差公式；只對 PC 套用 dodge_down+5）
+	193: true, // 驚悚死神（Java L1MagicNpc.calcProbabilityMagic case HORROR_OF_DEATH 與 GUARD_BRAKE/RESIST_FEAR/THUNDER_GRAB 共用標準等級差公式；對 PC addStr(-3)+addInt(-3)）
 }
 
 // checkPlayerMRResist 對玩家目標的魔法抗性判定（debuff 用）。
@@ -778,8 +814,8 @@ func (s *SkillSystem) checkPlayerMRResist(caster, target *world.PlayerInfo) bool
 
 // calcArmorBreakProb 破壞盔甲對玩家目標的機率判定。
 // Java: L1MagicPc.calcProbabilityMagic(ARMOR_BREAK) — 非標準 MR 判定，使用等級比較系統。
-// 攻擊者等級 > 防禦者 → 5%；相等 → 10%；攻擊者 < 防禦者 → 15%
-// 加上純智力加成（INT 25-44: +(INT-15)/10, INT 45+: +5）
+// 攻擊者等級 > 防禦者 → 60%；相等 → 40%；攻擊者 < 防禦者 → 20%
+// 加上 7.6 magichit `(INT-20)/3` 與 BaseInt 加成（25-44: +(BaseInt-15)/10, 45+: +5）。
 func (s *SkillSystem) calcArmorBreakProb(caster, target *world.PlayerInfo) bool {
 	atkLv := int(caster.Level)
 	defLv := int(target.Level)
@@ -793,13 +829,10 @@ func (s *SkillSystem) calcArmorBreakProb(caster, target *world.PlayerInfo) bool 
 		prob = 20
 	}
 
-	// Java: probability += magichit + INT 加成
-	baseInt := int(caster.Intel)
-	if baseInt >= 25 && baseInt <= 44 {
-		prob += (baseInt - 15) / 10
-	} else if baseInt >= 45 {
-		prob += 5
-	}
+	// Java `L1MagicPc.java:738-744`：先加 magichit（7.6 智力魔法命中），再加 BaseInt 加成。
+	// BaseInt 必須排除裝備與 buff 加成，與 `_pc.getBaseInt()` 對齊。
+	prob += shockStunIntMagicHit(caster.Intel)
+	prob += shockStunBaseIntMagicHit(caster)
 
 	if prob < 1 {
 		prob = 1
@@ -822,12 +855,8 @@ func (s *SkillSystem) calcArmorBreakProbNpc(caster *world.PlayerInfo, npc *world
 		prob = 20
 	}
 
-	baseInt := int(caster.Intel)
-	if baseInt >= 25 && baseInt <= 44 {
-		prob += (baseInt - 15) / 10
-	} else if baseInt >= 45 {
-		prob += 5
-	}
+	prob += shockStunIntMagicHit(caster.Intel)
+	prob += shockStunBaseIntMagicHit(caster)
 
 	if prob < 1 {
 		prob = 1

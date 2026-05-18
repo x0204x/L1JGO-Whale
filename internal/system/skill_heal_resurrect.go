@@ -22,6 +22,32 @@ func (s *SkillSystem) isResurrectionSkill(skill *data.SkillInfo) bool {
 	return fn.GetResurrectEffect(int(skill.SkillID)) != nil
 }
 
+// teleportToMatherBlockedBeforeConsume 對齊 Java `TELEPORT_TO_MATHER.start()` 第 23-35 行
+// 與 isEscapable 檢查，在 MP 消耗前返回。回傳 true 表示已送回饋封包並阻擋。
+func (s *SkillSystem) teleportToMatherBlockedBeforeConsume(sess *net.Session, player *world.PlayerInfo) bool {
+	if player.HasBuff(230) { // 亡命之徒
+		handler.SendServerMessage(sess, 1413)
+		return true
+	}
+	if player.HasBuff(4000) { // 束縛
+		handler.SendNormalChat(sess, 0, "\\fY已被束縛的效果無法瞬移")
+		return true
+	}
+	if player.HasBuff(192) { // 奪命之雷
+		handler.SendNormalChat(sess, 0, "\\fY身上有奪命之雷的效果無法瞬移")
+		handler.SendParalysis(sess, handler.TeleportUnlock)
+		return true
+	}
+	if s.deps.MapData != nil {
+		if mi := s.deps.MapData.GetInfo(player.MapID); mi != nil && !mi.Escapable {
+			handler.SendServerMessage(sess, 276)
+			handler.SendParalysis(sess, handler.TeleportUnlock)
+			return true
+		}
+	}
+	return false
+}
+
 // executeResurrection 處理復活技能（18, 75, 131, 165）。
 func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, targetID int32) {
 	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)

@@ -27,24 +27,22 @@ end
 -- ctx = {level, con, hpr, food, weight_pct, has_exotic_vitalize, has_additional_fire}
 -- weight_pct = Weight242 value (0-242 scale)
 --
--- Java HpRegeneration:
---   CON bonus: Lv12+, CON >= 14: random(CON-12)+1, cap 14
---   Equipment HPR added on top
---   Blocked if food < 3 or overweight (Weight242 >= 121)
---   Overweight bypassed by EXOTIC_VITALIZE (169) or ADDITIONAL_FIRE (176)
+-- Java HpRegeneration (L1PcInstance.isRegenHp + HprExecutor.regenHp):
+--   負重判定優先：若 weight240 >= 120，EXOTIC_VITALIZE(169) 或 ADDITIONAL_FIRE(176)
+--     可同時繞過食物檢查並維持 12 tick 一次的回復。
+--   非負重才檢查 food < 3。
+--   CON bonus: Lv12+, CON >= 14: random(CON-12)+1, cap 14（Go 端目前的簡化公式）
 function calc_hp_regen_amount(ctx)
     local blocked = false
 
-    -- Food check
-    if ctx.food < 3 then
-        blocked = true
-    end
-
-    -- Weight check (threshold 121)
-    if not blocked and ctx.weight_pct >= 121 then
+    -- 負重檢查（Java 門檻 120，先於食物檢查）
+    if ctx.weight_pct >= 120 then
         if not ctx.has_exotic_vitalize and not ctx.has_additional_fire then
             blocked = true
         end
+    elseif ctx.food < 3 then
+        -- 非負重時才檢查食物（Java：負重+EXOTIC_VITALIZE 會略過食物檢查）
+        blocked = true
     end
 
     local bonus = 0
@@ -74,24 +72,23 @@ end
 -- calc_mp_regen_amount(ctx) -> {amount}
 -- ctx = {wis, mpr, food, weight_pct, has_exotic_vitalize, has_additional_fire, has_blue_potion}
 --
--- Java MpRegeneration:
+-- Java MpRegeneration (L1PcInstance.isRegenMp + MprExecutor.regenMp):
+--   負重判定優先：若 weight240 >= 120，EXOTIC_VITALIZE(169) 或 ADDITIONAL_FIRE(176)
+--     可同時繞過食物檢查並維持 64 tick 一次的回復。
+--   非負重才檢查 food < 3。
 --   WIS 15-16 → 2, WIS >= 17 → 3, else 1
 --   Blue Potion bonus: effective WIS min 11, +WIS-10
---   Equipment MPR added on top
---   Blocked if food < 3 or overweight (Weight242 >= 120)
 function calc_mp_regen_amount(ctx)
     local blocked = false
 
-    -- Food check
-    if ctx.food < 3 then
-        blocked = true
-    end
-
-    -- Weight check (threshold 120)
-    if not blocked and ctx.weight_pct >= 120 then
+    -- 負重檢查（Java 門檻 120，先於食物檢查）
+    if ctx.weight_pct >= 120 then
         if not ctx.has_exotic_vitalize and not ctx.has_additional_fire then
             blocked = true
         end
+    elseif ctx.food < 3 then
+        -- 非負重時才檢查食物（Java：負重+EXOTIC_VITALIZE 會略過食物檢查）
+        blocked = true
     end
 
     local base_mpr = 0

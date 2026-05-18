@@ -167,8 +167,9 @@ func TestSkillElementalDynamicElfCombatBuffsAreFlagsAndApplyDamageHelpers(t *tes
 			player.DmgMod, player.BowHitMod, player.BowDmgMod, player.SP, player.Intel)
 	}
 
-	if got := elfMeleeDamageWithRoll(player, 100, "sword", 0); got != 300 {
-		t.Fatalf("烈焰之魂與屬性之火應可套用近戰增傷，got=%d", got)
+	if got := elfMeleeDamageWithRoll(player, 100, "sword", 0); got != 225 {
+		// Java `SOUL_OF_FLAME_DAMAGE=1.5` * `ELEMENTAL_FIRE=1.5` = 2.25x（兩者皆 round-down 整數）
+		t.Fatalf("烈焰之魂(1.5x)與屬性之火(1.5x)應可套用近戰增傷，期望 225，got=%d", got)
 	}
 	if got := elfMeleeDamageWithRoll(player, 100, "bow", 0); got != 100 {
 		t.Fatalf("烈焰之魂/屬性之火不應套用弓類武器，got=%d", got)
