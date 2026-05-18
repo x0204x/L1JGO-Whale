@@ -6332,7 +6332,7 @@ skills:
     item_consume_id: 0
     item_consume_count: 0
     reuse_delay: 0
-    buff_duration: 300
+    buff_duration: 600
     target: buff
     target_to: 1
     damage_value: 0

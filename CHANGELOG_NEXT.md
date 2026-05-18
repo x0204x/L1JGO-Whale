@@ -270,6 +270,14 @@
 
 - 審計 `153 ERASE_MAGIC`：發現 Go 對 153 採用「buff 全消」語義（`skill_buff.go:1110-1111 cancelAllBuffs(target)`），與 Java 真實 mechanic 不一致。Java `L1Character.java:1767-1769` 揭示 ERASE_MAGIC 真實效果：`if (hasSkillEffect(153)) { return mr >> 2; }`——目標持有此 buff 期間，有效 MR 被除以 4（魔抗大幅下降）。Java 完整流程：a) **施放** `L1SkillUse.java:1357-1359` 走無 skillmode 預設路徑 `setSkillEffect(_skillId, _getBuffDuration)` 對目標套用 32s buff（不消除任何 buff）；b) **作用期間** 目標 `getMr() = mr >> 2`，所有後續魔法判定使用降低後的 MR；c) **消耗時機** 目標受到任何非 ERASE_MAGIC 概率/詛咒/魔法攻擊（L1SkillUse.java:1940-1942, 1953-1955）會自動移除此 buff；d) **成功率** 等級比較 5/10/15（`ConfigElfSkill.ERASE_MAGIC_1/2/3`，INT/MR 修正預設 0）；e) **目標限制** monster `isErase==false` 模板免疫；f) **圖示** stop 送 `S_PacketBoxIconAura(152, 0)`（`L1SkillStop.java:492-496`）；g) **武器分流** 多個 `W_SK0010-15` weapon special 也會對目標套 ERASE_MAGIC 32s。Go 現況偏離為「重複 CANCELLATION(44) 語義」——`cancelAllBuffs(target)` 對目標移除所有可取消 buff，玩家體感變成「buff 移除工具」而非「魔抗削減工具」。屬「broader skill semantics gap」依停損標準需要整個技能重做：a) 改 case 153 從 cancelAllBuffs 變成 applyBuffEffect 套 buff；b) 在 Go 的 MR 計算路徑（含 Lua `calcProbabilityMagic`、`applyBuffEffect` MR delta）加入「持 153 時 MR/=4」乘法路徑（Go 目前 MR 走加法 Delta，乘法路徑需重構）；c) 在每個概率/詛咒/攻擊魔法 skill 套用流程加入「移除目標 153 buff」hook；d) 圖示 emission 修正。涉及多個系統（system/scripting/handler 三層），無法在單一 153 子項內完整實作。**本步無代碼變更**，純文件審計；先標記為已知 Java vs Go semantic divergence，留待使用者決定是否觸發 broader rework。既有 SHOCK_STUN→ERASE_MAGIC 移除已部分實作（`skill_status.go:131,173,486` 在 87 路徑），但僅限 87 並非 Java 對齊的「所有非-153 概率技能」全 catch。`44 CANCELLATION` 的 cancelAllBuffs 用法不受此審計影響（Java 44 確實是 buff 全消語義）。
 
+## 專注（CONCENTRATION / 206）
+
+- 修正 `206 CONCENTRATION` yaml `buff_duration: 300` → `600` 對齊 Java `l1j_yiwei_java/db_split/skills.sql` 真實值（10 分鐘）。Go 原值讓玩家只享有半數 buff 持續時間。Java 無 skillmode 檔案、無 `case 206` 特殊處理；純資料驅動，效果由 `MprExecutor._skill.put(CONCENTRATION, 2)` 提供 +2 MP regen/tick。Go `buffs.lua [206] = { mpr = 2 }` 已對齊 Java MprExecutor 值，本步不動。
+- **broader gap（不改）**：
+  - **type 4→2**：Java SQL `type=2 (TYPE_CHANGE)`，Go yaml `type=4 (TYPE_CURSE)`。Go `skill_damage.go:24 canSkillReachTarget` 對 `type & TYPE_CHANGE != 0` 跳過 LOS 檢查；CONCENTRATION 為 self-buff (target_to=1) 目標即自身，LOS 檢查實質無感，故差異為 type 分類偏差但不影響運行時行為。屬「yaml type 資料審計」結構性缺口。
+  - **mp_consume 20→30、reuse_delay 0→1000、ranged 3→5**：Java SQL 與 Go yaml 三項成本/冷卻/距離欄位偏差。屬「yaml 成本/冷卻 tuning」結構性缺口，與 185/190/195 同源 broader gap。
+- 不另寫測試，依停損標準避免「鎖實作」回歸。驗證：`go build ./...` 通過、`go test -count=1 ./internal/system`（18.4s 全綠）。
+
 ## 立方：燃燒（CUBE_IGNITION / 205）
 
 - 補齊 `205 CUBE_IGNITION` 對 PC/NPC 週期傷害的 Java immune buff 檢查。Java `L1Cube.java:79-93` `case STATUS_CUBE_IGNITION_TO_ENEMY` 在 `giveEffect` 內每 4 秒觸發 `receiveDamage(10)` 前，依序檢查 `hasSkillEffect`：STATUS_FREEZE(4000)、ABSOLUTE_BARRIER(78)、ICE_LANCE(50)、EARTH_BIND(157)、FREEZING_BLIZZARD(80)——任一存在則跳過該次傷害。設計動機：目標已被凍結／屏障保護時不應再被立方燃燒傷害。Go `ground_effect.go applyCubeEnemy` 原本只檢查 `target.AbsoluteBarrier`（在 `damagePlayerByCube`），缺其餘四項；`applyCubeEnemyNpc` 完全無免疫檢查。
