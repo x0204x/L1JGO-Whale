@@ -293,6 +293,9 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 		damage = 0
 	}
 	damage = strikerGaleRangedDamage(target, damage)
+	// 黑妖燃燒鬥志（102）：Java L1AttackPc.BuffDmgUp 在 calcPcDamage 涵蓋近戰與遠程，
+	// 弓矢攻擊命中時 15% 機率 1.5x 傷害；DOUBLE_BREAK 由 doubleBreakChance("bow")=0 自然排除。
+	damage = darkElfPhysicalDamage(attacker, damage, "bow")
 	damage = braveAuraDamage(attacker, damage)
 	damage = applyImmuneToHarmDamage(target, damage)
 	damage = applyReductionArmorDamage(target, damage, true)

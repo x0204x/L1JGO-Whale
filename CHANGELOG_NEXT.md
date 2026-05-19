@@ -1,5 +1,21 @@
 ## 技能
 
+## 燃燒鬥志（BURNING_SPIRIT / 102）— 補齊遠程攻擊觸發
+
+- 補齊 `102 BURNING_SPIRIT` 遠程觸發路徑：Java `L1AttackPc.BuffDmgUp(dmg)` 在 `calcPcDamage:1702` 與 `calcNpcDamage:2027` 都會無條件呼叫，涵蓋近戰與遠程攻擊；BURNING_SPIRIT 自身條件僅 `_pc.hasSkillEffect(BURNING_SPIRIT) && random <= 15`（無 weaponType 排除）。Go 原本只在 `combat.go:212 processMeleeAttack` 與 `pvp.go:95 HandlePvPAttack` 呼叫 `darkElfPhysicalDamage`，弓矢遠程攻擊（PvE + PvP）完全沒套用 15% 機率 1.5x 增傷。本步在 `combat.go processRangedAttack` 與 `pvp.go HandlePvPFarAttack` 補上 `darkElfPhysicalDamage(player/attacker, damage, "bow")` 對齊 Java。
+- **核心修改**：
+  - `server/internal/system/combat.go:457-459`（`processRangedAttack`）：在 `strikerGaleRangedDamageToNpc` 之後、`braveAuraDamage` 之前插入 `damage = darkElfPhysicalDamage(player, damage, "bow")`。
+  - `server/internal/system/pvp.go:296-298`（`HandlePvPFarAttack`）：在 `strikerGaleRangedDamage` 之後、`braveAuraDamage` 之前插入 `damage = darkElfPhysicalDamage(attacker, damage, "bow")`。
+- **DOUBLE_BREAK 安全性**：`doubleBreakChance("bow")` 走 default case 返回 0（`skill_damage.go:335-344`），確保只有 BURNING_SPIRIT 觸發、不會誤觸發 DOUBLE_BREAK（Java DOUBLE_BREAK 由 calcDamage weapon switch case 11/12 claw/edoryu 處理，與 bow 無關）。
+- **機率公式對齊**：
+  - Go `burningSpiritChance = 15` + `world.RandInt(100)` 回傳 [0, 99]，`burningRoll < 15` 命中 15 個值（0~14）= 15% 機率，對齊 Java `ConfigSkill.BURNING_CHANCE = 15` + `_random.nextInt(100)+1` 回傳 [1, 100]、`random <= 15` 命中 15 個值（1~15）= 15% 機率。
+  - Go `damage * burningSpiritMultiplier / burningSpiritDivisor`（3/2）對齊 Java `dmg *= ConfigSkill.BURNING_DMG`（properties `BURNING_DMG = 1.5`）。
+- **不寫新測試**：依停損標準，本步為「Java 真實差異 + 改 Go 對齊」，既有 `skill_darkelf_buff_test.go:73-87 TestSkillDarkElfBuffBurningSpiritAndDoubleBreakAreProcFlags` 透過 `darkElfPhysicalDamageWithRolls` 直接鎖定 102/105 雙觸發行為，新增的 ranged path call 為兩行委派、無新邏輯。避免「Go 已對 + 防回歸」測試。
+- **broader gap（不改）**：
+  - **Java else-if 鏈 vs Go 獨立呼叫**：Java `BuffDmgUp` 是 `if ELEMENTAL_FIRE else if BURNING_SPIRIT else if BRAVE_AURA` 互斥，一次攻擊最多一個觸發；Go 把 `darkElfPhysicalDamage`/`elfMeleeDamage`/`braveAuraDamage` 拆成獨立呼叫，理論上同一攻擊可疊加多個。此差異已存在於 melee 路徑，與 102 補齊本身無關，屬廣域 buff stacking 對齊缺口。
+  - **yaml mp_consume/buff_duration/reuse_delay drift**：與廣域同源 broader gap。
+- 驗證：`go build ./...` EXIT=0；既有 `Dark|Burning|Combat|PvP|Ranged` 測試全部 PASS（含遠程 LOS、PvE 遠程、PvP 遠程、燃燒鬥志/雙重破壞觸發旗標、暗影防護等）。
+
 ## 行走加速（MOVING_ACCELERATION / 101）— 純審計無代碼變更
 
 - 純審計 `101 MOVING_ACCELERATION`：Go 完整對齊 Java `L1SkillUse.java:1456-1461 / 2653-2658`、`L1SkillStop.java:594-602`、`L1BuffUtil.java:168-172, 222-226`。

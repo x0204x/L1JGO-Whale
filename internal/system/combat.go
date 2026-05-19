@@ -454,6 +454,9 @@ func (s *CombatSystem) processRangedAttack(sessID uint64, targetID int32) *handl
 		damage = 0
 	}
 	damage = strikerGaleRangedDamageToNpc(npc, damage)
+	// 黑妖燃燒鬥志（102）：Java L1AttackPc.BuffDmgUp 在 calcNpcDamage 涵蓋近戰與遠程，
+	// 弓矢攻擊命中時 15% 機率 1.5x 傷害；DOUBLE_BREAK 由 doubleBreakChance("bow")=0 自然排除。
+	damage = darkElfPhysicalDamage(player, damage, "bow")
 	damage = braveAuraDamage(player, damage)
 
 	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
