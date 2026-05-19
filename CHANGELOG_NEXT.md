@@ -1,5 +1,29 @@
 ## 技能
 
+## 生命的祝福（NATURES_BLESSING / 164）— 純審計確認 type=16 + target_to=8 + area=-1 隊伍範圍治療路徑完整對齊 Java，含 WATER_LIFE 雙倍移除與 POLLUTE_WATER 減半
+
+- **Java 對照**：
+  - yiwei `skills.sql:163` 31 欄位：`type=16 (HEAL) / target_to=8 (TARGET_TO_PARTY) / area=-1 (screen-wide) / attr=4 (water) / damage_value=10 / damage_dice=12 / damage_dice_count=0 / cast_gfx=2244 / action_id=19 / mp_consume=30 / reuse_delay=300`。
+  - `L1SkillUse.isInTarget()` 行 671-676：caster 自身永遠通過（self-pass）；行 877-880：`target_to=8` 走 `_player.getParty().isMember(targetPc)` 過濾非隊伍成員。
+  - `L1SkillUse.java:1997-2001`：heal 計算前 `if (target.hasSkillEffect(WATER_LIFE)) _heal = _heal << 1` 雙倍、`if (target.hasSkillEffect(POLLUTE_WATER)) _heal = _heal >> 1` 減半。
+  - `L1SkillUse2.java:2113-2118`：heal 套用後恢復系技能清單 `(HEAL || EXTRA_HEAL || GREATER_HEAL || FULL_HEAL || HEAL_ALL || NATURES_TOUCH || NATURES_BLESSING)` cast → `cha.removeSkillEffect(WATER_LIFE)`。
+
+- **Go 對照**（無代碼變更）：
+  - `data/yaml/skill_list.yaml:5024` 全 31 欄位中 30 項對齊 yiwei，僅 `reuse_delay=0 vs 300` 一項漂移（Go 跟 cat-fei）。
+  - `system/skill_self.go:213-267` 路由：`skill.Type==16 && skill.Area==-1` → caster 經 `applyElfWaterHealingModifiers` 治療 → `skill.TargetTo==8` 建 `Parties.GetParty(player.CharID).Members` map → loop nearby（跳過 caster 自身、跳過非隊員）→ 每員 `applyElfWaterHealingModifiers` 治療。
+  - `system/skill_elemental.go:97-109 applyElfWaterHealingModifiers`：`HasBuff(170) → heal <<= 1 + removeBuffAndRevert(170)`（雙倍 + 移除一體執行）+ `HasBuff(173) → heal >>= 1`（POLLUTE_WATER 減半）。
+  - `skill_buff.go:1246-1253` 註解明示：164 yaml type=16 走 heal 計算路徑，由 `applyElfWaterHealingModifiers` 統一處理 WATER_LIFE 移除；對比 158 NATURES_TOUCH yaml type=2（buff 非 heal）需顯式 `case 158 → removeBuffAndRevert(170)` hook。
+  - 技能 cast 入口 `skill_self.go:209-211` 廣播 `BuildActionGfx(player.CharID, 19)`；cast_gfx=2244 走 `applyBuffEffect` 或 heal 路徑後續處理。
+
+- **盤點驗證**：Go 全 yaml 確認只有 164 同時具 `target_to=8 + type=16`，`if skill.TargetTo == 8` 隊伍過濾分支精確影響範圍限本技能；其他 TYPE_HEAL=16 技能（1 HEAL / 19 EXTRA_HEAL / 35 GREATER_HEAL / 49 FULL_HEAL / 57 HEAL_ALL）皆 `target_to != 8` 走單目標或預設路徑。
+
+- **broader gap（不改）**：
+  - **A) yaml reuse_delay=0 vs 300 漂移**：Go 跟 cat-fei，屬廣域 yiwei/cat-fei SQL 同步議題（同 157/159/161 同源）。
+  - **B) NPC 目標 + 164 cast**：Java `target_to=8` 隊伍過濾僅作用於 PC 目標清單，NPC 不在隊伍中本就排除。Go 同樣設計，邏輯一致。
+  - **C) HprExecutor `bonus /= 2` 對 `getBaseCon() >= 45 + 負重` 的減半**：屬廣域 regen 公式差，與 164 治療路徑無關。
+
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 三重矢（TRIPLE_ARROW / 132）— 完整 B 路徑重構：3 次獨立 L1AttackPc 弓箭流程 + DEX_DMG / 箭矢加傷 / 武器 buff 鏈（刻意捨棄 Java ×5 倍率以維持遊戲平衡）
 
 - **問題回報**：使用者觀察到三重矢傷害異常。Phase 1 根因調查發現 4 項真實差異：
