@@ -1,5 +1,55 @@
 ## 技能
 
+## 火焰武器（FIRE_WEAPON / 148）— 純審計確認核心對齊 Java，yaml 多項漂移屬廣域 SQL 議題
+
+- **Java 對照**：
+  - `L1SkillId.java:490 FIRE_WEAPON = 148`（火焰武器）。無對應 skillmode 類別（純 buff 路徑）。
+  - `L1SkillUse.java:1410-1412` + `L1SkillUse2.java:1427-1429` icon cast：`pc.sendPackets(new S_PacketBoxIconAura(147, _getBuffIconDuration))` 廣播 icon 給玩家自己（icon_id = skill_id - 1 = 147）。
+  - `L1SkillUse.java:2590-2593` + `L1SkillUse2.java:2542-2545` apply：`pc.addDmgup(4) + pc.sendPackets(new S_PacketBoxIconAura(147, _getBuffIconDuration))`。
+  - `L1SkillStop.java:533-539` stop：`cha.addDmgup(-4) + (if PC) pc.sendPackets(new S_PacketBoxIconAura(147, 0))` 對齊 cast icon 用 duration=0 撤銷。
+  - `L1SkillUse.java:1741 + L1SkillUse2.java:1750 REPEATEDSKILLS[0]`：`{FIRE_WEAPON=148, WIND_SHOT=149, STORM_EYE=156, BURNING_WEAPON=163, STORM_SHOT=166}` 5 項武器類 buff **互斥**——施同組任一技能會自動移除其他 4 項。
+  - 表格成員：`isNotCancelable` 不含 148（cancellable）；`EXCEPT_COUNTER_MAGIC` 含 148（不受 counter magic 阻擋）；`REPEATEDSKILLS[0]` 5 項武器 buff 互斥。
+  - yiwei `db_split/skills.sql:147`：`('148', '火焰武器', '19', '3', '15', '0', '0', '0', '0', '960', 'none', '0', '0', '0', '0', '0', '0', '2', '2', '0', '0', '0', '0', '8', '', '19', '11774', '0', '0', '723', '280')` — mp=15、buff_duration=960、target=**none**、target_to=0、attr=2、type=2、ranged=0、id=8、action_id=19、cast_gfx=**11774**、sys_msg_stop=723、sys_msg_fail=280。
+
+- **Go 對照**：
+  - `buffs.lua:116 [148] = { dmg_mod = 4, exclusions = {149, 156, 163, 166} }`：DmgMod +4 + 4 項 mutex 對齊 Java `REPEATEDSKILLS[0]` 排除自身後 4 項。
+  - `engine.go` 讀取 lua `dmg_mod=4` 寫入 `BuffEffect.DmgMod`。
+  - `skill_buff.go:162 buff.DeltaDmgMod = int16(eff.DmgMod)` apply 套入 ActiveBuff。
+  - `skill_buff.go:196 target.DmgMod += buff.DeltaDmgMod` apply 實際 +4。
+  - `skill_buff.go:288-294 SendPlayerStatus`：DmgMod 變化時送 `S_PlayerStatus` 更新 client UI 屬性面板。
+  - `skill_buff.go:307 sendBuffIcon(target, skill.SkillID, uint16(skill.BuffDuration))` 透過 `buff_icon_map.yaml` 查 `148 → type:aura icon_id = 147` 送 `S_PacketBoxIconAura(147, duration)` 對齊 Java cast icon。
+  - `skill_buff.go:508 target.DmgMod -= buff.DeltaDmgMod` revert -4。
+  - revert 端透過 `sendBuffIconStop` 送 `S_PacketBoxIconAura(147, 0)` 對齊 Java stop icon。
+  - `executeBuffSkill` 路徑（`skill_buff.go:869` 入口）：
+    - `:983 BroadcastToPlayers(BuildActionGfx(action_id=19))` = Java `S_DoActionGFX` cast 動畫。
+    - `:1229 applyBuffEffect` 套用 buff + icon。
+    - `:1240-1242 if skill.CastGfx > 0 → BroadcastToPlayers(BuildSkillEffect(target.CharID, skill.CastGfx))` = Java `S_SkillSound` cast 視覺特效（cast_gfx=2182 廣播）。
+  - `buff_icon_map.yaml:58-59`：`skill_id: 148 type: aura` 註冊 → icon_id=147 由 Go 計算（skill_id - 1）。
+  - yaml `skill_list.yaml:4528-4558 skill_id=148`：mp=15、buff_duration=960、target=**buff**、target_to=**1**、attr=2、type=2、ranged=**-1**、id=8、action_id=19、cast_gfx=**2182**、sys_msg_stop=723、sys_msg_fail=280。
+
+- **既有測試覆蓋**：
+  - `skill_elemental_buff_test.go:44-89 TestSkillElementalBuffElfWeaponAndBowBuffsUseJavaValues`：
+    - player 起始 DmgMod=1/HitMod=2/BowHitMod=3/BowDmgMod=4。
+    - 套用 148 → DmgMod=5（+4）、其他不變 ✓ 鎖死 148 只給近戰傷害。
+    - 套用 163（BURNING_WEAPON，同 mutex 群）→ 148 buff 移除 + 163 buff 套用、DmgMod=7（5-4+6）、HitMod=5（2+3）✓ 鎖死 REPEATEDSKILLS[0] 5 項互斥行為。
+    - 套用 149（WIND_SHOT，同 mutex 群）→ BowHitMod=9（+6）✓ 鎖死 149 只給弓命中。
+
+- **發現的 Java 真實差異**：**無實質負面差異**（核心 DmgMod ±4 + S_PacketBoxIconAura(147) icon + REPEATEDSKILLS[0] mutex 完整對齊）。
+
+- **broader gap（不改）**：
+  - **yaml 4 項漂移**：Go yaml 與 yiwei `skills.sql:147` 偏離（Go 跟 cat-fei）：
+    - `target=buff vs none`：Go 路由經 `executeBuffSkill`，Java 經 generic L1SkillUse self-cast，功能等價但 dispatch 路徑不同。
+    - `target_to=1 vs 0`：Go target_to=1 表示自我/單目標，Java 0 = none，dispatch 端等價。
+    - `ranged=-1 vs 0`：兩者皆「無射程限制自我施法」，等價。
+    - `cast_gfx=2182 vs 11774`：Go 用 cat-fei 較舊 GFX ID、yiwei 用 Lineage R 11774，client 視覺差異但對遊戲機制無影響。
+  - 屬廣域 yiwei/cat-fei SQL 同步議題（與 130/132/133/134/145/146 同源）。
+  - **149/156/163/166 反向擴充**：buffs.lua 已對 148 補完 exclusions = {149, 156, 163, 166}，但其他 4 項是否也對應補 148 mutex 待各自審計：149 ✓（待 audit）、156（待 audit）、163（待 audit）、166（待 audit）。
+  - **`L1SkillUse.sendGrfx` 末尾 1686-1694 _targetList 通用 status refresh**：對 buff 類無 stat 變化時的 `S_SPMR + S_OwnCharStatus + S_PacketBox(UPDATE_ER)` 通用 status refresh 屬廣域 buff cast 後置缺口（同 130/146 audit 同源）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkillElementalBuffElfWeapon -timeout 60s` PASS（0.042s）。
+
 ## 單屬性防禦（ELEMENTAL_PROTECTION / 147）— 純審計確認 Go 完整對齊 Java 且更穩健（補 Java 漏送 + 修 Java revert bug）
 
 - **Java 對照**：
