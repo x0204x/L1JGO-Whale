@@ -1,5 +1,52 @@
 ## 技能
 
+## 淨化精神（CLEAR_MIND / 137）— 純審計確認 +3 Wis 對稱對齊 Java，Wis→MR 衍生計算為廣域屬性架構缺口
+
+- **Java 對照**：
+  - `L1SkillId.java:470 CLEAR_MIND = 137`（淨化精神）。**無對應 skillmode 類別**——137 是純 buff（target='none' type=2），通用 buff 路徑套用 1200s（yaml duration=1200，TicksLeft=1200*5）。
+  - `L1SkillUse.java:2533-2537` + `L1SkillUse2.java:2485-2489` cast：`pc.addWis((byte) 3) + pc.resetBaseMr()`。
+  - `L1SkillStop.java:459-465` stop：`cha.addWis(-3) + (if PC) pc.resetBaseMr()`。
+  - **`resetBaseMr()` 動態重算公式**（`L1PcInstance.java:5192-5212`）：
+    1. 職業基底 MR：Crown 10 / Elf 25 / Wizard 15 / DarkElf 10 / DragonKnight 18 / Illusionist 20。
+    2. Wis 額外加成：`CalcStat.calcStatMr(getWis())` 分段表 → Wis 0-14 +0、15-16 +3、17 +6、18 +10、19 +15、20 +21、21 +28、22 +37、23 +47、24+ +50。
+    3. `newMr = 職業基底 + calcStatMr(wis)`，套用 `addMr(newMr - _baseMr)` 後 `_baseMr = newMr`。
+  - **+3 Wis 真實影響範例**：Wis 14→17（+0→+6）= **+6 MR**；Wis 17→20（+6→+21）= **+15 MR**；Wis 20→23（+21→+47）= **+26 MR**；Wis 11→14（+0→+0）= **+0 MR**（兩端都在 0-14 平段）。
+  - 表格成員：`isNotCancelable` 不含 137（cancellable）；`EXCEPT_COUNTER_MAGIC` 含 137 line 148 區段（**不受 counter magic 阻擋**）；`REPEATEDSKILLS` 不含 137（無互斥）。
+  - yiwei `db_split/skills.sql:136`：`('137', '淨化精神', '18', '0', '10', '0', '40319', '1', '0', '1200', 'none', '0', '0', '0', '0', '0', '0', '0', '2', '0', '0', '0', '0', '1', '', '19', '2180', '0', '0', '722', '0')` — mp=10、item=40319×1、reuse_delay=0、buff_duration=1200、target=none、type=2、ranged=0、id=1、action_id=19、cast_gfx=2180、sys_msg_stop=722。
+
+- **Go 對照**：
+  - `buffs.lua:112 [137] = { wis = 3 }`：純 Wis +3，無 MR 欄位（resetBaseMr 衍生 MR 不在 lua 邏輯內）。
+  - `engine.go` 讀取 lua 回傳 `wis=3` 寫入 `BuffEffect.Wis`。
+  - `skill_buff.go:153 buff.DeltaWis = int16(eff.Wis)` 套入 ActiveBuff。
+  - `skill_buff.go:190 target.Wis += buff.DeltaWis` apply 時加 +3。
+  - `skill_buff.go:288-294 SendPlayerStatus`：Wis 變化時送 `S_PlayerStatus` 更新 client UI 屬性面板（Java 用 resetBaseMr 內 addMr+S_SPMR 路徑，Go 在 Wis 欄位變化時送 S_PlayerStatus 但**不額外送 S_SPMR 也不調整 MR**）。
+  - `skill_buff.go:502 target.Wis -= buff.DeltaWis` revert 時減回。
+  - **MR 衍生計算未實作**：Go `target.MR` 完全獨立於 Wis 欄位，不重算職業基底也不查 `calcStatMr` 表。Wis 12→15 不會自動觸發 MR +0/+3/+6 等衍生變化。
+  - `counterMagicExempt[137]`：應為 true（受豁免，Java `EXCEPT_COUNTER_MAGIC` 含 137）——已對齊（既有 buff 系統管理）。
+  - `NON_CANCELLABLE` 不含 137 對齊 Java `isNotCancelable` 不含 137（cancellable）。
+  - yaml `skill_list.yaml:4187-4217 skill_id=137`：mp=10、item=40319×1、reuse_delay=0、buff_duration=1200、target=none、type=2、ranged=0、id=1、action_id=19、cast_gfx=2180、sys_msg_stop=722。**31 欄位與 yiwei skills.sql:136 完全對齊，零漂移**（罕見的完美對齊範例）。
+
+- **既有測試覆蓋**：
+  - `skill_elemental_buff_test.go:10-42 TestSkillElementalBuffElfElementalDefenseBuffsUseJavaValues`：player 起始 Wis=12/MR=5，套用 129+137+138+147 → 預期 Wis=15、MR=15（只有 RESIST_MAGIC +10），明確驗證 CLEAR_MIND 不會額外增加 MR（鎖死 Go 未實作 Wis→MR 衍生的事實）。
+  - 測試命名與 assertion 已標記「魔法防禦/淨化精神應為 MR+10、WIS+3」——文件記錄 CLEAR_MIND 只算 +3 Wis 不算 MR delta，明確標示這是 Go 故意設計（與 Java 偏離但等待廣域 stat 系統重構）。
+
+- **發現的 Java 真實差異 (criterion a)**：
+  - **`resetBaseMr()` Wis→MR 分段衍生未實作**：Java cast +3 Wis 後 `resetBaseMr()` 觸發 `addMr(newMr - _baseMr)` 動態重算（職業基底 + calcStatMr 分段表）；Go 只改 `target.Wis += 3` 不動 `target.MR`。實際影響：Wis 14→17 缺 +6 MR、Wis 17→20 缺 +15 MR、Wis 20→23 缺 +26 MR。屬廣域屬性衍生架構議題（110/111 DEX→AC 同源 precedent，亦見 137 audit）。
+
+- **不修原因**（per 對齊深度停損標準）：
+  - 廣域屬性衍生系統缺失：Java `resetBaseMr()` 被多處呼叫（升級、配點、裝備、CLEAR_MIND/RESIST_MAGIC/裝備加成等），單一技能 audit 無法修。需先建立通用 Wis→MR derivation hook（在 `target.Wis` 變化時自動觸發 MR 重算）才能在所有 cast/stop/equip 路徑套用，並涵蓋 Java `_baseMr` 與 `addMr` 雙路徑（current MR vs base MR 兩層概念）。
+  - 已建立 110/111/137/SHADOW_ARMOR audit precedent 將「靜態屬性 stat 寫入 vs 動態衍生重算」明確列為廣域 stat 系統重構議題（同 110 既有 2026-05-18 audit、137 既有 audit 同源紀錄）。
+  - 本次 audit 重點是文件化 Java 真實 mechanic + 標記 Go 未實作項目，**不寫對應 fix**（會引入「為了 137 而動所有屬性 stat 路徑」的範圍蔓延）。
+
+- **broader gap（不改）**：
+  - **Wis→MR 衍生計算**（如上）。
+  - **`getMr()` 動態 vs 靜態**：Java `L1PcInstance.getMr()` 在 receive 端動態彙整 base + 裝備 + buff + 寶物加成；Go 在 cast 時將 buff delta 累加到 `target.MR` 靜態欄位。Client UI 與最終魔法抗性計算等價，屬廣域 stat 架構議題（同 110/111 DEX→AC 同源）。
+  - **MR 上限**：Java 部分裝備/buff 累加可能超過 client UI 顯示上限（如 75 cap），Go 無 cap clamp。屬廣域 stat 上限管理議題。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkillElementalBuffElfElementalDefense -timeout 60s` PASS（0.061s）。
+
 ## 鏡反射（COUNTER_MIRROR / 134）— 純審計確認 PC→PC 反射完整對齊 Java，PC→NPC/NPC→PC/NPC→NPC 路徑為廣域 NPC schema 缺口
 
 - **Java 對照**：
