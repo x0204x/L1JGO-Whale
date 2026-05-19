@@ -1,5 +1,30 @@
 ## 技能
 
+## 暗影閃避（UNCANNY_DODGE / 106）— 補齊 Java skillmode 重施守衛
+
+- 補齊 `106 UNCANNY_DODGE` 重施守衛：Java `skillmode/UNCANNY_DODGE.java:17 if (!srcpc.hasSkillEffect(106))` 把 `setSkillEffect + add_dodge(5) + S_PacketBoxIcon1` 三項包在守衛裡——重施時三項皆跳過（buff timer 不刷新、dodge 不再加、客戶端不收到 icon 更新）。Go `skill_self.go` default 路徑無此守衛，重施會：(1) 在 `target.Dodge` 上重複加減（透過 AddBuff 替換舊 buff + revertBuffStats 反向，net 結果 dodge 正確，但中間 SendDodgeIcon 送出膨脹數值產生圖示閃動）、(2) 替換 buff 等同刷新 timer 延長 buff 持續時間——兩者為 criterion (a) 真實 Java vs Go 差異。本步在 `skill_self.go` applyBuffEffect 前加守衛，重施時跳過 buff 處理但保留外層 cast GFX（2950）廣播（對齊 Java L1SkillUse outer flow）。
+- **核心修改**：
+  - `server/internal/system/skill_self.go:245-249`：在 `s.applyBuffEffect(player, skill)` 前加：
+    ```go
+    // UNCANNY_DODGE (106) 守衛：Java skillmode/UNCANNY_DODGE.java:17 `if (!srcpc.hasSkillEffect(106))`
+    // 跳過 stat 加成、timer 刷新、S_PacketBoxIcon1 通知三項——重施時保留外層 cast GFX 廣播但 buff 內容不變。
+    if !(skill.SkillID == 106 && player.HasBuff(106)) {
+        s.applyBuffEffect(player, skill)
+    }
+    ```
+- **既有對齊已驗證（無修改）**：
+  - **施法路徑**：`skill_list.yaml skill_id:106 target:none cast_gfx:2950 action_id:19 buff_duration:192`，target=none → `executeSelfSkill` default → applyBuffEffect → `buffs.lua [106] = { dodge = 5 }`。
+  - **首次套用**：`skill_buff.go:169 buff.DeltaDodge = 5` → `:203 target.Dodge += 5` → `:241-246 SendDodgeIcon(target.Session, target.Dodge, true)`（S_PacketBoxIcon1 opcode 250, subcode 0x58 + 當前 dodge 總值）。對齊 Java `srcpc.add_dodge(5) + S_PacketBoxIcon1(true, get_dodge())`。
+  - **buff 到期/revert**：`skill_buff.go:516 target.Dodge -= buff.DeltaDodge` + `:520-525 SendDodgeIcon(target.Session, target.Dodge, true)`。對齊 Java skillmode `stop()` `pc.add_dodge(-5) + S_PacketBoxIcon1(true, get_dodge())`。
+  - **counterMagicExempt**：`skill_buff.go:405 counterMagicExempt[106] = true` 對齊 Java `EXCEPT_COUNTER_MAGIC` (line 148) 含 106。
+  - **NON_CANCELLABLE**：`buffs.lua:249 [106] = true` 對齊 Java `L1SkillMode.isNotCancelable()` 第 35 行明確列出 UNCANNY_DODGE——不可被 CANCELLATION 解除。
+  - **MP 消耗**：`skill.go:335 adjustedSkillMPConsume` 在 applyBuffEffect 前執行，重施時 MP 仍被消耗（對齊 Java L1SkillUse outer flow 即使 skillmode 守衛拒絕也照樣扣 MP）。
+- **broader gap（不改）**：
+  - **重施守衛廣域模式**：Java 大量 skillmodes（>30 個檔案：ADVANCE_SPIRIT, AWAKEN_ANTHARAS/FAFURION/VALAKAS, BOUNCE_ATTACK, SHADOW_ARMOR, SHADOW_FANG, DRESS_MIGHTY/DEXTERITY/EVASION, ILLUSION_OGRE/LICH/DIA_GOLEM/AVATAR, BONE_BREAK 等）皆有 `if (!hasSkillEffect)` 守衛跳過 stat/timer 刷新。Go 目前僅在 dragon awakening（185/190/195）case 有顯式 HasBuff 守衛，其餘大多走 generic applyBuffEffect 路徑可能允許 timer 刷新。屬廣域 buff stack semantic 對齊缺口——應在後續系統審計時設計通用 `setSkillEffect-equivalent` flag（如 ActiveBuff.NoRefreshOnRecast），本步僅補 skill 106 自己的守衛。
+  - **yaml mp_consume/buff_duration/reuse_delay drift**：與廣域同源 broader gap。
+- 驗證：`go build ./...` EXIT=0；`Dodge|Dark|Skill` 相關測試全 PASS。
+- **不寫新測試**：依停損標準，本步為「Java 真實差異 + 改 Go 對齊」單行守衛修補，行為等價於既有的 dragon awakening 守衛模式（185/190/195 case）。skill 106 既無針對重施場景的測試需求，避免「Go 已對 + 防回歸」測試。
+
 ## 雙重破壞（DOUBLE_BREAK / 105）— 純審計無代碼變更
 
 - 純審計 `105 DOUBLE_BREAK`：Go 完整對齊 Java `L1AttackPc.calcDamage` weapon switch case 11/12 的雙重破壞傷害數學。

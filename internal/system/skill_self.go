@@ -242,7 +242,11 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 	}
 
 	// 套用 buff 效果
-	s.applyBuffEffect(player, skill)
+	// UNCANNY_DODGE (106) 守衛：Java skillmode/UNCANNY_DODGE.java:17 `if (!srcpc.hasSkillEffect(106))`
+	// 跳過 stat 加成、timer 刷新、S_PacketBoxIcon1 通知三項——重施時保留外層 cast GFX 廣播但 buff 內容不變。
+	if !(skill.SkillID == 106 && player.HasBuff(106)) {
+		s.applyBuffEffect(player, skill)
+	}
 
 	// 負重強化：套用時立即更新負重顯示
 	if skill.SkillID == 14 || skill.SkillID == 218 {
