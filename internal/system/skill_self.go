@@ -141,6 +141,13 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 			player.MP = player.MaxMP
 		}
 		sendMpUpdate(sess, player)
+		// Java `L1SkillUse.sendGrfx:1681` default 分支對 target='none' + type=buff 送
+		// `_player.sendPacketsAll(new S_SkillSound(self.id, cast_gfx=2178))` 廣播施法效果。
+		// 後置 BuildActionGfx 已負責 S_DoActionGFX(action_id=19)，這裡補上 cast_gfx 廣播
+		// （同 130 BODY_TO_MIND precedent）。
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+		}
 
 	case 186: // 血之渴望 — 自身 buff + 勇敢速度（Java: BLOODLUST.java）
 		// 與暴風疾走/聖潔之行等互斥（由 buffs.lua 無 exclusions，brave_speed 會覆蓋）

@@ -1,5 +1,72 @@
 ## 技能
 
+## 魂體轉換（BLOODY_SOUL / 146）— 補齊施法視覺特效廣播對齊 Java（同 130 BODY_TO_MIND precedent）
+
+- **Java 對照**：
+  - `L1SkillId.java:482 BLOODY_SOUL = 146`（魂體轉換）。
+  - `L1SkillMode.load() line 99`：`_skillMode.put(Integer.valueOf(146), new BLOODY_SOUL())` 註冊 skillmode。
+  - `skillmode/BLOODY_SOUL.java:14-21 PC start`：
+    - 行 19：`srcpc.setCurrentMp(srcpc.getCurrentMp() + ConfigElfSkill.BLOODY_SOULADDMP)`。
+    - `BLOODY_SOULADDMP` 來自 `妖精_技能設定表.properties` + `各職業技能相關設置.properties` 均設 **20**（不是 skill_level=19）。
+  - `skillmode/BLOODY_SOUL.java:23-27 NPC start`：空實作。
+  - `skillmode/BLOODY_SOUL.java:32-33 stop`：空實作（無持續 buff state）。
+  - `L1SkillUse.sendGrfx:1681` default 分支：對 target='none' + type=buff + 非特殊技能列表走 `_player.sendPacketsAll(new S_SkillSound(self.id, cast_gfx=2178))` 廣播施法效果。
+  - HP 消耗：Java `L1SkillUse` generic 框架讀 SQL `hp` 欄位 = 50（yiwei）扣 HP。
+  - 表格成員：`isNotCancelable` 不含 146（cancellable）；`EXCEPT_COUNTER_MAGIC` 含 146 line 148（**不受 counter magic 阻擋**）；`REPEATEDSKILLS` 不含 146（無互斥）。
+  - yiwei `db_split/skills.sql:145`：`('146', '魂體轉換', '19', '1', '0', '50', '0', '0', '1200', '0', 'none', '0', '0', '0', '0', '0', '0', '0', '2', '0', '0', '0', '0', '2', '', '19', '2178', '0', '0', '0', '0')` — mp=0、hp=**50**、reuse_delay=1200、buff_duration=0、target=none、type=2、id=2、action_id=19、cast_gfx=2178。
+
+- **Go 對照（修正前）**：
+  - 原 `skill_self.go:136-143 case 146`：
+    ```go
+    case 146: // 魂體轉換
+        player.MP += 20
+        if player.MP > player.MaxMP {
+            player.MP = player.MaxMP
+        }
+        sendMpUpdate(sess, player)
+    ```
+    - +20 MP 對齊 Java `BLOODY_SOULADDMP=20`（既有 audit 已修為硬編 20 不誤用 skill_level）。
+    - MaxMP clamp 對齊 Java `L1PcInstance.setCurrentMp` 內建 clamp。
+    - `sendMpUpdate` 對齊 Java `S_MPUpdate`。
+    - **缺 `BuildSkillEffect(self, cast_gfx=2178)` 廣播**——附近玩家看不到魂體轉換的施法視覺效果（同 130 BODY_TO_MIND 修正前 bug）。
+  - `skill.go:328-332 + :449-450` HP 消耗檢查 + 扣除：用 yaml hp_consume=40（非 yiwei 50）。
+  - 後置 `skill_self.go:181-183 BuildActionGfx(player, action_id=19)` 廣播 S_DoActionGFX 對齊 Java `L1SkillUse.sendGrfx:1641-1643`。
+  - yaml `skill_list.yaml:4466-4496 skill_id=146`：mp=0、hp=**40**、reuse_delay=1200、buff_duration=0、target=none、type=2、id=2、action_id=19、cast_gfx=2178。
+
+- **發現的 Java 真實差異 (criterion a)**：
+  - **cast_gfx 廣播缺失**：Java `L1SkillUse.sendGrfx:1681` default 分支對魂體轉換送 `S_SkillSound(self.id, 2178)` 廣播施法視覺效果，Go case 146 只有 MP +20 + sendMpUpdate + 後置 BuildActionGfx，**未廣播 cast_gfx**。附近玩家觀察不到魂體轉換的施法效果（與 130 BODY_TO_MIND 修正前完全相同的 gap）。
+
+- **修正**：`skill_self.go:136-150 case 146` 補上 cast_gfx 廣播：
+  ```go
+  case 146: // 魂體轉換 — Java `BLOODY_SOUL.start()` 第 19 行
+      // `setCurrentMp(currentMp + ConfigElfSkill.BLOODY_SOULADDMP)`，
+      // yiwei `各職業技能相關設置.properties: BLOODY_SOULADDMP = 20`（不是 skill.skill_level=19）。
+      player.MP += 20
+      if player.MP > player.MaxMP {
+          player.MP = player.MaxMP
+      }
+      sendMpUpdate(sess, player)
+      // Java `L1SkillUse.sendGrfx:1681` default 分支對 target='none' + type=buff 送
+      // `_player.sendPacketsAll(new S_SkillSound(self.id, cast_gfx=2178))` 廣播施法效果。
+      // 後置 BuildActionGfx 已負責 S_DoActionGFX(action_id=19)，這裡補上 cast_gfx 廣播
+      // （同 130 BODY_TO_MIND precedent）。
+      if skill.CastGfx > 0 {
+          handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+      }
+  ```
+  - 與 case 130 同模式（既有 audit 2026-05-19 修正）：在 sendMpUpdate 後加 `if skill.CastGfx > 0 → BroadcastToPlayers + BuildSkillEffect(self, CastGfx)`。
+  - 與 case 186 BLOODLUST 同模式（cast_gfx 廣播在 applyBuffEffect 後）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -timeout 120s` PASS（18.004s，全 system 測試無迴歸）。
+
+- **不寫新測試**：cast_gfx 廣播屬「補 Java packet」surgical 修正（廣播 packet 內容已由 BuildSkillEffect 共用實作驗證），新增「測試 cast_gfx 廣播」屬「鎖死 Java 對齊行為」測試違反停損標準。
+
+- **broader gap（不改）**：
+  - **yaml hp_consume 漂移**：Go=40、yiwei=50，Go 跟 cat-fei 偏離 yiwei，屬廣域 SQL 漂移議題（與 130/132/133/134/145 同源）。實際遊戲影響：Java 消耗 50 HP +20 MP（淨虧 30 HP）為 ~2.5:1 比例；Go 消耗 40 HP +20 MP（淨虧 20 HP）為 2:1 比例，玩家負擔較輕。
+  - **Java L1SkillUse.sendGrfx:1686-1694 末尾 _targetList 通用 status refresh**：對 PC 送 `S_SPMR + S_OwnCharStatus + S_PacketBox(UPDATE_ER)`，對 BLOODY_SOUL 無實際 stat 變化，屬廣域 buff cast 後置 status refresh 缺口（同 130 audit broader gap）。
+
 ## 釋放元素（RETURN_TO_NATURE / 145）— 純審計確認三項 Java 真實差異屬廣域 targeting 子系統缺口（同 116 precedent）
 
 - **Java 對照**：
