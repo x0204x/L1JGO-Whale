@@ -1,5 +1,28 @@
 ## 技能
 
+## 提煉魔石（BRING_STONE / 100）— 純審計無代碼變更
+
+- 純審計 `100 BRING_STONE`：Go 已完整對齊 Java `L1SkillUse.java:2346-2389` 的四級魔石升級鏈，原註解「Go 簡化：完整升級邏輯待後續實作」實際已實作（comment 為過期描述）。
+- **核心行為已對齊**：
+  - **目標 ID**：`L1SkillUse.java:314 case BRING_STONE → _itemobjid = target_id`（target 為物品 objectID）對齊 Go `executeBringStone(itemObjID)`。
+  - **物品驗證**：`switch invItem.ItemID case 40320, 40321, 40322, 40323` 對齊 Java `if itemId == 40320/40321/40322/40323`。
+  - **公式對齊**：
+    - `dark = int(10 + level*0.8 + (wis-6)*1.2)` 對齊 Java `(int)(10 + pc.getLevel()*0.8 + (pc.getWis()-6)*1.2)`。
+    - `brave = int(dark / 2.1)` / `wise = int(brave / 2.0)` / `kayser = int(wise / 1.9)` 全部對齊 Java。
+  - **升級鏈**：40320→40321→40322→40323→40324 與訊息 ID `$2475/$2476/$2477/$2478` 全部對齊 Java。
+  - **擲骰機率**：`world.RandInt(100)+1`（1-100 範圍）對齊 Java `random.nextInt(100)+1`。
+  - **無論成敗都消耗 1 個原石**：Go `removeItem(invItem.ObjectID, 1)` 在擲骰前執行，對齊 Java `pc.getInventory().removeItem(item, 1)` 在 if 判定前。
+  - **成功訊息**：`SendServerMessageStr(sess, 403, msgArg)` 對齊 Java `S_ServerMessage(403, "$xxxx")`。
+  - **失敗訊息**：`SendServerMessage(sess, 280)` 對齊 Java `S_ServerMessage(280)`「魔法失敗了」。
+  - **dispatch**：`skill.go case 100 → executeBringStone(sess, player, skill, targetID)`，與 `skill_magic_scroll.go` 卷軸路徑共用同實作。
+  - **ItemCreate 整合**：透過 `s.deps.ItemCreate.GiveItem` 統一管理新物品發放（fallback 為直接 Inv.AddItem）。
+- **不動處**：
+  - `skill_weapon.go:157` 註解「Go 簡化：完整升級邏輯待後續實作」與實際行為不符（已完整實作），屬無害的歷史 comment 殘留；依停損標準避免無關 surgical 修改，留待自然累積清理。
+- **broader gap（不改）**：
+  - **施法動畫先送 vs 消耗物品先送順序**：Go 先廣播 ActionGfx + SkillEffect 再 RemoveItem；Java 在 L1SkillUse 流程中先 runSkill 觸發物品操作再 useConsume。Go 順序為內部一致性最佳化，玩家視覺體驗等價。
+  - **yaml mp_consume/buff_duration/reuse_delay drift**：與廣域同源 broader gap。
+- 驗證：無代碼變更，既有 `skill_weapon_item_create_test.go:71` 已覆蓋 executeBringStone 核心路徑。
+
 ## 暗影防護（SHADOW_ARMOR / 99）— 純審計無代碼變更
 
 - 純審計 `99 SHADOW_ARMOR`：Go 已完整對齊 Java `skillmode/SHADOW_ARMOR.java`。
