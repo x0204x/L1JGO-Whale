@@ -3606,7 +3606,7 @@ skills:
     reuse_delay: 0
     buff_duration: 640
     target: none
-    target_to: 8
+    target_to: 12
     damage_value: 0
     damage_dice: 0
     damage_dice_count: 0

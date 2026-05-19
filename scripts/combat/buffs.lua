@@ -97,9 +97,11 @@ BUFF_DEFS = {
     [111] = { dodge = 18 },                                                   -- Dress Evasion（Java: ER +18）
     [113] = {},                                                               -- True Target（精準目標，傷害加成在 Go PvP/戰鬥路徑處理）
 
-    [114] = { hit_mod = 5, dmg_mod = 5, exclusions = {115, 117} },            -- Glowing Aura
-    [115] = { ac = -8, exclusions = {114, 117} },                             -- Shining Aura
-    [117] = { exclusions = {114, 115} },                                      -- Brave Aura（33% 物理傷害 1.5 倍）
+    -- Royal Auras 114/115/117：Java `L1SkillUse.java:2421-2438` 三技能無互斥邏輯，REPEATEDSKILLS 10 群均不含此三者，
+    -- Java 三王族光環可同時掛在同一玩家身上；2026-05-19 117 audit 移除原本不對稱的三向 exclusions。
+    [114] = { hit_mod = 5, dmg_mod = 5 },                                     -- Glowing Aura
+    [115] = { ac = -8 },                                                      -- Shining Aura
+    [117] = {},                                                               -- Brave Aura（純機率旗標，33% 物理傷害 1.5 倍 via braveAuraDamage helper）
     [118] = {},                                                               -- Guard Ally (flag)
 
     -- ==================== Elf Skills (129-176) ====================

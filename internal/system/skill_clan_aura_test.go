@@ -190,6 +190,40 @@ func TestSkillClanAuraBraveAuraIsProcFlagNotFlatDamage(t *testing.T) {
 	}
 }
 
+// TestSkillClanAuraRoyalAurasStackLikeJava 驗證 114/115/117 三王族光環可同時掛在同一玩家身上，
+// Java `L1SkillUse.java:2421-2438` 三技能 if/else 分支獨立、REPEATEDSKILLS 10 群均不含此三者、無 skillmode mutex，
+// Java 端三光環同時作用。本步移除原 Go `buffs.lua` 不對稱三向 exclusions 後，Go 應同樣支援三向疊加。
+func TestSkillClanAuraRoyalAurasStackLikeJava(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "prince",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		AC:        10,
+	})
+	s := newSkillTestSystem(t, ws)
+
+	s.applyBuffEffect(player, &data.SkillInfo{SkillID: 114, BuffDuration: 640})
+	s.applyBuffEffect(player, &data.SkillInfo{SkillID: 115, BuffDuration: 640})
+	s.applyBuffEffect(player, &data.SkillInfo{SkillID: 117, BuffDuration: 640})
+
+	if !player.HasBuff(114) || !player.HasBuff(115) || !player.HasBuff(117) {
+		t.Fatalf("Java 三王族光環應可同時掛起，buff114=%v buff115=%v buff117=%v",
+			player.GetBuff(114), player.GetBuff(115), player.GetBuff(117))
+	}
+	if player.HitMod != 5 || player.DmgMod != 5 || player.AC != 2 {
+		t.Fatalf("三光環同時掛起應套用全部效果（114: +5 hit/dmg、115: AC-8）HitMod=%d DmgMod=%d AC=%d",
+			player.HitMod, player.DmgMod, player.AC)
+	}
+	if got := braveAuraDamageWithRoll(player, 100, 0); got != 150 {
+		t.Fatalf("117 機率內傷害應 1.5 倍，got=%d", got)
+	}
+}
+
 func TestSkillClanAuraBraveAvatarAppliesAndRemovesPartyAura(t *testing.T) {
 	ws := world.NewState()
 	leader := addSkillTestPlayer(ws, &world.PlayerInfo{

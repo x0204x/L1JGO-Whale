@@ -1,5 +1,32 @@
 ## 技能
 
+## 衝擊士氣（BRAVE_AURA / 117）— 補齊血盟範圍 + 移除三向不對稱互斥
+
+- **Java 對照**：
+  - `skillmode/` 無 `BRAVE_AURA.java`（走 `L1SkillUse.java` 預設路徑）。
+  - `L1SkillUse.java:2435-2438` apply：`else if (this._skillId == BRAVE_AURA) { ... // pc.addDmgup(-5); pc.sendPackets(new S_PacketBoxIconAura(116, ...)); }` — `addDmgup` **註解掉**，僅送 aura icon 116（注意 icon ID=116，非 117）。
+  - `L1SkillStop.java:409-414` cancel：`//cha.addDmgup(-5);` 同樣註解掉，僅送 icon 116 歸零。
+  - `L1AttackPc.java:2928-2953 BuffDmgUp(dmg)` — BRAVE_AURA 的真實機制：`int random = _random.nextInt(100) + 1;`（[1, 100]），`if/else if/else if` 鏈共用同一 random：`ELEMENTAL_FIRE → BURNING_SPIRIT → BRAVE_AURA`，每次攻擊只有 ONE 個會觸發。BRAVE_AURA 條件：`hasSkillEffect(BRAVE_AURA) && random <= 33 → dmg *= 1.5D`（33/100=33%）。
+  - **yiwei SQL** `skills:117`：`('117','勇猛意志','15','4','25','0','0','0','0','640','none','0',...,'3942',...)` → target_to=0 (TARGET_TO_ME，舊版自身單體)、mp=25。
+  - **cat-fei SQL**：`(117,'衝擊士氣',15,4,40,0,0,0,0,640,'none',12,...,3942,...)` → target_to=12 (TARGET_TO_PARTY|TARGET_TO_CLAN，現代隊伍+血盟)、mp=40。Go yaml 整體（名稱衝擊士氣/mp=40/duration=640/cast_gfx=3942）已對齊貓飛，唯獨 `target_to: 8` 漏掉血盟分支——同檔 115 已是 12 但 114 與 117 仍為 8（114 已在 2026-05-19 audit 修正為 12）。
+- **發現的 Java 真實差異**：
+  - **(1) yaml `target_to: 8` vs cat-fei `12`**：Go 同隊伍非同血盟成員會收到 buff，同血盟非同隊伍成員不會——與 cat-fei 兩種範圍都收的設計不符。
+  - **(2) buffs.lua 三向不對稱互斥**：`[114].exclusions={115,117}`、`[115].exclusions={114,117}`、`[117].exclusions={114,115}` 在 Java REPEATEDSKILLS 10 群（148/149/156/163/166、151/168、52/101/150/155/186/1000/1016、8/19/54、26/110、42/109、80/106、185/190/195、14/213、213/218）均無對應，且 Java skillmode 端三技能 if/else 分支獨立、無 mutex 邏輯——Java 端三王族光環可同時掛在同一玩家身上。114 audit 與 115 audit 因「單獨改其中一個會造成不對稱（順序敏感）」而延後處理；117 audit 是三向同步修正的時機。
+- **修正**：
+  - `skill_list.yaml:3551` skill 117 `target_to: 8 → 12`（補齊血盟分支，與 cat-fei 與 115 yaml 一致）。
+  - `scripts/combat/buffs.lua:100-104` 三向 exclusions 全部移除，並加上「Java 三光環可疊加」註解：
+    ```lua
+    [114] = { hit_mod = 5, dmg_mod = 5 },  -- Glowing Aura
+    [115] = { ac = -8 },                    -- Shining Aura
+    [117] = {},                              -- Brave Aura（純機率旗標）
+    ```
+- **新測試**：`skill_clan_aura_test.go TestSkillClanAuraRoyalAurasStackLikeJava` — 連續 `applyBuffEffect` 套用 114/115/117 三技能，斷言三 buff 皆 active、HitMod=5+DmgMod=5（114）、AC=2 從 10 起算 -8（115）、`braveAuraDamageWithRoll(roll=0)` 1.5x 觸發（117 機率內）。確認 Java 三向疊加行為。
+- **架構合規**：純資料+lua 修正。`applyRoyalAuraSkill` 既有 `targetTo&8 → party + targetTo&4 → clan` 雙分支已支援 12；`applyBuffEffect → removeBuffAndRevert` 路徑透過 exclusions 列表清除衝突，移除 exclusions 等於停止跨光環互斥。
+- **broader gap（不改）**：
+  - **Java damage chain 共享 random + 互斥（不可疊乘）**：`L1AttackPc.java:2928-2953 BuffDmgUp` 對 ELEMENTAL_FIRE(171) / BURNING_SPIRIT(102) / BRAVE_AURA(117) 三項物理增傷共用 `_random.nextInt(100)+1` 並以 if/else if 鏈做互斥——每次攻擊最多 1 個 1.5x 乘子生效。Go `combat.go:213-215, 458-461, pvp.go:105-107, 322` 三個 helper（`darkElfPhysicalDamage` / `elfMeleeDamage` / `braveAuraDamage`）各自獨立 RandInt(100) 滾骰，無互斥——同時持有三 buff 時可能 1.5×1.5×1.5=3.375x 疊乘（Java 最多 1.5x）。屬廣域 damage chain 重構（需 single shared roll + priority chain pattern），跨 117/102/171 三技能 audit 範圍，留待 damage chain 廣域審計時統一處理。
+  - **聯盟呼喚 4976 callClan1 同源 spread 缺失**（從 116 audit 延續）：留待 alliance 自身審計。
+  - yiwei vs cat-fei SQL 廣域資料漂移屬 yaml/SQL 同步缺口。
+
 ## 呼喚盟友（CALL_CLAN / 116）— 修正接受呼喚後傳送座標分散範圍
 
 - **Java 對照**：
