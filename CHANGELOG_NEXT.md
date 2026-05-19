@@ -1,5 +1,16 @@
 ## 技能
 
+## 鋼鐵防護（IRON_SKIN / 168）— 純審計重新確認核心 AC ±10 + REPEATEDSKILLS[1] 2 項互斥 + S_SkillIconShield param=10 完整對齊 Java，yaml 31 欄位零漂移
+
+- **Java 對照**：`L1SkillUse IRON_SKIN.start() addAc(-10) + S_SkillIconShield(10, duration)`、`L1SkillStop addAc(10) + S_SkillIconShield(10, 0)`；REPEATEDSKILLS[1]={151,168}；yiwei `skills.sql:167` 31 欄位。
+- **Go 對照**（無代碼變更）：
+  - `buffs.lua:136 [168] = { ac = -10, exclusions = {151} }` 對齊 Java。
+  - 標準 buff apply/revert 對稱（AC-10/+10）。
+  - `buff_icon_map.yaml:26-28 skill_id: 168 type: shield param: 10` → `sendIconShield(10, duration)`。
+  - yaml `skill_list.yaml:5148` 31 欄位**零漂移**完全對齊 yiwei sql:167。
+- **broader gap（不改）**：(A) Java `sendGrfx` 末尾通用 status refresh（S_OwnCharStatus AC 廣播）屬廣域 buff cast 後置缺口（同 151/159 同源）。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 風之枷鎖（WIND_SHACKLE / 167）— 純審計重新確認 PC + NPC 雙路徑 + speed slow +25% + MR 抗性閘完整對齊 Java
 
 - **Java 對照**：`WIND_SHACKLE.skillmode` 對 PC `setSkillEffect(167, integer*1000) + S_PacketBoxWindShackle(charID, duration)`、對 NPC `setSkillEffect(167, integer*1000)`；`L1NpcInstance.java:2629-2633` 對 ATTACK_SPEED/MAGIC_SPEED `sleepTime += sleepTime/4`（+25%）。
