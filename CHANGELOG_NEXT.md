@@ -1,5 +1,62 @@
 ## 技能
 
+## 釋放元素（RETURN_TO_NATURE / 145）— 純審計確認三項 Java 真實差異屬廣域 targeting 子系統缺口（同 116 precedent）
+
+- **Java 對照**：
+  - `L1SkillId.java:478 RETURN_TO_NATURE = 145`（釋放元素）。無對應 skillmode 類別。
+  - `L1SkillUse.java:2740-2750` + `L1SkillUse2.java:2689-2699` 攻擊路徑：
+    - `if (cha instanceof L1SummonInstance) { summon.broadcastPacketAll(new S_SkillSound(summon.id, 2245)); summon.returnToNature(); }`
+    - `else { if (user instanceof L1PcInstance) this._player.sendPackets(new S_ServerMessage(79)); }`（**只對「指定的單一 summon 目標」生效**，非 summon 目標送 msg 79）。
+  - `L1MagicPc.calcProbabilityMagic` PC→NPC 路徑（line 340-347）：`defenseLevel = _targetNpc.getLevel(); if (skillId == RETURN_TO_NATURE && _targetNpc instanceof L1SummonInstance) defenseLevel = summon.getMaster().getLevel(); defenseMr = _targetNpc.getMr();` ——**defenseLevel 用 summon 的 master.level**（不是 summon 自己的等級），對齊「玩家魔法等級 vs 召喚主等級」的對比設計。
+  - `L1MagicPc.calcProbabilityMagic` default 分支（line 835-848）：`probability = probValue + sum(diceCount2) of random(1, probDice)`，其中 `diceCount2 = max(magicBonus + magicLevel, 1)`。yaml probValue=33、probDice=50 → 1 dice 最小：`probability = 33 + 1..50` ＝ **34-83% 機率**（典型 55-70%）。
+  - `L1MagicNpc.calcProbabilityMagic` line 157-171：NPC 路徑 `probability = (probDice/10) * (atkLvl - defLvl) + probValue - targetMr/10`，多項 elf debuff 共用同一 formula（與 ELEMENTAL_FALL_DOWN/ENTANGLE 等同組）。
+  - `L1SummonInstance.returnToNature()`：把馴服的 summon 釋放回野生 NPC、非馴服的 summon 銷毀。**單一目標**只處理 method 接收者 summon 自己，不影響 caster 其他 summons。
+  - yiwei `db_split/skills.sql:144`：`('145', '釋放元素', '19', '0', '30', '0', '40319', '2', '0', '0', 'buff', '2', '0', '0', '0', '33', '50', '0', '1', '0', '-1', '0', '0', '1', '', '19', '2245', '0', '0', '0', '280')` — mp=30、item=40319×2、reuse_delay=0、buff_duration=0、target=buff、target_to=2、prob_value=33、prob_dice=50、type=1、ranged=-1、id=1、action_id=19、cast_gfx=2245、sys_msg_fail=280。
+
+- **Go 對照**：
+  - `skill.go:418-420`：`case 145: s.deps.Summon.ExecuteReturnToNature(sess, player, skill)`。
+  - `skill_magic_scroll.go:63-65`：scroll 觸發路徑相同。
+  - `skill_summon.go:591-608 ExecuteReturnToNature`：
+    ```go
+    summons := ws.GetSummonsByOwner(player.CharID)
+    if len(summons) == 0 { return }
+    s.deps.Skill.ConsumeSkillResources(sess, player, skill)
+    for _, sum := range summons {
+        if sum.Tamed { s.liberateSummon(sum) } else { s.killSummon(sum) }
+    }
+    ```
+    - **無目標 ObjectID 參數**：直接列舉 caster 全部 summons。
+    - **無 calcProbabilityMagic**：100% 成功率。
+    - **無 master.level defenseLevel**：因為根本不做機率檢查。
+    - 馴服處理對齊 Java `returnToNature()`：tamed → liberate（轉回野生 NPC）、untamed → kill（銷毀）。
+    - `liberateSummon:632 SendCompanionEffect(viewer.Session, sum.ID, 2245)` 對齊 Java `summon.broadcastPacketAll(new S_SkillSound(summon.id, 2245))`。
+  - yaml `skill_list.yaml:4435-4465 skill_id=145`：mp=30、item=40319×2、reuse_delay=0、buff_duration=0、target=buff、target_to=**16**、prob_value=**50**、prob_dice=**30**、type=1、ranged=-1、id=1、action_id=19、cast_gfx=2245、sys_msg_fail=280。
+
+- **既有測試覆蓋**：
+  - 無針對 145 的單元測試（`skill_teleport_summon_test.go fakeSummonManager.ExecuteReturnToNature` 僅為 mock placeholder）。
+
+- **發現的 Java 真實差異 (criterion a，屬廣域 targeting 子系統缺口)**：
+  - **A) 目標選擇差異**：Java `L1SkillUse.java:2741` 透過 `_targetList` 逐一檢查 `cha instanceof L1SummonInstance`，只對被指定的單一 summon 呼叫 `returnToNature()`。Go `ExecuteReturnToNature` 透過 `GetSummonsByOwner(player.CharID)` 直接列舉 caster 全部 summons 並全部釋放。實際影響：玩家擁有多個 summon 時，Java 可選擇釋放特定一隻、Go 強制全部釋放。
+  - **B) 機率差異**：Java `calcProbabilityMagic` default 分支套用 `probability = probValue(33) + sum(diceCount2) of random(1, probDice=50)` ＝ 34-83% 機率（典型 55-70%）；Go 無機率檢查直接 100% 成功。實際影響：在 PvP/野外環境玩家對他人 summon 施 145 時 Java 有失敗可能、Go 必定成功。
+  - **C) defenseLevel 用 master.level**：Java `L1MagicPc.calcProbabilityMagic:342-345` 對 summon 目標用 `summon.getMaster().getLevel()` 作 defenseLevel（不是 summon 自己等級），對齊「caster magicLevel vs 召喚主 charLevel」競賽。Go 因為根本不做機率檢查，這個欄位也無從用上。
+
+- **不修原因**（per 對齊深度停損標準）：
+  - 三項差異都需要 **targeting subsystem 重構**：dispatch 層當前不接受目標 ObjectID 參數（buff 類技能假設「對自己」），handler 也不傳 target；補上需修改 skill use handler + 加 target param 給 ExecuteReturnToNature + 補 calcProbabilityMagic 整套機率系統路徑（含 magicBonus/magicLevel/getMr/levelDiff 廣域邏輯）。
+  - 已建立 **116 CALL_CLAN precedent** 將「同類 targeting 重構」明確列為廣域子系統議題（116 audit 也標記「targeting 重構」），單一技能 audit 不能跨越邊界。
+  - 不寫新測試：補測試需依賴尚未實作的機率系統，順序錯位。
+
+- **broader gap（不改）**：
+  - **目標選擇缺失**（如 A 所述，targeting subsystem 議題）。
+  - **calcProbabilityMagic 整套機率系統**（如 B 所述，廣域 elf debuff 共用 formula，影響 ELEMENTAL_FALL_DOWN/ENTANGLE/WIND_SHACKLE/ERASE_MAGIC/EARTH_BIND/AREA_OF_SILENCE/POLLUTE_WATER/STRIKER_GALE 等多項 elf 技能）。
+  - **summon.master.level defenseLevel**（如 C 所述，依賴機率系統，連帶廣域）。
+  - **yaml 三方漂移**：Go yaml 與 yiwei `skills.sql:144` 三項偏離（Go 跟 cat-fei）：target_to=16（yiwei=2）、prob_value=50（yiwei=33）、prob_dice=30（yiwei=50）。屬廣域 SQL 漂移議題（與 130/132/133/134 同源）。
+  - **S_ServerMessage(79) 非 summon 目標拒絕訊息**：Java 對非 summon 目標 caster 送 msg 79（"無法對該目標使用"），Go 在 ExecuteReturnToNature 完全跳過（連 summon empty 也是 silent return）。屬「Java 嚴格化 UX」議題，依賴 targeting 重構才能補。
+  - **NPC→PC 路徑**：Java `L1MagicNpc.calcProbabilityMagic case RETURN_TO_NATURE` 表示理論上 NPC 也能對 PC summon 施 145（雖實務罕見），Go NPC AI 不施 magic 屬 NPC magic system 廣域缺口（同 134 audit 同源）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - 無針對 145 的測試需執行（既有測試暫無覆蓋）。
+
 ## 屬性防禦（RESIST_ELEMENTAL / 138）— 純審計確認四屬 +10 + S_OwnCharAttrDef 完整對齊 Java，零 Java vs Go 差異
 
 - **Java 對照**：
