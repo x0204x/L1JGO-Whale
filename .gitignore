@@ -25,9 +25,6 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# 地圖檔案（二進制，太大不上傳）
-map/
-
 # 種子/測試資料（視需求決定）
 # seed/
 
