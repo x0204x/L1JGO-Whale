@@ -38,7 +38,7 @@ BUFF_DEFS = {
     [36] = {},                                                                -- Charm (flag only)
     [40] = {},                                                                -- Darkness (blind debuff)
 
-    [42] = { str = 5 },                                                      -- Physical Enchant STR
+    [42] = { str = 5, exclusions = {109} },                                  -- Physical Enchant STR（Java REPEATEDSKILLS[5]={42,109} 與 DRESS_MIGHTY 互斥）
 
     [43] = { move_speed = 1, exclusions = {29, 76, 54} },                    -- Haste
 
@@ -92,7 +92,7 @@ BUFF_DEFS = {
     [90]  = { dodge = 15 },                                                   -- Solid Carriage（堅固防護，Java: ER +15）
     [91]  = { ac = -2 },                                                      -- Counter Barrier（反擊屏障）— AC-2 + 近戰反彈
 
-    [109] = { str = 3 },                                                      -- Dress Mighty
+    [109] = { str = 3, exclusions = {42} },                                  -- Dress Mighty（Java REPEATEDSKILLS[5]={42,109} 與 PHYSICAL_ENCHANT_STR 互斥）
     [110] = { dex = 3 },                                                      -- Dress Dexterity
     [111] = { dodge = 18 },                                                   -- Dress Evasion（Java: ER +18）
     [113] = {},                                                               -- True Target（精準目標，傷害加成在 Go PvP/戰鬥路徑處理）

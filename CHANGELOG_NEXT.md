@@ -1,5 +1,24 @@
 ## 技能
 
+## 力量提升（DRESS_MIGHTY / 109）— 補齊 REPEATEDSKILLS[5] 42↔109 互斥
+
+- 對齊 Java `L1SkillUse.java:1752` `REPEATEDSKILLS[5] = { PHYSICAL_ENCHANT_STR, DRESS_MIGHTY }`。Java `deleteRepeatedSkills` (line 1769-1777) 每次施法時掃描所有 REPEATEDSKILLS 群組，若 cast skill ID 在群內，移除群內其餘技能。原 Go buffs.lua `[42]`/`[109]` 均無 exclusions，導致 42 + 109 可同時生效 → STR 加成 +5+3=+8（Java 上限 +5 或 +3 二擇一）。
+- 修正：buffs.lua bilateral exclusion：
+  ```lua
+  [42]  = { str = 5, exclusions = {109} },
+  [109] = { str = 3, exclusions = {42} },
+  ```
+  `internal/scripting/engine.go:431-437` 既有 exclusions parser + `internal/system/skill_buff.go:144-146` `removeBuffAndRevert(target, int32(exID))` 套用路徑與既有 148/149/156/163/166（fire weapon 群）/151/168（earth/iron skin 群）同源實作，不需新代碼。
+- 其餘對齊（無修改）：
+  - **DeltaStr 套用**：`applyBuffEffect` `buff.DeltaStr = int16(eff.Str)` + `target.Str += buff.DeltaStr` 對齊 Java `pc.addStr((byte) 3)`。
+  - **Cast icon**：`buff_icon_map.yaml [109]={type=strup, param=2}` 對齊 yiwei `L1SkillUse.java:2456 new S_Strup(pc, 2, duration)`（comment `原本3修改2 琮善`）。
+  - **Cancel icon**：`skill_buff.go:99-101` `if durationSec == 0 && skillID == 109 { iconParam = 3 }` 對齊 Java `L1SkillStop.java:441 new S_Strup(pc, 3, 0)`。
+  - **NON_CANCELLABLE**：`buffs.lua:253 [109] = true` 對齊 Java `L1SkillMode.java:36 isNotCancelable` 含 109。
+  - **counterMagicExempt**：`skill_buff.go:405 109: true` 對齊 Java `L1SkillUse.java:148 EXCEPT_COUNTER_MAGIC` 含 109。
+  - **revert 反向**：`revertBuffStats` 統一 `target.Str -= buff.DeltaStr` + 觸發 `sendBuffIcon(durationSec=0)` 走 cancel-icon 覆寫路徑送 type=3。
+- **broader gap（不改）**：Java REPEATEDSKILLS 共 10 個群組，Go 已有 [0]={148,149,156,163,166}、[1]={151,168}、[2]={52,101,150,155,186,1000,1016}、[5]={42,109} 透過 lua exclusions 實作；[3]={8,19,54}（HASTE 系）、[4]={26,110}（DEX 系，留待 110 audit）、[6]={80,106}（MIRROR_IMAGE/UNCANNY_DODGE）、[7]={185,190,195}（dragon awakening，已有專屬 HasBuff 守衛）、[8]={14,213?}、[9]={213?,218?} 部分缺失。本步只補 [5]，其餘屬其本身技能 audit 範圍。
+- **不寫新測試**：bilateral exclusion 是 data-only fix，掛載到既有 `engine.go:431-437` exclusions parser + `skill_buff.go:144-146` removeBuffAndRevert 通用路徑——與 148-166/151-168 群組同源實作。既有 `TestSkillElementalBuffIronSkinExcludesEarthSkin` 已覆蓋 lua exclusions 機制。依停損標準避免重複測試同一機制。
+
 ## 會心一擊（FINAL_BURN / 108）— 純審計無代碼變更
 
 - 純審計 `108 FINAL_BURN`：Go 完整對齊 Java `L1SkillUse.java:1223-1228, 1277-1287` + `L1MagicPc.java:1102-1104` 的 HP/MP 燃燒攻擊邏輯。三條既有測試完整覆蓋。
