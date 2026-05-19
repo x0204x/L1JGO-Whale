@@ -1,5 +1,24 @@
 ## 技能
 
+## 恐慌（PANIC / 217）
+
+- 補齊兩項 Java `skillmode/PANIC.java` 對 Go 的對齊缺口：
+  - **PC→PC MR 機率檢查**：`skill_status.go playerDebuffSkills` 加入 `217: true`。Java `L1MagicPc.calcProbabilityMagic` 對 PANIC 走 default case 含 `probabilityDice * diceCount + magichit + baseInt - getTargetMr()` 公式（PANIC 不在 PHANTASM/BONE_BREAK 等專屬 case 中），Go 原本因 217 不在 playerDebuffSkills 名單中導致 PC→PC 完全跳過 MR 檢查，直接 100% 命中。
+  - **PC→NPC dispatch**：`skill_status.go` 新增 `case 217` 對 NPC 路徑，呼叫 `checkNpcMRResist` 後 `npc.AddDebuff(217, dur*5)` 註冊 debuff 標記，並依 `skill.CastGfx` 廣播施法特效。原本因 case 缺失走 default 只播 cast GFX 不註冊 debuff，導致 `npc.HasDebuff(217)` 永遠為 false。
+- **不動處**：
+  - `buffs.lua [217]={str=-1, con=-1, dex=-1, wis=-1, intel=-1}` 已對齊 Java PC 路徑 `addStr(-1) + addCon(-1) + addDex(-1) + addWis(-1) + addInt(-1)`，無需修改。
+  - `counterMagicExempt[217]` 不存在已對齊 Java `EXCEPT_COUNTER_MAGIC` 不含 PANIC（debuff 應受 counter magic 攔截）。
+- **divergence（協議級別差異，行為等價）**：
+  - **stat 更新封包**：Java PC apply/stop 送 `S_OwnCharStatus2(pc)`；Go 透過通用 `applyBuffEffect` 觸發 `SendPlayerStatus` (S_STATUS opcode 8)。兩者皆能更新客戶端 stat UI，與 INSIGHT(216) 同源屬 buff stat-update 機制設計選擇。
+- **broader gap（不改）**：
+  - **NPC stat 變化**：Java `tgnpc.addStr(-1) + addCon(-1) + addDex(-1) + addWis(-1) + addInt(-1)` 對 NPC 套 5 屬性各 -1；Go NPC 模型只有 STR/DEX 欄位（無 Con/Wis/Intel），且既有 NPC debuff 系統採 marker-only（同 skill 56 DISEASE 不修改 NPC AC/DMG）。完整對齊需先建立 NPC stat mutation/revert 機制與 Con/Wis/Intel 欄位，屬廣域架構工作。
+  - **MR 機率公式 generic vs 專屬**：
+    - PC→PC：Go `checkPlayerMRResist` 用 `50 + lvlDiff*3 + INT - MR` 簡化版；Java default 公式包含 `probabilityDice * diceCount + magichit + baseInt - getTargetMr()` 多項加成。
+    - PC→NPC：Go `checkNpcMRResist` 通用版；Java `L1MagicNpc.calcProbabilityMagic case PANIC` 用 `Random.nextInt(11)+20 + (atkLvl-defLvl)*2 * leverage/10`（與 CONFUSION/PHANTASM/BONE_BREAK 共用）。
+    與 192/193/208/212 同源屬個別技能公式精確化的廣域工作。
+  - **yaml `mp_consume 30→?`/`hp_consume 30→?`/`reuse_delay 0→?`/`buff_duration 64→?`/`target buff→?`/`type 4→?`/`ranged 5→?`/`probability_value 30→?`/`probability_dice 30→?`**：與 207-216 同源 yaml drift，整批處理時統一對齊 Java SQL。
+- 驗證：`go build ./...` 通過；`go test ./internal/system/ -count=1` 全綠（21.186s）。
+
 ## 洞察（INSIGHT / 216）— 純審計無代碼變更
 
 - 純審計 `216 INSIGHT`：Go 已對齊 Java `skillmode/INSIGHT.java` 核心行為。

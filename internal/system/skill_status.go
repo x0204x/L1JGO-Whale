@@ -581,6 +581,28 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 		}
 		s.deps.Log.Info(fmt.Sprintf("幻想  施法者=%s  NPC=%s  持續=%d秒", player.Name, npc.Name, dur))
 
+	case 217: // 恐慌 — Java skillmode/PANIC.java:32-39 對 NPC `addStr/Con/Dex/Wis/Int(-1) + setSkillEffect(217, integer*1000)`
+		// Go NPC 模型只有 STR/DEX 無 Con/Wis/Intel，且既有 NPC debuff 系統採 marker-only
+		// 不修改 NPC stat（參考 skill 56 DISEASE 同模式），只註冊 debuff 標記讓
+		// npc.HasDebuff(217) 可被其他系統查詢。實際 stat -1 屬 broader gap，需先建立
+		// NPC stat mutation/revert 機制才能完整對齊。
+		// NPC MR 機率走 generic `checkNpcMRResist`，與 Java `L1MagicNpc.calcProbabilityMagic
+		// case PANIC` 的 `Random.nextInt(11)+20 + (atkLvl-defLvl)*2 * leverage/10` 公式
+		// 不同屬 broader gap。
+		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
+			s.sendCastFail(sess)
+			return
+		}
+		dur := skill.BuffDuration
+		if dur <= 0 {
+			dur = 64
+		}
+		npc.AddDebuff(217, dur*5)
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
+		}
+		s.deps.Log.Info(fmt.Sprintf("恐慌  施法者=%s  NPC=%s  持續=%d秒", player.Name, npc.Name, dur))
+
 	case 33: // 木乃伊詛咒（NPC 版）— 階段一：灰色延遲
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
 			s.sendCastFail(sess)
@@ -814,6 +836,7 @@ var playerDebuffSkills = map[int32]bool{
 	188: true, // 恐懼無助（Java L1MagicNpc.calcProbabilityMagic case RESIST_FEAR 與 GUARD_BRAKE 共用標準等級差公式；只對 PC 套用 dodge_down+5）
 	193: true, // 驚悚死神（Java L1MagicNpc.calcProbabilityMagic case HORROR_OF_DEATH 與 GUARD_BRAKE/RESIST_FEAR/THUNDER_GRAB 共用標準等級差公式；對 PC addStr(-3)+addInt(-3)）
 	212: true, // 幻想（Java L1MagicPc.calcProbabilityMagic case PHANTASM 用 ConfigIllusionstSkill 5/10/15 + RegistSleep；Go 用 generic checkPlayerMRResist 屬 broader gap）
+	217: true, // 恐慌（Java L1MagicPc.calcProbabilityMagic 對 PANIC 走 default 含 probabilityDice+magichit+baseInt-getTargetMr；Go 用 generic checkPlayerMRResist 屬 broader gap）
 }
 
 // checkPlayerMRResist 對玩家目標的魔法抗性判定（debuff 用）。
