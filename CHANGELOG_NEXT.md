@@ -1,5 +1,18 @@
 ## 技能
 
+## 洞察（INSIGHT / 216）— 純審計無代碼變更
+
+- 純審計 `216 INSIGHT`：Go 已對齊 Java `skillmode/INSIGHT.java` 核心行為。
+  - **Stat 變化已對齊**：`buffs.lua [216] = { str = 1, con = 1, dex = 1, wis = 1, intel = 1 }` 與 Java `addStr(1) + addCon(1) + addDex(1) + addWis(1) + addInt(1)` 完全一致（5 屬性 +1）。
+  - **counter magic 豁免已對齊**：`counterMagicExempt[216] = true`（`skill_buff.go:411`）與 Java `EXCEPT_COUNTER_MAGIC` 清單一致。
+  - **stop 路徑已對齊**：`applyBuffEffect` 透過 `revertBuffStats` 將 5 屬性各 -1（DeltaStr/DeltaCon/DeltaDex/DeltaWis/DeltaIntel = 1 → 反向套用）。
+  - **buff 重複保護已對齊**：Go `[216]` 透過 `target.AddBuff` 內部以 SkillID 為 key 的 map 防止同 ID 重複覆蓋；Java `if (!cha.hasSkillEffect(216))` 跳過已有 buff。
+- **divergence（協議級別差異，行為等價）**：
+  - **stat 更新封包**：Java apply/stop 送 `S_OwnCharStatus2(pc)`（opcode `S_OPCODE_OWNCHARSTATUS2`，純 STR/INT/WIS/DEX/CON/CHA/weight240）；Go 送 `SendPlayerStatus`（opcode `S_OPCODE_STATUS=8`，包含 level/exp/6 屬性/HP/MP/AC/gameTime 全量狀態）。兩者皆能正確更新客戶端 stat UI 顯示，但 packet size 與其他附帶資料不同。屬於 Go 通用 buff stat-update 機制設計選擇，影響所有 stat-changing buff（非 216 個別問題）。
+- **broader gap（不改）**：
+  - **yaml `mp_consume 40→60`、`reuse_delay 0→1000`、`buff_duration 300→640`、`target buff→none`、`target_to 1→0`、`type 4→2 (CURSE→CHANGE)`、`ranged 5→0`、`probability_value/dice 100→0`**：屬 yaml 資料 drift，與 207-215 同源。`buff_duration` 差 2.13x（10:40 vs 5:00），影響 buff 持續時間。
+- 驗證：`go build ./...` 通過（無代碼變更）。
+
 ## 立方：衝擊（CUBE_SHOCK / 215）
 
 - 修正 `ground_effect.go` NPC CUBE_SHOCK 套用的 debuff ID 與時長，對齊 Java `L1Cube.giveEffect:135-145 case STATUS_CUBE_SHOCK_TO_ENEMY`：
