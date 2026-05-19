@@ -1,5 +1,78 @@
 ## 技能
 
+## 三重矢（TRIPLE_ARROW / 132）— 修正 PvP 射程退化 bug
+
+- **Java 對照**：
+  - `L1SkillId.java:455-458 TRIPLE_ARROW = 132`（三重矢）。
+  - `L1SkillMode.load() line 100`：`_skillMode.put(Integer.valueOf(132), new TRIPLE_ARROW())` 註冊 skillmode。
+  - `skillmode/TRIPLE_ARROW.java:13-48 PC start`：
+    - 行 16：`int playerGFX = srcpc.getTempCharGfx()` 取玩家變身外型。
+    - 行 27-30：`SprTable.get().getAttackSpeed(playerGFX, 21) == 0 → return 0`（變身外型須支援弓箭動作 action_id=21）。
+    - 行 32-34：`srcpc.getCurrentWeapon() != 20 → return 0`（必須裝備弓，visual byte=20）。
+    - 行 36-38：`if (ConfigSkill.TRIPLE_ARROW_DMG > 1) srcpc.setIsTRIPLE_ARROW(true)` 設定 ×倍率旗標。
+    - 行 39-41：`for (i = 0; i < 3; i++) cha.onAction(srcpc)` ＝ 對目標 3 次完整 L1AttackPc 攻擊。
+    - 行 42-44：reset IsTRIPLE_ARROW=false。
+    - 行 45-46：`sendPacketsAll(new S_SkillSound(self.id, 4394))` 加速封包 + `sendPacketsAll(new S_SkillSound(self.id, 11764))` 特效動畫。
+  - `skillmode/TRIPLE_ARROW.java:50-60 NPC start`：`for (i = 3; i > 0; i--) npc.attackTarget(cha)` ×3 + 同樣 4394/11764 廣播。
+  - `L1AttackPc.java:1512-1514`（calc damage）：`if (_pc.getIsTRIPLE_ARROW()) dmg *= ConfigSkill.TRIPLE_ARROW_DMG`，2002-2004 行為 NPC target 同樣公式。
+  - `ConfigSkill.java:49 + 212`：`TRIPLE_ARROW_DMG = Double.parseDouble(set.getProperty("Triple_Arrow_Dmg", "1.0"))`；yiwei `各職業技能相關設置.properties: Triple_Arrow_Dmg = 5.0` 為實際運行值（5x 倍率）。
+  - `L1AttackPc.java:175-183` 弓箭裝備時 `_arrow = getInventory().getArrow()`；行 226 `if ((_weaponType == 20) && (_weaponId != 190) && (_arrow == null)) _isHit = false`；箭矢消耗散落於 :2837/2842/2847/2852/3089/3121 內部 `removeItem(_arrow, 1L)` 各種 enchant 路徑——每次 attack 消耗 1 箭。
+  - yiwei `db_split/skills.sql:131`：`('132', '三重矢', '17', '3', '15', '0', '0', '0', '100', '0', 'attack', '3', '0', '0', '0', '0', '0', '0', '2', '0', '-1', '0', '0', '8', '', '18', '0', '0', '0', '0', '0')` — **注意 type=2 是 yiwei 端錯誤**（TRIPLE_ARROW 屬 TYPE_ATTACK=64 非 TYPE_CHANGE=2），cat-fei 已修為 type=64。
+- **Go 對照**：
+  - `skill.go:397-401`：`if skillID == 132 && player.CurrentWeapon != 20 { return }` 對齊 Java line 32-33 弓裝備限制。
+  - `skill_damage.go:114-120` NPC 攻擊路徑收尾廣播：`if skill.SkillID == 132 { BroadcastToPlayers(casterNearby, BuildSkillEffect(player.CharID, 4394)) + 11764 }` 對齊 Java 行 45-46。
+  - `skill_damage.go:390-391` NPC 路徑：`if skill.SkillID == 132 { maxRange = 10 }` 特例。
+  - `skill_damage.go:421-432` NPC 路徑前置 1 箭矢消耗 + `if arrow == nil sendCastFail`。
+  - `skill_damage.go:502-504` NPC 路徑：`if skill.SkillID == 132 && res.HitCount < 3 { res.HitCount = 3 }` 強制 3 次命中。
+  - `skill_damage.go:648-654` 重複的收尾廣播（PvE path 區段）。
+  - **原 `skill_damage.go:38-40` PC 路徑**：`maxRange = skill.Ranged`（=-1）→ `if maxRange <= 0 { maxRange = 2 }` ＝ **退化為近戰 2 格**，PvP 三重矢實際射程僅 4 格（含 +2 lenience），與 NPC 路徑 10 格嚴重不一致——玩家根本不能用弓技攻擊 4 格外的玩家。
+  - `skill_damage.go:87-90` PC 路徑：`if skill.SkillID == 132 && hitCount < 3 { hitCount = 3 }` 強制 3 次命中。
+  - `skill_damage.go:114-120` PC 路徑收尾廣播 4394/11764（與 NPC 路徑同邏輯）。
+  - `magic.lua calc_physical_skill:139-143`：`elseif sid == 132 then hit_count = 3; damage = damage * 5` 對齊 Java `dmg *= TRIPLE_ARROW_DMG=5`。
+- **發現的 Java 真實差異 (criterion a)**：
+  - **PC 路徑射程退化**：NPC 路徑有 `if skill.SkillID == 132 { maxRange = 10 }` 特例，PC 路徑（`executeAttackSkillOnPlayer:38-40`）無此特例，導致 PvP 三重矢退化為近戰射程。Java skillmode 不顯式檢查射程，靠 `cha.onAction(srcpc)` 進入 L1AttackPc 自然走弓箭典型 8~10 格射程；Go 在 dispatch 層 hard-block，必須明確設定。
+- **修正**：`skill_damage.go executeAttackSkillOnPlayer` 加入 132 特例對齊 NPC 路徑：
+  ```go
+  maxRange := int32(skill.Ranged)
+  // 132 TRIPLE_ARROW：Java skillmode 透過 cha.onAction(srcpc) 走 L1AttackPc 弓箭射程
+  // （典型 8~10 格），yaml ranged=-1 在 Go fallback 為 2（近戰）會讓 PvP 三重矢退化為
+  // 貼身攻擊。對齊 NPC 路徑 (skill_damage.go:390-391) 的 10 格特例。
+  if skill.SkillID == 132 {
+      maxRange = 10
+  } else if maxRange <= 0 {
+      maxRange = 2
+  }
+  ```
+- **yaml 對照**（Go `skill_list.yaml:4032-4062` vs yiwei `skills.sql:131` vs cat-fei）：
+
+| 欄位 | Go yaml | yiwei SQL | cat-fei SQL | 備註 |
+|------|---------|-----------|-------------|------|
+| name | 三重矢 | 三重矢 | 三重矢 | ✓ |
+| skill_level | 17 | 17 | 17 | ✓ |
+| mp_consume | 15 | 15 | 15 | ✓ |
+| reuse_delay | **400** | 100 | 10 | 三方漂移 |
+| target | attack | attack | attack | ✓ |
+| target_to | 3 | 3 | 3 | ✓ |
+| **type** | **64** | **2** | **64** | Go 跟貓飛（yiwei type=2 為錯誤資料） |
+| ranged | -1 | -1 | -1 | ✓ |
+| id | 8 | 8 | 8 | ✓ |
+| action_id | 18 | 18 | 18 | ✓ |
+| cast_gfx | 0 | 0 | 0 | ✓ |
+
+關鍵：type=64 = `L1Skills.TYPE_ATTACK`，type=2 = `TYPE_CHANGE`。TRIPLE_ARROW 是攻擊技能，cat-fei 與 Go 的 type=64 是正確值，yiwei type=2 為錯誤資料未修正。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkill -timeout 180s` PASS（14.379s，全 skill 測試無迴歸）。
+- **不寫新測試**：PvP 射程修正屬於「對齊 NPC 已有特例」的 surgical 修正，新增「測試 PvP TRIPLE_ARROW 4 格外可命中」屬「鎖死 Java 對齊行為」測試，違反停損標準。
+- **broader gap（不改）**：
+  - **Java SprTable 變身外型動作檢查**：line 27-30 `SprTable.getAttackSpeed(playerGFX, 21)==0 return` 確保變身狀態下玩家有弓箭攻擊動畫資料。Go 無 SPR table 系統，屬廣域變身動畫資料缺口。
+  - **箭矢消耗精度（1 vs 3）**：Java 每次 `cha.onAction` 進入 L1AttackPc 內部各 enchant 路徑 `removeItem(_arrow, 1L)` ×3 次 = 3 箭，Go 在 dispatch 層前置消耗 1 箭。NPC 路徑同樣只消 1 箭。屬廣域弓箭資源精度議題（影響所有弓箭技能與普通弓攻），不在 132 單體範圍。
+  - **reuse_delay 三方漂移**：Go=400ms、yiwei=100ms、cat-fei=10ms 三方均不一致，Go 既不跟貓飛也不跟 yiwei，屬廣域 SQL 漂移議題。
+  - **NPC 端攻擊倒序循環差異**：Java NPC start `for (i=3; i>0; i--) npc.attackTarget(cha)` 倒序，Go NPC 路徑由 SkillSystem 處理而非 NpcAi——屬廣域 NPC 技能 system routing 議題。
+  - **type=2 vs type=64**：Go 已採用 cat-fei 正確值 64，無需修。本項列舉純為記錄 yiwei SQL 偏離。
+  - **S_UseAttackSkill 額外欄位**：Java sendGrfx 對 target='attack' + area=0 走 `S_UseAttackSkill(player, targetid, _gfxid, _targetX, _targetY, _actid, _dmg)`；Go isPhysicalSkill 路徑改送 BuildAttackPacket。packet 序列化細節差異屬廣域 packet schema 議題。
+
 ## 世界樹的呼喚（TELEPORT_TO_MATHER / 131）— 補齊兩項視覺特效封包對齊 Java
 
 - **Java 對照**：

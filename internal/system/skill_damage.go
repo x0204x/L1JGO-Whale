@@ -36,7 +36,12 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 	}
 
 	maxRange := int32(skill.Ranged)
-	if maxRange <= 0 {
+	// 132 TRIPLE_ARROW：Java skillmode 透過 `cha.onAction(srcpc)` 走 L1AttackPc 弓箭射程
+	// （典型 8~10 格），yaml `ranged=-1` 在 Go fallback 為 2（近戰）會讓 PvP 三重矢退化為
+	// 貼身攻擊。對齊 NPC 路徑 (skill_damage.go:390-391) 的 10 格特例。
+	if skill.SkillID == 132 {
+		maxRange = 10
+	} else if maxRange <= 0 {
 		maxRange = 2
 	}
 	if chebyshevDist(player.X, player.Y, target.X, target.Y) > maxRange+2 {
