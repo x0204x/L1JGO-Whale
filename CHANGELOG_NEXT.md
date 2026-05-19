@@ -1,5 +1,20 @@
 ## 技能
 
+## 迴避提升（DRESS_EVASION / 111）— 純審計無代碼變更
+
+- 純審計 `111 DRESS_EVASION`：Go 完整對齊 Java `skillmode/DRESS_EVASION.java` 與 `L1PcInstance.java:3357-3403 getEr()` 套用 +18 + UPDATE_ER 雙路徑通知。無 REPEATEDSKILLS 群組成員（Java 10 個群組均不含 111）。
+- **核心行為已對齊**：
+  - **buff 套用**：`buffs.lua:97 [111] = { dodge = 18 }` 對齊 yiwei `ConfigOtherSet2.DRESS_EVASION=18`。Java getEr() line 3384-3387 `if (hasSkillEffect(DRESS_EVASION)) er += 18`。
+  - **cast 端 UPDATE_ER**：`skill_buff.go:242-243` `applyBuffEffect` 後對 `skill.SkillID == 111 && DeltaDodge > 0` 條件送 `SendUpdateER(target.Dodge)` 對齊 Java skillmode `start()` line 14 `pc.sendPackets(new S_PacketBox(UPDATE_ER, pc.getEr()))`。
+  - **stop 端 UPDATE_ER**：`skill_buff.go:521-522 revertBuffStats` 對 `buff.SkillID == 111 && DeltaDodge > 0` 條件送 `SendUpdateER(target.Dodge)` 對齊 Java skillmode `stop()` line 31 `pc.sendPackets(new S_PacketBox(UPDATE_ER, pc.getEr()))`。
+  - **NON_CANCELLABLE**：`buffs.lua:255 [111] = true` 對齊 Java `L1SkillMode.java:37 isNotCancelable` 含 111。
+  - **counterMagicExempt**：`skill_buff.go:405 111: true` 對齊 Java `L1SkillUse.java:148 EXCEPT_COUNTER_MAGIC` 含 111。
+  - **REPEATEDSKILLS**：Java 10 個群組均不含 111，Go 端 buffs.lua `[111]` 不設 exclusions——正確對齊（與 109/110 不同，111 無 PHYSICAL 對應前置 buff 互斥）。
+- **broader gap（不改，承襲 2026-05-18 audit）**：
+  - **動態 getEr() vs 靜態 target.Dodge**：Java getEr() 為動態計算 `class/level bonus + (dex>=8 ? (dex-8)/2+4 : 3) + originalEr + (DRESS_EVASION ? 18 : 0) + (SOLID_CARRIAGE ? 15 : 0) + (STRIKER_GALE ? return 0 短路 : 0) + (AQUA_PROTECTER ? 5 : 0)`，傳給客戶端是「總 ER 值」。Go `target.Dodge` 為靜態累加值（僅 buff `dodge=N` 加總），客戶端收到「累加 buff 值」而非「總 ER」。實際 UI 顯示數值與 Java 不一致（例：Knight L50 DEX12 持 DRESS_EVASION 時 Java 顯示 ER=34，Go 顯示 18）。屬廣域 ER 系統計算架構缺口，影響：(1) 等級/職業 ER 加成（getLevel()/4 等）、(2) DEX→ER 加成（(dex-8)/2+4）、(3) originalEr 其他來源、(4) STRIKER_GALE 0 短路（174 cast 時 Go 已單獨補 `SendUpdateER(0)`，但 111 cast 時若 174 已啟動仍送 target.Dodge）、(5) AQUA_PROTECTER +5。單一技能 audit 無法完整修，與 110 DEX→AC 缺口同類列 out-of-scope。
+- **STRIKER_GALE 短路反向缺口**：Java getEr() 對 STRIKER_GALE(174) 啟動者直接 `return 0` short-circuit。Go 在 174 cast/stop/expire 三點均單獨補 `SendUpdateER(0/Dodge)`。但若 player 先持 174 再 cast 111，Go 在 111 cast 路徑會送 `target.Dodge`（內含 +18）而非 Java 預期的 0。屬上述廣域 ER 計算缺口的子症狀，依「不可偷換範圍」維持 out-of-scope（待 ER 系統重構或 174 audit 引入 getEr-style helper 時統一處理）。
+- **不寫新測試**：純審計，Go 已對齊主流程；既有 `TestSkillElementalBuff*`/`TestSkillDressEvasion*`（若有）覆蓋 dodge=18 套用與 UPDATE_ER 觸發。依停損標準避免「Go 已對 + 防回歸」測試。
+
 ## 敏捷提升（DRESS_DEXTERITY / 110）— 補齊 REPEATEDSKILLS[4] 26↔110 互斥
 
 - 對齊 Java `L1SkillUse.java:1750` `REPEATEDSKILLS[4] = { PHYSICAL_ENCHANT_DEX, DRESS_DEXTERITY }`。與 109 audit 同源 Java mutex pattern：原 buffs.lua `[26]`/`[110]` 均無 exclusions，導致 PHYSICAL_ENCHANT_DEX(26)+DRESS_DEXTERITY(110) 同時生效 → DEX 加成 +5+3=+8（Java 上限 +5 二擇一）。
