@@ -88,6 +88,14 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 		s.applyDragonKnightWeaknessFromMelee(attacker, target.CharID)
 	}
 
+	// 精準目標（skill 113）增傷（Java: L1AttackPc.java:1509-1511 + 1580-1584）：
+	//   line 1509: `dmg *= ConfigSkill.STRIKER_DMG (1.2)`
+	//   line 1580: `dmg *= (attackerLv / 15) / 100 + 1.01D`
+	// 兩段同條件 `_targetPc.hasSkillEffect(TRUE_TARGET)`，分散在 calcPcDamage 但都在主要減免（line 1590 ArmorR 等）前。
+	if damage > 0 && target.HasBuff(113) {
+		damage = int32(float64(damage) * 1.2)
+		damage = int32(float64(damage) * (float64(attacker.Level)/1500.0 + 1.01))
+	}
 	// 破壞盔甲傷害倍率（Java: L1AttackPc.java:1516-1518 — `_targetPc.hasSkillEffect(ARMOR_BREAK) && isShortDistance()`
 	// 才套用 ConfigSkill.ARMOR_BREAK_DMG(1.58)；`isShortDistance()` 等價於 `_weaponType != 20 && _weaponType != 62`
 	// 即排除 bow(20) 與 claw(62)）。
@@ -300,6 +308,14 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 		damage = 0
 	}
 	damage = strikerGaleRangedDamage(target, damage)
+	// 精準目標（skill 113）增傷（Java: L1AttackPc.java:1509-1511 + 1580-1584）：
+	// calcPcDamage 涵蓋近戰與遠程，兩段同條件 _targetPc.hasSkillEffect(TRUE_TARGET)。
+	//   line 1509: dmg *= ConfigSkill.STRIKER_DMG (1.2)
+	//   line 1580: dmg *= (attackerLv / 15) / 100 + 1.01
+	if damage > 0 && target.HasBuff(113) {
+		damage = int32(float64(damage) * 1.2)
+		damage = int32(float64(damage) * (float64(attacker.Level)/1500.0 + 1.01))
+	}
 	// 黑妖燃燒鬥志（102）：Java L1AttackPc.BuffDmgUp 在 calcPcDamage 涵蓋近戰與遠程，
 	// 弓矢攻擊命中時 15% 機率 1.5x 傷害；DOUBLE_BREAK 由 doubleBreakChance("bow")=0 自然排除。
 	damage = darkElfPhysicalDamage(attacker, damage, "bow")

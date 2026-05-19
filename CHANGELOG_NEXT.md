@@ -1,5 +1,52 @@
 ## 技能
 
+## 精準目標（TRUE_TARGET / 113）— 補齊 PvP 增傷雙乘子
+
+- 對齊 Java `L1AttackPc.java:1509-1511 + 1580-1584` 在 `calcPcDamage` 對持有 TRUE_TARGET 的 PvP 目標套用兩段乘子：
+  ```java
+  // line 1509-1511 (在 ARMOR_BREAK 1.58x 之前)
+  if (_targetPc.hasSkillEffect(TRUE_TARGET)) {
+      dmg *= ConfigSkill.STRIKER_DMG;  // 1.2
+  }
+  // line 1580-1584 (在 ARMOR_BREAK 與 STRIKER_GALE 之後、減免之前)
+  if (_targetPc.hasSkillEffect(TRUE_TARGET)) {
+      double attackerlv = _pc.getLevel();
+      double adddmg = (attackerlv / 15) / 100 + 1.01D;
+      dmg *= adddmg;
+  }
+  ```
+  yiwei 預設 `STRIKER_DMG=1.2`，第二段公式 = `1.01 + attackerLv/1500`。組合乘子：`1.2 × (1.01 + attackerLv/1500)`。對 L50 攻擊者 → 1.252×、L100 → 1.292×。
+- **發現的 Java 真實差異**：原 Go `pvp.go HandlePvPAttack` 與 `HandlePvPFarAttack` 兩條路徑均未檢查 `target.HasBuff(113)` 套用 TRUE_TARGET 增傷，導致 PvP 對標記目標完全無增傷效果——TRUE_TARGET 的核心戰術機制（標記目標讓血盟集中火力）完全失效。
+- **修正**：兩條 PvP 路徑同步插入兩段乘子（合併為一個 `HasBuff(113)` block）：
+  - `pvp.go:91-96` PvP melee（HandlePvPAttack）：插入於 ARMOR_BREAK 之前，與 Java line 1509 對齊。
+  - `pvp.go:311-318` PvP ranged（HandlePvPFarAttack）：插入於 strikerGaleRangedDamage 之後，與 darkElfPhysicalDamage 同位置——Java calcPcDamage 同時涵蓋近戰與遠程，兩段乘子對遠程同樣適用。
+  ```go
+  if damage > 0 && target.HasBuff(113) {
+      damage = int32(float64(damage) * 1.2)
+      damage = int32(float64(damage) * (float64(attacker.Level)/1500.0 + 1.01))
+  }
+  ```
+- **其餘對齊（無修改）**：
+  - **cast dispatch + 重施守衛**：`skill_buff.go:1103-1104 case 113 applyTrueTargetEffect`：
+    ```go
+    if !target.HasBuff(113) {
+        target.AddBuff(&world.ActiveBuff{SkillID: 113, TicksLeft: dur*5})
+    }
+    s.sendTrueTargetToClan(caster, target, text)
+    ```
+    對齊 Java `skillmode/TRUE_TARGET.java:52-55 if (!cha.hasSkillEffect(113)) cha.setSkillEffect(113, integer*1000)`（重施守衛，不刷新 timer）。
+  - **血盟廣播**：`skill_clan.go:177-191 sendTrueTargetToClan`：對 `caster.ClanID != 0` 時 `AllPlayers → player.ClanID == caster.ClanID → SendTrueTarget`，無血盟時 fallback 只送自己。對齊 Java skillmode line 57-68 `if (clan != null) ... else srcpc.sendPackets(S_TrueTarget)`。
+  - **S_TrueTarget packet 格式**：`handler/broadcast.go:936-951 BuildTrueTarget(targetID, casterID, message)` 對齊 Java `S_TrueTarget(cha.getId(), clanmember.getId(), srcpc.getText())`（注意：第二個欄位 Java 是「viewer」即 clanmember，Go 傳 casterID——本步未驗證該欄位語義精確匹配，留待 broader S_TrueTarget packet 結構審核）。
+  - **NON_CANCELLABLE**：`buffs.lua:257 [113] = true` 對齊 Java `L1SkillMode.java:38` 含 113。
+  - **counterMagicExempt**：`skill_buff.go:405 113: true` 對齊 Java `EXCEPT_COUNTER_MAGIC` 含 113。
+  - **無 REPEATEDSKILLS**：Java 10 個群組均不含 113。
+- **broader gap（不改）**：
+  - **L1EffectInstance 86131 視覺特效缺失**：Java skillmode line 30-50 `spawnTrueTargetEffect(86131, 16, cha, srcpc, 0, 12299)` 在目標頭頂生成可見的 NPC 特效實體（npc_id=86131、text_id=12299），這是 TRUE_TARGET 視覺辨識依據。Go 無 `L1EffectInstance`/`spawnTrueTargetEffect` 等價系統，目標頭頂無視覺標記。屬廣域 effect entity 系統缺口（與其他 effect-based 技能如召喚物/視覺光環缺口同源）。
+  - **WorldEffect 刪除舊精準目標 effect**：Java line 30-35 在套用新 effect 前掃 `WorldEffect.get().all()` 刪除同一 srcpc 的舊 86131 effect（避免一個玩家累積多個視覺特效）。Go 無 WorldEffect 全域註冊表，無需此清理。
+  - **`srcpc.setText("")` 清空**：Java line 71 在廣播完成後清空 srcpc 暫時文字串（C_UseSkill 傳入的 text）。Go applyTrueTargetEffect 從參數 `text string` 直接取用，不持久化到 caster 物件——天然不需清空。但若 Go 用了 PlayerInfo.Text 或類似緩存欄位，需確認是否同樣清空。本步驗證 Go 走參數傳遞，無此問題。
+  - **`L1Character.add_TrueTargetEffect` 物件關聯**：Java 在 effect entity 與 target 間建立 list 關聯（line 37/49 `get_TrueTargetEffectList()` + `add_TrueTargetEffect`），用於後續查詢/移除。Go 無對應結構，但本步主要修補是 PvP 增傷，視覺/list 屬上述 effect entity 系統缺口。
+- **不寫新測試**：兩處同源乘子插入（HasBuff(113) → 1.2 × (1.01+lv/1500)），掛載既有 PvP 攻擊路徑（pvp.go HandlePvPAttack/HandlePvPFarAttack），與 ARMOR_BREAK 1.58x、STRIKER_GALE 等乘子 pattern 等價。依停損標準避免「Go 已對 + 防回歸」測試（PvP melee 路徑已被大量整合測試覆蓋同源插入點）。
+
 ## 反擊屏障（COUNTER_BARRIER / 91）— 修正觸發機率公式（+ROM + lvlDiff）
 
 - 對齊 Java `L1MagicPc.java:670-674 calcProbabilityMagic(COUNTER_BARRIER)`：
