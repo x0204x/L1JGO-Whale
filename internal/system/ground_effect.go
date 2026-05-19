@@ -94,6 +94,28 @@ func npcCubeIgnitionImmune(npc *world.NpcInfo) bool {
 	return npc.HasDebuff(4000) || npc.HasDebuff(78) || npc.HasDebuff(50) || npc.HasDebuff(157) || npc.HasDebuff(80)
 }
 
+// playerCubeQuakeImmune 對齊 Java `L1Cube.giveEffect:110-121 case STATUS_CUBE_QUAKE_TO_ENEMY`：
+// 玩家持有 STATUS_FREEZE(4000) / ABSOLUTE_BARRIER(78) / ICE_LANCE(50) / EARTH_BIND(157)
+// 任一時，CUBE_QUAKE 對玩家的週期 paralysis 套用跳過。注意 Java QUAKE 的免疫清單
+// **不包含** FREEZING_BLIZZARD(80)，與 CUBE_IGNITION 不同。
+func playerCubeQuakeImmune(target *world.PlayerInfo) bool {
+	if target == nil {
+		return false
+	}
+	if target.AbsoluteBarrier {
+		return true
+	}
+	return target.HasBuff(4000) || target.HasBuff(50) || target.HasBuff(157)
+}
+
+// npcCubeQuakeImmune 對齊 Java `L1Cube.giveEffect:110-121`：NPC 持有對應 status 時跳過。
+func npcCubeQuakeImmune(npc *world.NpcInfo) bool {
+	if npc == nil {
+		return false
+	}
+	return npc.HasDebuff(4000) || npc.HasDebuff(78) || npc.HasDebuff(50) || npc.HasDebuff(157)
+}
+
 func (s *GroundEffectSystem) applyCubePulse(effect *world.GroundEffect) {
 	nearby := s.world.GetNearbyPlayersAt(effect.X, effect.Y, effect.MapID)
 	for _, target := range nearby {
@@ -171,7 +193,8 @@ func (s *GroundEffectSystem) applyCubeEnemy(effect *world.GroundEffect, target *
 		if s.addPlayerCubeBuff(target, cubeStatusQuakeEnemy, cubeStatusTicks, 0, 0, 0, 0) {
 			s.broadcastCubeGfx(effect, target.CharID, effect.SkillID, true, nearby)
 		}
-		if effect.DamageTickAcc%cubeEffectIntervalTicks == 0 && !target.AbsoluteBarrier {
+		// Java `L1Cube.giveEffect:110-121`：四項 immune buff 任一持有則跳過 paralysis。
+		if effect.DamageTickAcc%cubeEffectIntervalTicks == 0 && !playerCubeQuakeImmune(target) {
 			target.Paralyzed = true
 			target.AddBuff(&world.ActiveBuff{
 				SkillID:      cubeStatusQuakeEnemy,
@@ -203,7 +226,8 @@ func (s *GroundEffectSystem) applyCubeEnemyNpc(effect *world.GroundEffect, npc *
 			s.finishNpcCubeDamage(effect, npc, nearby)
 		}
 	case world.GroundEffectCubeQuake:
-		if effect.DamageTickAcc%cubeEffectIntervalTicks == 0 {
+		// Java `L1Cube.giveEffect:110-121` 對 NPC 同樣套用四項 immune buff 檢查。
+		if effect.DamageTickAcc%cubeEffectIntervalTicks == 0 && !npcCubeQuakeImmune(npc) {
 			npc.Paralyzed = true
 			npc.AddDebuff(cubeStatusQuakeEnemy, 5)
 		}

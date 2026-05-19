@@ -1,5 +1,17 @@
 ## 技能
 
+## 立方：地裂（CUBE_QUAKE / 210）
+
+- 補齊 `CUBE_QUAKE` 地面效果四項 immune buff 檢查，對齊 Java `L1Cube.giveEffect:110-121 case STATUS_CUBE_QUAKE_TO_ENEMY`：
+  1. **PC 路徑**：`ground_effect.go:174` 原本只檢查 `!target.AbsoluteBarrier`，缺 STATUS_FREEZE(4000) / ICE_LANCE(50) / EARTH_BIND(157)。新增 `playerCubeQuakeImmune(target)` helper 包含 `AbsoluteBarrier 標誌位 + HasBuff(4000/50/157)` 統一檢查。
+  2. **NPC 路徑**：`ground_effect.go:207` 原本無任何 immunity 檢查。新增 `npcCubeQuakeImmune(npc)` helper 檢查 `HasDebuff(4000/78/50/157)`。
+- 與 CUBE_IGNITION 不同：Java QUAKE 的 immune 清單**不包含** FREEZING_BLIZZARD(80)，僅四個（STATUS_FREEZE/ABSOLUTE_BARRIER/ICE_LANCE/EARTH_BIND）。helper 命名加 `Quake` 後綴與 `Ignition` 區隔。
+- **broader gap（不改）**：
+  - **PC 套用的 buff ID**：Java 對 PC `setSkillEffect(MOVE_STOP=4017, 1000)` + `S_Paralysis(TYPE_BIND, true)`；Go 用 `cubeStatusQuakeEnemy=1021` symbolic ID 並送 `BindApply`。S_Paralysis 客戶端顯示一致（BindApply=0x18），但 buff ID 不同會讓 Java 的「跨技能 hasSkillEffect(MOVE_STOP)」查詢失效。
+  - **NPC 套用的 debuff ID**：Java 對 NPC `setSkillEffect(STATUS_FREEZE=4000, 1000)` + `setParalyzed(true)`；Go 用 `cubeStatusQuakeEnemy=1021`。這會影響 Java 的 cross-cube 互動（如若 QUAKE 把 NPC 標 STATUS_FREEZE，則同時被 IGNITION 命中時會免疫傷害）；Go NPC 走獨立 1021 ID 不觸發 IGNITION 免疫。屬「Cube 跨技能互動」結構性缺口。
+  - **PC paralysis 時長**：Go `TicksLeft: 5` (1 秒) 與 Java `setSkillEffect(..., 1000)` 一致。
+- 驗證：`go build ./...` 通過、`go test ./internal/system/ -count=1` 全綠。
+
 ## 幻覺：巫妖（ILLUSION_LICH / 209）
 
 - 移除 `buffs.lua [209] = { sp = 2, exclusions = {204, 214, 219} }` 的 `exclusions` 欄位 → `[209] = { sp = 2 }`，對齊 Java `skillmode/ILLUSION_LICH.java:19-32` 只檢查 `!cha.hasSkillEffect(209)`，無 REPEATEDSKILLS 互斥群（Java 允許四個 illusion buff 並存）。同 204 修正模式。
