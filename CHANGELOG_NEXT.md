@@ -1,5 +1,35 @@
 ## 技能
 
+## 神聖犧牲（DIVINE_SACRIFICE / 119）— 純審計，無 Java 差異需修
+
+- **Java 對照**：
+  - `L1SkillId.java:435-437 DIVINE_SACRIFICE = 119`（神聖犧牲）。
+  - **無 `skillmode/DIVINE_SACRIFICE.java`**、無 `L1SkillUse` 主動施法路徑——skill 119 是純被動 mastery，學會後由 `BraveAvatarTimer` 在背景檢查並對 party 成員套用 8065 王者加護（BRAVE_AVATAR）buff。
+  - `timecontroller/skill/BraveAvatarTimer.java:25-78`：固定 5 秒 interval，迭代 `World.getAllPlayers()`：
+    - 跳過 `pc == null || pc.getNetConnection() == null`。
+    - 有 party：leader = party.getLeader()，若 `leader.isCrown() && leader.isSkillMastery(119) && distance <= 16`：
+      - 若 `party.getNumOfMembers() >= 2` 且 `!pc.hasSkillEffect(BRAVE_AVATAR)`：
+        - `setSkillEffect(BRAVE_AVATAR, 0)`（duration=0 永久）+ `addStr(1)+addDex(1)+addInt(1)+addMr(10)+addRegistStun(2)+addRegistSustain(2)`。
+        - 送 `S_SPMR(pc)` MR/SP 封包 + `S_OwnCharStatus2(pc)` 完整狀態 + `sendPacketsAll(new S_SkillSound(pc.id, 9009))` 廣播技能音效 + `S_PacketBox(NONE_TIME_ICON, 1, 479)` 無時限 buff icon。
+    - `else if (distance > 16) && hasSkillEffect(BRAVE_AVATAR)` → `removeNoTimerSkillEffect(BRAVE_AVATAR)`。
+    - 無 party 時：若 `hasSkillEffect(BRAVE_AVATAR)` → 移除。
+  - `L1PcInstance.java:1577-1605`：`setSkillMastery / isSkillMastery / removeSkillMastery / clearSkillMastery` 操作 `_skillList`，與一般 known spell list 等價。
+- **Go 對照**：
+  - `skill_clan.go:91-105 updateBraveAvatarAura`：對 `World.AllPlayers()` 每位玩家檢查 `shouldHaveBraveAvatar` → apply 或 remove。
+  - `skill_clan.go:107-120 shouldHaveBraveAvatar`：party != nil + `Members >= 2`、leader != nil + `ClassType == 0`（Crown）+ `playerKnowsSpell(leader, 119)`、`leader.MapID == player.MapID`、`chebyshevDist <= 16`。
+  - `skill_clan.go:122-150 applyBraveAvatar`：HasBuff(8065) skip、新增 buff with `TicksLeft=0`（永久）、`DeltaStr=1, DeltaDex=1, DeltaIntel=1, DeltaMR=10, DeltaRegistStun=2, DeltaRegistSustain=2`、apply stats、AddBuff、`SendPlayerStatus(S_STATUS)` ≈ S_OwnCharStatus2、`SendMagicStatus(SP, MR)` ＝ S_SPMR、`SendNoneTimeIcon(true, 479)` ＝ S_PacketBox icon 479、`BroadcastToPlayers(nearby, BuildSkillEffect(9009))` ＝ S_SkillSound 9009（GetNearbyPlayers 含自己 ＝ sendPacketsAll）。
+  - `skill_clan.go:152-158 removeBraveAvatar`：HasBuff 檢查 + `removeBuffAndRevert` 還原所有 stat + `SendNoneTimeIcon(false, 479)` 清除 icon。
+  - `skill.go:77-87 Update`：`braveAvatarElapsed += dt`，達 `braveAvatarInterval=5*time.Second` 即觸發 `updateBraveAvatarAura` ＝ Java 5000ms fixed-rate。
+  - 常數對照：`braveAvatarMasteryID=119`、`braveAvatarSkillID=8065` ＝ Java `BRAVE_AVATAR=8065`、`braveAvatarRange=16`、`braveAvatarInterval=5s`。
+- **yaml**：cat-fei `(119,'none',15,6,1,0,0,0,0,0,'none',0,0,0,0,0,0,0,0,0,0,0,0,64,'',19,0,0,0,0,0,0)` ＝ name='none'、mp=1、type=0、target='none'、target_to=0、id=64——純佔位 entry（無主動施法）。Go yaml 完全對齊。
+- **既有測試覆蓋**：`TestSkillClanAuraBraveAvatarAppliesAndRemovesPartyAura` 驗證 16 格內隊伍成員（dx=10, dy=0, Chebyshev=10 ≤ 16）套用全 6 項 stat delta，移動到 X=117（dx=17 > 16）後 buff 移除且 stat 完整還原。
+- **結論：純審計，無 Java 真實差異需修**。
+  - **不寫新測試**：既有測試已覆蓋核心 apply/remove/stat-revert/距離邊界。新增「Class != 0 拒絕 / mastery 未學拒絕 / party < 2 拒絕」屬「Go 本來就對 + 防回歸」類型，違反停損標準。
+- **broader gap（不改）**：
+  - **Java 「leader 失去 crown/mastery 時不移除 buff」可能是 Java bug**：Java BraveAvatarTimer 的移除分支只在 `(leader valid + distance > 16)` 或 `no party` 兩種情形觸發；若 leader 失去 Crown class 或學失技能（極罕見）、或 party 縮到 1 員，Java 保留 orphan buff。Go `shouldHaveBraveAvatar` 對所有失敗情形都觸發 `removeBraveAvatar`，比 Java 更嚴謹——屬「Go 比 Java 更正確」，**不應**為了對齊而引入 Java bug。
+  - **S_OwnCharStatus2 vs S_STATUS 封包格式差異**：Java BraveAvatarTimer 送 S_OwnCharStatus2（extended own char status）而 Go 送 S_STATUS（opcode 8）。兩者語義近似（refresh client 完整狀態），但 packet 結構/欄位可能不完全等價。屬廣域封包結構審核議題（與其他用 SendPlayerStatus 的 system 同源），不在 119 audit 範圍。
+  - **`getNetConnection() == null` 跳過邏輯**：Java 在迭代時跳過已斷線玩家。Go `AllPlayers` 是否涵蓋已斷線玩家未細查——若 Go iterator 已排除 disconnected players（透過 session lifecycle），則無 functional 差異；若包含則 BuildSkillEffect 廣播會嘗試送到無效 session（broadcast 端應已有 null guard）。屬廣域 player iteration semantics 議題。
+
 ## 援護盟友（RUN_CLAN / 118）— 修正失敗路徑也消耗 MP 對齊 Java
 
 - **Java 對照**：
