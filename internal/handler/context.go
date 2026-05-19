@@ -304,6 +304,19 @@ type DragonDoorManager interface {
 	SpawnKeeper(sess *net.Session, player *world.PlayerInfo, npcID int32)
 }
 
+// QuestWorldManager 任務副本世界管理器（MISS-P0-003）。由 system.QuestWorldSystem 實作。
+// 對應 Java WorldQuest 單例。
+type QuestWorldManager interface {
+	// Enter 建立新副本實例並讓玩家進入；回傳新建的實例，找不到副本定義回 nil。
+	Enter(player *world.PlayerInfo, dungeonID int32) *world.QuestInstance
+	// Exit 玩家退出當前所在副本；回傳是否實際從副本移出。
+	Exit(player *world.PlayerInfo) bool
+	// RemoveOnDisconnect 玩家斷線時從副本移出（若該玩家正在副本內）。
+	RemoveOnDisconnect(player *world.PlayerInfo)
+	// OnNpcDeath 副本內 NPC 死亡時觸發；用於更新 round 進度與觸發 on_round_clear。
+	OnNpcDeath(npc *world.NpcInfo)
+}
+
 // DollManager 處理魔法娃娃召喚/解散/屬性加成。由 system.DollSystem 實作。
 type DollManager interface {
 	// UseDoll 處理使用魔法娃娃物品（召喚或收回）。
@@ -460,6 +473,9 @@ type NpcServiceManager interface {
 	ConsumeItem(sess *net.Session, player *world.PlayerInfo, objectID int32, count int32) bool
 	// Refine 火神精煉分解（移除裝備 + 給予結晶體）。
 	Refine(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, crystalItemID int32, crystalCount int32)
+	// FireSmithCraft 火神合成（消耗結晶體+契約+催化材料 → 給予成品）。
+	// plusItemObjID/plusItemCount 為客戶端 SmithUI plus 槽拖入的火神之槌/淚 objID 與數量。
+	FireSmithCraft(sess *net.Session, player *world.PlayerInfo, recipe *data.FireSmithRecipe, plusItemObjID int32, plusItemCount int32)
 }
 
 // ShopCnManager 處理天寶幣商城交易邏輯。由 system.ShopCnSystem 實作。
@@ -726,6 +742,7 @@ type Deps struct {
 	MapData       *data.MapDataTable
 	Polys         *data.PolymorphTable
 	ArmorSets     *data.ArmorSetTable
+	ItemPowers    *data.ItemPowerTable // 物品強化加成（MISS-P1-005，L1ItemPower）
 	SprTable      *data.SprTable
 	WarehouseRepo *persist.WarehouseRepo
 	WALRepo       *persist.WALRepo
@@ -767,10 +784,12 @@ type Deps struct {
 	HierarchMgr   HierarchManager     // filled after HierarchSystem is created
 	HauntedHouse  HauntedHouseManager // filled after HauntedHouseSystem is created
 	DragonDoor    DragonDoorManager   // filled after DragonDoorSystem is created
+	QuestWorld    QuestWorldManager   // filled after QuestWorldSystem is created (MISS-P0-003)
 	PetMatch      PetMatchManager     // filled after PetMatchSystem is created
 	Bus           *event.Bus          // event bus for emitting game events (EntityKilled, etc.)
 	WeaponSkills  *data.WeaponSkillTable
 	FireCrystals  *data.FireCrystalTable
+	FireSmithRecipes *data.FireSmithRecipeTable
 	Resolvents    *data.ResolventTable
 	Ranking       RankingChecker // filled after RankingSystem is created
 	ItemBoxes     *data.ItemBoxTable

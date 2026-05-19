@@ -1,0 +1,86 @@
+# ============================================================================
+# 任務副本定義（MISS-P0-003）
+# ============================================================================
+#
+# Java 對照：QuestMapTable + WorldQuest + L1QuestUser + QuesttSpawnTable
+# Go 實作：data/quest_dungeon.go + world/quest_instance.go + system/quest_world.go
+#
+# 設計目標：單一宣告檔涵蓋一個副本的全部行為（資料 + 進場 + 出生 + 結束 + 獎勵 + Hook）
+#         讓未來新增副本只需要動這個檔案 + 可選 Lua hook，不動 Go 程式碼。
+#
+# 完整 schema 與每個欄位的語義詳見 docs/副本系統開發文檔.md 第 4 章。
+#
+# ----------------------------------------------------------------------------
+# Schema 概覽（單一 dungeon 條目）：
+#
+# - id: int32              # 副本任務 ID（對應 Java questid）
+#   name: string           # 中文顯示名稱
+#   map_id: int16          # 副本地圖 ID
+#   max_users: int32       # 同副本最大人數（0=不限）
+#   time_limit: int32      # 時間限制秒數（-1=不限）
+#   out_stop: bool         # 一人離開即整副本結束
+#
+#   entry:                 # 進場條件（資料驅動 DSL）
+#     min_level: int32
+#     max_level: int32     # 0=不限
+#     class_mask: int32    # 1=王族 2=騎士 4=精靈 8=法師 16=黑妖 32=龍騎 64=幻術（3.80C 無戰士，全職業=127）
+#     required_items: [{ item_id, count, consume }]
+#     required_quest_step: [{ quest_id, step }]
+#     forbidden_buffs: [int32]
+#     teleport_to: { x, y, heading }   # 進場座標（map_id 預設用副本 map_id）
+#     reject_message: int32             # 拒絕時送 S_ServerMessage(N)
+#
+#   exit:                  # 結束規則
+#     teleport_to: { x, y, map_id, heading }   # 倖存者傳送目的地
+#     cleanup_items: [int32]                   # 離場刪除的物品 ID
+#     reward_on_clear: [{ item_id, count } | { exp } | { adena }]
+#
+#   rounds:                # Round 引擎（多階段出生）
+#     - id: int32                # -1=入場即出生、>=0=後續輪
+#       trigger: enum            # on_enter | on_round_clear | on_timer | on_lua
+#       timer: int32             # 秒（trigger=on_timer 時用）
+#       spawns: [{ npc_id, count, area: [x1,y1,x2,y2] 或 fixed: [x,y], heading, group_id }]
+#
+#   hooks:                 # Lua hook（可選）
+#     on_enter: "dungeons/xxx.lua#on_enter"
+#     on_npc_death: "dungeons/xxx.lua#on_npc_death"
+#     on_last_mob_death: "dungeons/xxx.lua#on_last_mob_death"
+#     on_player_death: "dungeons/xxx.lua#on_player_death"
+#     on_time_out: "dungeons/xxx.lua#on_time_out"
+#     on_exit: "dungeons/xxx.lua#on_exit"
+#
+# ----------------------------------------------------------------------------
+
+dungeons:
+  # ----------------------------------------------------------------------------
+  # 副本框架驗證 demo（MISS-P0-003 Stage E）
+  #
+  # 目的：以最小可用副本驗證 Stage A-D 框架（Round 引擎、ShowID 隔離、NPC 生命週期）。
+  # 不對應任何 Java 副本——這是純 Go 端的「Hello World 副本」。
+  #
+  # 入場：NPC 動作 "enter_demo_dungeon"（透過 npcaction.go 路由到 QuestWorld.Enter）。
+  # 離場：NPC 動作 "exit_demo_dungeon" 或自動結束（time_limit 過期 / 玩家斷線）。
+  #
+  # 真實內容副本（火龍窟、屠龍、Chapter01R）歸 MISS-P2-015/017/019。
+  # ----------------------------------------------------------------------------
+  - id: 1001
+    name: "副本框架驗證 demo"
+    map_id: 6666
+    max_users: 4
+    time_limit: 600   # 10 分鐘上限
+    out_stop: false
+    entry:
+      min_level: 1
+      teleport_to: { x: 32700, y: 32700, heading: 4 }
+    exit:
+      teleport_to: { x: 32628, y: 32789, map_id: 4, heading: 4 }   # 失敗/結束 → 王城
+    rounds:
+      - id: -1
+        trigger: on_enter
+        spawns:
+          - { npc_id: 45005, count: 2, fixed: [32700, 32702] }  # 青蛙
+      - id: 1
+        trigger: on_round_clear
+        spawns:
+          - { npc_id: 45005, count: 1, fixed: [32700, 32704] }  # 第二波青蛙
+

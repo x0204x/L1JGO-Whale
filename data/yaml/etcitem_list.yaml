@@ -7390,7 +7390,7 @@ items:
     weight: 2000
     inv_gfx: 235
     grd_gfx: 773
-    itemdesc_id: 0
+    itemdesc_id: 166
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -7413,7 +7413,7 @@ items:
     weight: 1000
     inv_gfx: 706
     grd_gfx: 773
-    itemdesc_id: 0
+    itemdesc_id: 569
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32506,7 +32506,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4288
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32529,7 +32529,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4289
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32552,7 +32552,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4286
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32575,7 +32575,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4287
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32598,7 +32598,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4290
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32621,7 +32621,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4089
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32644,7 +32644,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4090
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32667,7 +32667,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4092
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32690,7 +32690,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4094
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32713,7 +32713,7 @@ items:
     weight: 630
     inv_gfx: 474
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4093
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32736,7 +32736,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4095
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32759,7 +32759,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4096
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32782,7 +32782,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4097
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -32805,7 +32805,7 @@ items:
     weight: 630
     inv_gfx: 551
     grd_gfx: 22
-    itemdesc_id: 0
+    itemdesc_id: 4098
     stackable: true
     max_charge_count: 0
     dmg_small: 0
@@ -45364,6 +45364,99 @@ items:
     inv_gfx: 59
     grd_gfx: 151
     itemdesc_id: 3780
+    stackable: true
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: true
+    delay_id: 0
+    delay_time: 0
+    food_volume: 0
+  # ---- 火神精煉系統材料（來源：yiwei 380 SQL etcitem 80027-80029，80030 火神之淚為本專案新增）----
+  - item_id: 80027
+    name: 火神之槌
+    item_type: material
+    use_type: none
+    material: iron
+    weight: 1000
+    inv_gfx: 5216
+    grd_gfx: 22
+    itemdesc_id: 6258
+    stackable: true
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: true
+    delay_id: 0
+    delay_time: 0
+    food_volume: 0
+  - item_id: 80028
+    name: 火神契約
+    item_type: material
+    use_type: none
+    material: paper
+    weight: 630
+    inv_gfx: 5212
+    grd_gfx: 22
+    itemdesc_id: 5212
+    stackable: true
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: true
+    delay_id: 0
+    delay_time: 0
+    food_volume: 0
+  - item_id: 80029
+    name: 火神結晶體
+    item_type: material
+    use_type: none
+    material: gemstone
+    weight: 390
+    inv_gfx: 5210
+    grd_gfx: 4439
+    itemdesc_id: 5210
+    stackable: true
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: true
+    delay_id: 0
+    delay_time: 0
+    food_volume: 0
+  - item_id: 80030
+    name: 火神之淚
+    item_type: material
+    use_type: none
+    material: gemstone
+    weight: 390
+    inv_gfx: 5214
+    grd_gfx: 22
+    itemdesc_id: 6259
     stackable: true
     max_charge_count: 0
     dmg_small: 0

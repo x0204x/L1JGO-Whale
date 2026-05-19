@@ -146,6 +146,12 @@ func HandleHypertextInputResult(sess *net.Session, r *packet.Reader, deps *Deps)
 		return
 	}
 
+	// Route to sell-house handler if S_SellHouse dialog is pending
+	if player.PendingSellHouseID > 0 {
+		HandleSellHouseAmount(sess, r, player, deps)
+		return
+	}
+
 	if deps.Polymorph == nil {
 		return
 	}

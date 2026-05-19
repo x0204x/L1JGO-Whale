@@ -35,6 +35,8 @@ func (s *fishingNpcServiceStub) ConsumeItem(_ *net.Session, _ *world.PlayerInfo,
 }
 func (s *fishingNpcServiceStub) Refine(*net.Session, *world.PlayerInfo, *world.InvItem, int32, int32) {
 }
+func (s *fishingNpcServiceStub) FireSmithCraft(*net.Session, *world.PlayerInfo, *data.FireSmithRecipe, int32, int32) {
+}
 
 type fishingItemCreateStub struct {
 	itemID int32

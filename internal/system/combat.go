@@ -666,6 +666,11 @@ func handleNpcDeath(npc *world.NpcInfo, killer *world.PlayerInfo, nearby []*worl
 	// 群體隊長死亡處理（Java: L1MobGroupInfo.removeMember）
 	handleMobGroupDeath(npc)
 
+	// 副本 NPC 死亡 → 通知 QuestWorld（追蹤 round 進度 + 觸發 on_round_clear）
+	if npc.ShowID > 0 && deps.QuestWorld != nil {
+		deps.QuestWorld.OnNpcDeath(npc)
+	}
+
 	// 設定重生計時器（ticks: delay_seconds * 5，200ms tick）
 	if npc.RespawnDelay > 0 && !npc.IsMinion {
 		npc.RespawnTimer = npc.RespawnDelay * 5

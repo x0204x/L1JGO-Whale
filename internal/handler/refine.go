@@ -23,34 +23,54 @@ import (
 func handleRefineResolve(sess *net.Session, r *packet.Reader, player *world.PlayerInfo, deps *Deps) {
 	npcObjID := r.ReadD()
 	itemObjID := r.ReadD()
-	_ = r.ReadD() // assistItemObjID（輔助道具，暫不支援）
+	assistObjID := r.ReadD()
+
+	deps.Log.Info("火神精煉/收 data=13",
+		zap.String("char", player.Name),
+		zap.Int32("npcObjID", npcObjID),
+		zap.Int32("itemObjID", itemObjID),
+		zap.Int32("assistObjID", assistObjID),
+	)
 
 	// 驗證 NPC 存在且在範圍內
 	npc := deps.World.GetNpc(npcObjID)
 	if npc == nil {
+		deps.Log.Warn("火神精煉/拒：NPC 不存在", zap.Int32("npcObjID", npcObjID))
 		return
 	}
 	dx := int32(math.Abs(float64(player.X - npc.X)))
 	dy := int32(math.Abs(float64(player.Y - npc.Y)))
 	if dx > 5 || dy > 5 {
+		deps.Log.Warn("火神精煉/拒：超出範圍", zap.Int32("dx", dx), zap.Int32("dy", dy))
 		return
 	}
 
 	// 查找玩家背包中的物品
 	item := player.Inv.FindByObjectID(itemObjID)
-	if item == nil || item.Equipped {
+	if item == nil {
+		deps.Log.Warn("火神精煉/拒：背包查無此物品", zap.Int32("itemObjID", itemObjID))
+		sendGlobalChat(sess, 9, "\\f3無法精煉該物品。")
+		return
+	}
+	if item.Equipped {
+		deps.Log.Warn("火神精煉/拒：物品已裝備", zap.Int32("itemID", item.ItemID))
 		sendGlobalChat(sess, 9, "\\f3無法精煉該物品。")
 		return
 	}
 
 	// 火結晶表未載入
 	if deps.FireCrystals == nil {
+		deps.Log.Warn("火神精煉/拒：FireCrystals 未載入")
 		sendGlobalChat(sess, 9, "\\f3精煉系統尚未啟用。")
 		return
 	}
 
 	itemInfo := deps.Items.Get(item.ItemID)
 	if itemInfo == nil || itemInfo.Category == data.CategoryEtcItem {
+		deps.Log.Warn("火神精煉/拒：物品類別不可精煉",
+			zap.Int32("itemID", item.ItemID),
+			zap.Any("category", itemInfo),
+		)
 		sendGlobalChat(sess, 9, "\\f3此物品無法精煉。")
 		return
 	}
@@ -72,12 +92,22 @@ func handleRefineResolve(sess *net.Session, r *packet.Reader, player *world.Play
 
 	entry := deps.FireCrystals.Get(lookupID)
 	if entry == nil {
+		deps.Log.Warn("火神精煉/拒：fire_crystal_list 無對應條目",
+			zap.Int32("itemID", item.ItemID),
+			zap.Int32("lookupID", lookupID),
+			zap.Int32("bless", int32(item.Bless)),
+		)
 		sendGlobalChat(sess, 9, "\\f3此物品無法精煉。")
 		return
 	}
 
 	crystalCount := entry.GetCrystalCount(int(item.EnchantLvl), int(itemInfo.Category), itemInfo.SafeEnchant)
 	if crystalCount <= 0 {
+		deps.Log.Warn("火神精煉/拒：crystalCount<=0（強化等級不足）",
+			zap.Int32("itemID", item.ItemID),
+			zap.Int8("enchant", item.EnchantLvl),
+			zap.Int("safeEnchant", itemInfo.SafeEnchant),
+		)
 		sendGlobalChat(sess, 9, "\\f3此物品無法精煉。")
 		return
 	}
@@ -92,12 +122,27 @@ func handleRefineResolve(sess *net.Session, r *packet.Reader, player *world.Play
 }
 
 // handleRefineTransform 處理火神合成（C_PledgeContent type=14）— 材料合成裝備。
-// Java 815: C_PledgeContent case 14
-// 封包格式：[D npcObjID][H actionID][D assistItemObjID]
+// 3.80C 客戶端反編譯（RVA 0x29774D，mode 2 分支）封包格式 "ccdhdd"：
+//   [D npcObjID]      // SmithUI+0x1cc
+//   [H actionID]      // SmithUI+0x1dc，來源為客戶端 MakeInfo.tbl 第 1 欄
+//   [D plusItemObjID] // SmithUI+0x1e4，玩家拖入的火神之槌/火神之淚 objID
+//   [D plusItemCount] // SmithUI+0x20c，玩家拖入的火神之槌/火神之淚數量
+//
+// actionID 由客戶端 MakeInfo.tbl 定義；server 端對齊用 firesmith_recipe_list.yaml 查表。
+// plus 數量直接用於成功率加成（每個 hammer +PlusHammerBonus%）並全部消耗。
 func handleRefineTransform(sess *net.Session, r *packet.Reader, player *world.PlayerInfo, deps *Deps) {
 	npcObjID := r.ReadD()
 	actionID := r.ReadH()
-	_ = r.ReadD() // assistItemObjID（輔助道具，暫不支援）
+	plusItemObjID := r.ReadD()
+	plusItemCount := r.ReadD()
+
+	deps.Log.Info("火神合成/收 data=14",
+		zap.String("char", player.Name),
+		zap.Int32("npcObjID", npcObjID),
+		zap.Uint16("actionID", actionID),
+		zap.Int32("plusItemObjID", plusItemObjID),
+		zap.Int32("plusItemCount", plusItemCount),
+	)
 
 	// 驗證 NPC 存在且在範圍內
 	npc := deps.World.GetNpc(npcObjID)
@@ -110,29 +155,14 @@ func handleRefineTransform(sess *net.Session, r *packet.Reader, player *world.Pl
 		return
 	}
 
-	if deps.ItemMaking == nil || deps.Craft == nil {
+	if deps.FireSmithRecipes == nil {
 		sendGlobalChat(sess, 9, "\\f3製作系統尚未啟用。")
 		return
 	}
 
-	// 優先使用 handleCraftSelect 已儲存的配方 key（ItemBlend 確認走此路徑）
-	var recipe *data.CraftRecipe
-	if player.PendingCraftKey != "" && player.PendingCraftNpcID == npc.NpcID {
-		recipe = deps.ItemMaking.GetByNpcAction(player.PendingCraftNpcID, player.PendingCraftKey)
-		player.PendingCraftKey = ""
-		player.PendingCraftNpcID = 0
-		player.CraftTradeTick = 0
-	}
-
-	// 回退：嘗試透過索引查找配方（type 49 合成 UI 發送數字索引）
+	recipe := deps.FireSmithRecipes.Get(int32(actionID))
 	if recipe == nil {
-		recipe = deps.ItemMaking.GetByNpcIndex(npc.NpcID, int(actionID))
-	}
-	if recipe == nil {
-		recipe = deps.ItemMaking.GetByNpcAction(npc.NpcID, fmt.Sprintf("%d", actionID))
-	}
-	if recipe == nil {
-		deps.Log.Debug("火神合成：找不到配方",
+		deps.Log.Warn("火神合成/拒：找不到對應配方",
 			zap.Int32("npcID", npc.NpcID),
 			zap.Uint16("actionID", actionID),
 		)
@@ -140,6 +170,5 @@ func handleRefineTransform(sess *net.Session, r *packet.Reader, player *world.Pl
 		return
 	}
 
-	// 委派給 CraftSystem 執行完整的材料驗證 + 消耗 + 製作流程
-	deps.Craft.ExecuteCraft(sess, player, npc, recipe, 1)
+	deps.NpcSvc.FireSmithCraft(sess, player, recipe, plusItemObjID, plusItemCount)
 }

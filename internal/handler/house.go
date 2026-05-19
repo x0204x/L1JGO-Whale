@@ -2,10 +2,15 @@ package handler
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/net"
+	"github.com/l1jgo/server/internal/net/packet"
+	"github.com/l1jgo/server/internal/persist"
 	"github.com/l1jgo/server/internal/world"
 	"go.uber.org/zap"
 )
@@ -85,10 +90,195 @@ func handleHousekeeperAction(sess *net.Session, player *world.PlayerInfo, npcObj
 		return handleHouseUpgrade(sess, player, npcObjID, npcID, deps)
 	case "hall":
 		return handleHouseHall(sess, player, npcID, deps)
+	case "agsell":
+		return handleHouseSell(sess, player, npcObjID, npcID, deps)
 	default:
-		// "agsell" 售屋動作由 S_SellHouse 處理（與拍賣系統整合，暫不實作）
 		return false
 	}
+}
+
+// handleHouseSell 處理「出售盟屋」動作（Java: C_NPCAction.sellHouse）。
+// 條件鏈：玩家在血盟 → 血盟擁有此小屋 → npcID 即此小屋管家 → 君主職業 → 盟主 → 尚未掛上拍賣。
+// 通過後送 S_SellHouse；已上架時送 "agonsale" hypertext（Java 回傳的 htmlid）。
+func handleHouseSell(sess *net.Session, player *world.PlayerInfo, npcObjID int32, npcID int32, deps *Deps) bool {
+	if player.ClanID == 0 {
+		return true
+	}
+	clan := deps.World.Clans.GetClan(player.ClanID)
+	if clan == nil || clan.HasHouse == 0 {
+		return true
+	}
+	houseLoc := deps.Houses.GetByKeeper(npcID)
+	if houseLoc == nil || houseLoc.HouseID != clan.HasHouse {
+		// Java: keeperId != npc → return "" 不送任何封包
+		return true
+	}
+	// 君主職業（ClassType 0 = Prince/Crown）
+	if player.ClassType != 0 {
+		SendServerMessage(sess, 518) // "只有血盟的君主才可以使用此指令"
+		return true
+	}
+	// 必須是盟主
+	if player.CharID != clan.LeaderID {
+		SendServerMessage(sess, 518)
+		return true
+	}
+	// 已上架（auction entry 存在）→ 顯示 "agonsale" hypertext
+	if deps.Auction != nil && deps.Auction.GetEntry(clan.HasHouse) != nil {
+		sendHypertext(sess, npcObjID, "agonsale")
+		return true
+	}
+
+	// 通過所有檢查 → 送 S_SellHouse 開啟價格輸入框並記錄 pending
+	sendSellHouse(sess, npcObjID, clan.HasHouse)
+	player.PendingSellHouseID = clan.HasHouse
+	return true
+}
+
+// HandleSellHouseAmount 處理 C_Amount 回覆的 "agsell {houseId}"（Java: C_Amount.java line 173）。
+// 解析價格 + houseId → 建立 AuctionEntry → 委派 AuctionSystem.CreateSale。
+// 由 HandleHypertextInputResult 在 player.PendingSellHouseID > 0 時轉路進入。
+// 封包格式：[D npcObjID][D amount][C unknown][S actionStr]（與 HandleAuctionBid 相同）。
+func HandleSellHouseAmount(sess *net.Session, r *packet.Reader, player *world.PlayerInfo, deps *Deps) {
+	pendingID := player.PendingSellHouseID
+	player.PendingSellHouseID = 0
+
+	_ = r.ReadD()         // npcObjID
+	amount := r.ReadD()   // 售價
+	_ = r.ReadC()         // unknown
+	actionStr := r.ReadS()
+
+	var houseID int32
+	if strings.HasPrefix(actionStr, "agsell ") {
+		if id, err := strconv.ParseInt(strings.TrimPrefix(actionStr, "agsell "), 10, 32); err == nil {
+			houseID = int32(id)
+		}
+	}
+	if houseID == 0 {
+		houseID = pendingID
+	}
+	if houseID == 0 || deps.Auction == nil {
+		return
+	}
+	// 價格保險：Java S_SellHouse 上下限 100,000 ~ 2,000,000,000；client 通常會 clamp，
+	// server 端再次驗證避免異常封包。
+	if amount < 100_000 || amount > 2_000_000_000 {
+		return
+	}
+	// 競態保護：在 send S_SellHouse 與 C_Amount 之間，可能已被別處上架。
+	if deps.Auction.GetEntry(houseID) != nil {
+		return
+	}
+	// 重新驗證玩家仍是該小屋的盟主（避免在輸入價格期間血盟所有權變動）。
+	if player.ClanID == 0 {
+		return
+	}
+	clan := deps.World.Clans.GetClan(player.ClanID)
+	if clan == nil || clan.HasHouse != houseID || clan.LeaderID != player.CharID || player.ClassType != 0 {
+		return
+	}
+
+	houseName, houseArea, location := lookupHouseAuctionFields(houseID, deps)
+	entry := &persist.AuctionEntry{
+		HouseID:    houseID,
+		HouseName:  houseName,
+		HouseArea:  houseArea,
+		Deadline:   sellHouseDeadline(time.Now()),
+		Price:      int64(amount),
+		Location:   location,
+		OldOwner:   player.Name,
+		OldOwnerID: player.CharID,
+		Bidder:     "",
+		BidderID:   0,
+	}
+	if !deps.Auction.CreateSale(entry) {
+		return
+	}
+	deps.Log.Info("上架售屋",
+		zap.String("player", player.Name),
+		zap.Int32("houseID", houseID),
+		zap.Int32("price", amount))
+}
+
+// sellHouseDeadline 回傳售屋拍賣結束時間（Java: now + 5 days, minute=0, second=0）。
+func sellHouseDeadline(now time.Time) time.Time {
+	t := now.Add(5 * 24 * time.Hour)
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, t.Location())
+}
+
+// lookupHouseAuctionFields 從 HouseRepo 取得拍賣需要的小屋名稱 / 面積 / 城鎮位置。
+// HouseRepo 不可用時退而求其次：用 data.HouseTable 計算面積、依 houseID 區段推導城鎮。
+func lookupHouseAuctionFields(houseID int32, deps *Deps) (name string, area int32, location string) {
+	if deps.HouseRepo != nil {
+		states, err := deps.HouseRepo.LoadAll(context.Background())
+		if err == nil {
+			for _, s := range states {
+				if s.HouseID == houseID {
+					name = s.HouseName
+					area = s.HouseArea
+					location = s.Location
+					break
+				}
+			}
+		}
+	}
+	if name == "" {
+		name = "血盟小屋"
+	}
+	if location == "" {
+		location = houseTownName(houseID)
+	}
+	if area == 0 && deps.Houses != nil {
+		if h := deps.Houses.Get(houseID); h != nil {
+			area = houseArea(h)
+		}
+	}
+	return name, area, location
+}
+
+// houseTownName 依 houseID 區段回傳城鎮名（與 handleHouseTeleport 區段一致）。
+func houseTownName(houseID int32) string {
+	switch {
+	case houseID >= 262145 && houseID <= 262189:
+		return "奇岩"
+	case houseID >= 327681 && houseID <= 327691:
+		return "海音"
+	case houseID >= 458753 && houseID <= 458819:
+		return "亞丁"
+	case houseID >= 524289 && houseID <= 524294:
+		return "古魯丁"
+	}
+	return ""
+}
+
+// houseArea 由 HouseLocation 主+副範圍計算面積。
+func houseArea(h *data.HouseLocation) int32 {
+	var area int32
+	if h.X1 != 0 {
+		area += (h.X2 - h.X1 + 1) * (h.Y2 - h.Y1 + 1)
+	}
+	if h.X3 != 0 {
+		area += (h.X4 - h.X3 + 1) * (h.Y4 - h.Y3 + 1)
+	}
+	if area < 0 {
+		area = 0
+	}
+	return area
+}
+
+// sendSellHouse 發送 S_SellHouse（opcode 136 = S_OPCODE_INPUTAMOUNT）。
+// Java: S_SellHouse.java — 售屋價格輸入框，範圍 100,000 ~ 2,000,000,000。
+func sendSellHouse(sess *net.Session, npcObjID int32, houseID int32) {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_INPUTAMOUNT)
+	w.WriteD(npcObjID)
+	w.WriteD(0)          // unknown（Java 寫 0）
+	w.WriteD(100_000)    // 預設值 / 最低出價
+	w.WriteD(100_000)    // 當前顯示值
+	w.WriteD(2_000_000_000) // 最高值
+	w.WriteH(0)
+	w.WriteS("agsell")
+	w.WriteS(fmt.Sprintf("agsell %d", houseID))
+	sess.Send(w.Bytes())
 }
 
 // handleHouseName 處理「改名」動作。

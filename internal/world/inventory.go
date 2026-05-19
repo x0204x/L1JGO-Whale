@@ -210,13 +210,14 @@ func MaxWeight(str, con int16) int32 {
 	return int32(150 * math.Floor(0.6*float64(str)+0.4*float64(con)+1))
 }
 
-// PlayerMaxWeight 計算角色的有效最大負重（含 buff 加成）。
-// Java: L1PcInstance.getMaxWeight() — weightReductionByMagic = 180（buff 14 / 218）
+// PlayerMaxWeight 計算角色的有效最大負重（含 buff 加成與娃娃加成）。
+// Java: L1PcInstance.getMaxWeight() — weightReductionByMagic = 180（buff 14 / 218）+ Doll_Weight 系列。
 func PlayerMaxWeight(p *PlayerInfo) int32 {
 	base := MaxWeight(p.Str, p.Con)
 	if p.HasBuff(14) || p.HasBuff(218) {
 		base += 180
 	}
+	base += p.WeightBonus
 	return base
 }
 

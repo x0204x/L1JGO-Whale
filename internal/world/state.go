@@ -124,6 +124,12 @@ type PlayerInfo struct {
 	AttackView       bool  // 浮動傷害數字開關（Java: is_attack_view，預設 true，聊天輸入 dmg 切換）
 	WaterOff         bool  // GM 切換：true 時即使在 underwater 地圖也不送水的旗標給客戶端
 
+	// ShowID 副本實例隔離標籤（對應 Java L1PcInstance.set_showId）。
+	// 0 = 主世界（預設）；>=100 = 副本實例 ID（QuestWorldSystem 分配，從 100 起遞增）。
+	// AOI 過濾用：相同 ShowID 才互相可見（同 mapID 多副本實例隔離）。
+	// 注意 Java 用 -1 作 sentinel，Go 改用 0 因 Go 零初值=0、副本實例 ID 永遠 >= 100，0/-1 等價無歧義。
+	ShowID int32
+
 	LastMoveTime int64 // time.Now().UnixNano() of last accepted move (0 = no throttle)
 
 	TempCharGfx int32 // 0=use ClassID; >0=current polymorph GFX sprite
@@ -138,6 +144,10 @@ type PlayerInfo struct {
 	Inv          *Inventory // in-memory inventory
 	Equip        Equipment  // equipped items (value type, zero-initialized = all slots empty)
 	EquipBonuses EquipStats // cached equipment stat contributions (for diff on equip/unequip)
+
+	// 額外負重加成（MISS-P1-006）— 來自魔法娃娃等系統，獨立於 buff 14/218。
+	// 對應 Java Doll_Weight 系列。PlayerMaxWeight 會疊加此值。
+	WeightBonus int32
 
 	// Cached current weapon visual byte (for S_PUT_OBJECT / S_CHANGE_DESC)
 	CurrentWeapon byte
@@ -247,6 +257,9 @@ type PlayerInfo struct {
 	CnShopNpcID           int32 // 最近瀏覽的寄賣商城 NPC ID（購買時用於查詢商品）
 	PowerItemNpcID        int32 // 最近瀏覽的強化物品商店 NPC ID
 	PendingAuctionHouseID int32 // 拍賣出價待處理的小屋 ID（0=無）
+
+	// 出售小屋：S_SellHouse 發送後的待處理狀態（Java agsell 流程）
+	PendingSellHouseID int32 // 售屋等待 C_Amount 回覆的小屋 ID（0=無）
 
 	// 旅館租房：記錄 S_HowManyKey 發送後的待處理狀態
 	PendingInnNpcObjID int32 // 旅館 NPC 物件 ID（0=無待處理）
@@ -737,6 +750,43 @@ func (s *State) GetNearbyPlayers(x, y int32, mapID int16, excludeSession uint64)
 	return result
 }
 
+// GetNearbyPlayersInShow 同 GetNearbyPlayers，但額外用 ShowID 過濾。
+// 用於副本系統（MISS-P0-003）：相同 ShowID 才互相可見。
+// viewerShowID=0 代表主世界視角，只看得到 ShowID=0 的玩家；副本內視角同理只看自己副本。
+func (s *State) GetNearbyPlayersInShow(x, y int32, mapID int16, excludeSession uint64, viewerShowID int32) []*PlayerInfo {
+	s.aoiBuf = s.aoi.GetNearbyInto(x, y, mapID, s.aoiBuf)
+	nearbyIDs := s.aoiBuf
+	result := make([]*PlayerInfo, 0, len(nearbyIDs))
+	for _, sid := range nearbyIDs {
+		if sid == excludeSession {
+			continue
+		}
+		p := s.bySession[sid]
+		if p == nil {
+			continue
+		}
+		if p.ShowID != viewerShowID {
+			continue
+		}
+		dx := p.X - x
+		dy := p.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= 20 {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
 // ChangePlayerHeading 更新玩家朝向。
 func (s *State) ChangePlayerHeading(player *PlayerInfo, heading int16) {
 	player.Heading = heading
@@ -778,6 +828,40 @@ func (s *State) GetNearbyNpcs(x, y int32, mapID int16) []*NpcInfo {
 	for _, nid := range nearbyIDs {
 		npc := s.npcs[nid]
 		if npc == nil || npc.Dead {
+			continue
+		}
+		dx := npc.X - x
+		dy := npc.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= 20 {
+			result = append(result, npc)
+		}
+	}
+	return result
+}
+
+// GetNearbyNpcsInShow 同 GetNearbyNpcs，但額外用 ShowID 過濾。
+// 用於副本系統（MISS-P0-003）：相同 ShowID 才互相可見。
+// viewerShowID=0 代表主世界視角，只看得到 ShowID=0 的 NPC；副本內視角同理只看自己副本的 NPC。
+func (s *State) GetNearbyNpcsInShow(x, y int32, mapID int16, viewerShowID int32) []*NpcInfo {
+	s.npcAoiBuf = s.npcAoi.GetNearbyInto(x, y, mapID, s.npcAoiBuf)
+	nearbyIDs := s.npcAoiBuf
+	result := make([]*NpcInfo, 0, len(nearbyIDs))
+	for _, nid := range nearbyIDs {
+		npc := s.npcs[nid]
+		if npc == nil || npc.Dead {
+			continue
+		}
+		if npc.ShowID != viewerShowID {
 			continue
 		}
 		dx := npc.X - x

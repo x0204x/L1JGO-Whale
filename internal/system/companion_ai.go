@@ -322,6 +322,9 @@ func (s *CompanionAISystem) tickDolls() {
 			doll.MoveTimer--
 		}
 
+		// Java DollHprTimer / DollMprTimer — 週期性回復主人 HP / MP。
+		s.tickDollRegen(doll, master)
+
 		// 跨地圖 → 瞬移到主人身邊
 		if doll.MapID != master.MapID {
 			s.dollTeleportToMaster(doll, master)
@@ -364,6 +367,41 @@ func (s *CompanionAISystem) tickDolls() {
 		nearby := ws.GetNearbyPlayersAt(doll.X, doll.Y, doll.MapID)
 		for _, viewer := range nearby {
 			sendCompanionRemove(viewer.Session, doll.ID)
+		}
+	}
+}
+
+// tickDollRegen 處理魔法娃娃週期性回復（hp_regen_tick / mp_regen_tick）。
+// 對應 Java DollHprTimer / DollMprTimer：每 Interval ticks 觸發一次，
+// 回復 Amount 點到主人的 HP / MP，並透過 S_HitPoint / S_ManaPoint 同步給客戶端。
+func (s *CompanionAISystem) tickDollRegen(doll *world.DollInfo, master *world.PlayerInfo) {
+	if master.Dead {
+		return
+	}
+	if doll.RegenHPAmount > 0 && doll.RegenHPInterval > 0 {
+		doll.RegenHPCounter++
+		if doll.RegenHPCounter >= doll.RegenHPInterval {
+			doll.RegenHPCounter = 0
+			if master.HP < master.MaxHP {
+				master.HP += int32(doll.RegenHPAmount)
+				if master.HP > master.MaxHP {
+					master.HP = master.MaxHP
+				}
+				handler.SendHpUpdate(master.Session, master)
+			}
+		}
+	}
+	if doll.RegenMPAmount > 0 && doll.RegenMPInterval > 0 {
+		doll.RegenMPCounter++
+		if doll.RegenMPCounter >= doll.RegenMPInterval {
+			doll.RegenMPCounter = 0
+			if master.MP < master.MaxMP {
+				master.MP += int32(doll.RegenMPAmount)
+				if master.MP > master.MaxMP {
+					master.MP = master.MaxMP
+				}
+				handler.SendMpUpdate(master.Session, master)
+			}
 		}
 	}
 }

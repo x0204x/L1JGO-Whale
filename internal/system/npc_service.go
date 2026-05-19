@@ -347,6 +347,140 @@ func (s *NpcServiceSystem) ConsumeItem(sess *net.Session, player *world.PlayerIn
 	return true
 }
 
+// FireSmithCraft 火神合成（type 49 合成路徑）— 消耗火神結晶體 + 火神契約 + catalyst →
+// 依機率成功給予成品，失敗扣材料不給成品。
+// plusItemObjID 為客戶端拖入 plus 槽的火神之淚（80030）/ 火神之槌（80027）objID；
+// plusItemCount 為拖入數量，全部消耗並按 plus_*_bonus × count 累加到成功率。
+func (s *NpcServiceSystem) FireSmithCraft(sess *net.Session, player *world.PlayerInfo, recipe *data.FireSmithRecipe, plusItemObjID int32, plusItemCount int32) {
+	if recipe == nil || player == nil || player.Inv == nil {
+		return
+	}
+
+	// 材料數量檢查
+	crystal := player.Inv.FindByItemID(data.FireSmithCrystalItemID)
+	if recipe.CrystalCount > 0 {
+		if crystal == nil || crystal.Count < recipe.CrystalCount {
+			handler.SendGlobalChat(sess, 9, "\\f3火神結晶體不足。")
+			return
+		}
+	}
+	contract := player.Inv.FindByItemID(data.FireSmithContractItemID)
+	if recipe.ContractCount > 0 {
+		if contract == nil || contract.Count < recipe.ContractCount {
+			handler.SendGlobalChat(sess, 9, "\\f3火神契約不足。")
+			return
+		}
+	}
+	var catalyst *world.InvItem
+	if recipe.CatalystItemID > 0 && recipe.CatalystCount > 0 {
+		catalyst = player.Inv.FindByItemID(recipe.CatalystItemID)
+		if catalyst == nil || catalyst.Count < recipe.CatalystCount {
+			handler.SendGlobalChat(sess, 9, "\\f3催化材料不足。")
+			return
+		}
+	}
+
+	// plus 道具（火神之淚 / 火神之槌）— 可選；客戶端封包 [+0x1e4]=objID, [+0x20c]=count
+	var plus *world.InvItem
+	var plusUseCount int32
+	successRate := recipe.SuccessRate
+	if plusItemObjID > 0 && plusItemCount > 0 {
+		candidate := player.Inv.FindByObjectID(plusItemObjID)
+		if candidate != nil {
+			// 反作弊：client 送的 count 不能超過實際庫存
+			use := plusItemCount
+			if use > candidate.Count {
+				use = candidate.Count
+			}
+			switch candidate.ItemID {
+			case data.FireSmithTearItemID:
+				plus = candidate
+				plusUseCount = use
+				successRate += recipe.PlusTearBonus * use
+			case data.FireSmithHammerItemID:
+				plus = candidate
+				plusUseCount = use
+				successRate += recipe.PlusHammerBonus * use
+			}
+		}
+	}
+	if plus != nil {
+		s.deps.Log.Info("火神合成/plus 命中",
+			zap.String("char", player.Name),
+			zap.Int32("plusObjID", plus.ObjectID),
+			zap.Int32("plusItemID", plus.ItemID),
+			zap.Int32("plusStackCount", plus.Count),
+			zap.Int32("plusUseCount", plusUseCount),
+			zap.Int32("successRate", successRate),
+		)
+	}
+	if successRate > 100 {
+		successRate = 100
+	}
+	if successRate < 0 {
+		successRate = 0
+	}
+
+	// 確認可放成品
+	if recipe.NewItemID > 0 && !s.canReceiveNpcServiceItem(sess, player, recipe.NewItemID, recipe.NewItemCount) {
+		return
+	}
+
+	// 扣材料（不論成敗都扣）
+	consumeStack(sess, player, crystal, recipe.CrystalCount)
+	consumeStack(sess, player, contract, recipe.ContractCount)
+	if catalyst != nil {
+		consumeStack(sess, player, catalyst, recipe.CatalystCount)
+	}
+	if plus != nil && plusUseCount > 0 {
+		consumeStack(sess, player, plus, plusUseCount)
+		s.deps.Log.Info("火神合成/plus 扣除",
+			zap.String("char", player.Name),
+			zap.Int32("plusItemID", plus.ItemID),
+			zap.Int32("count", plusUseCount),
+		)
+	}
+
+	// 擲骰判定成功
+	roll := int32(rand.Intn(100))
+	if roll >= successRate {
+		handler.SendGlobalChat(sess, 9, "\\f3合成失敗。")
+		handler.SendWeightUpdate(sess, player)
+		player.Dirty = true
+		return
+	}
+
+	// 成功 → 給予成品
+	if recipe.NewItemID > 0 && recipe.NewItemCount > 0 {
+		given, ok := s.giveNpcServiceItem(sess, player, recipe.NewItemID, recipe.NewItemCount)
+		if ok && given != nil {
+			if recipe.NewEnchantLvl != 0 {
+				given.EnchantLvl = recipe.NewEnchantLvl
+			}
+			if recipe.NewBless != 0 {
+				given.Bless = byte(recipe.NewBless)
+			}
+		}
+	}
+
+	handler.SendGlobalChat(sess, 9, "\\f2成功鑄造。")
+	handler.SendWeightUpdate(sess, player)
+	player.Dirty = true
+}
+
+// consumeStack 從堆疊物品扣除指定數量並送對應封包。
+func consumeStack(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, count int32) {
+	if item == nil || count <= 0 {
+		return
+	}
+	removed := player.Inv.RemoveItem(item.ObjectID, count)
+	if removed {
+		handler.SendRemoveInventoryItem(sess, item.ObjectID)
+	} else {
+		handler.SendItemCountUpdate(sess, item)
+	}
+}
+
 // Refine 火神精煉分解（移除裝備 + 給予結晶體）。
 func (s *NpcServiceSystem) Refine(sess *net.Session, player *world.PlayerInfo, item *world.InvItem, crystalItemID int32, crystalCount int32) {
 	if !s.canReceiveNpcServiceItem(sess, player, crystalItemID, crystalCount) {

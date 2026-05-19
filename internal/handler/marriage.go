@@ -49,19 +49,24 @@ func HandleMarriage(sess *net.Session, r *packet.Reader, deps *Deps) {
 }
 
 // handlePropose 處理求婚（mode=0）。
+// Java 順序（C_Propose.java line 50-94）：
+//  1. ghost/dead 檢查 — Java `pc.isGhost()` 直接 return
+//  2. 自己未婚 + 沒在跑結婚任務（Go 缺 QUEST_MARRY，先比照 PartnerID）
+//  3. FaceToFace 找對象
+//  4. 對象未婚 → 否則訊息 658
+//  5. 同性不可結婚 → 訊息 661（Java 在此復用 661）
+//  6. 雙方等級總和 >= 50 → 否則 S_SystemMessage 文字「雙方總等級未等於50以上。」
+//  7. 雙方都有戒指 → 否則 659（自己）/ 660（對象）
+//  8. 雙方都在教堂（map=4, x=33974~33976, y=33362~33365）→ 否則 S_SystemMessage「必須在教堂中才能進行。」
+//  9. 對象 setTempID + S_Message_YN(654, pc.getName())
 func handlePropose(sess *net.Session, player *world.PlayerInfo, deps *Deps) {
+	// Java isGhost() — Go 用 Dead 作為對應（亡靈狀態時禁止求婚）。
+	if player.Dead {
+		return
+	}
+
 	if player.PartnerID != 0 {
 		SendServerMessage(sess, 658) // "你(妳)的對象已經結婚了"
-		return
-	}
-
-	if !inChurch(player) {
-		SendServerMessage(sess, 661) // 必須在教堂
-		return
-	}
-
-	if !hasRing(player) {
-		SendServerMessage(sess, 659) // "你(妳)沒有結婚戒指"
 		return
 	}
 
@@ -76,17 +81,31 @@ func handlePropose(sess *net.Session, player *world.PlayerInfo, deps *Deps) {
 		return
 	}
 
-	if int(player.Level)+int(target.Level) < 50 {
+	// Java：同性不可結婚 — 此處 661 是 Java 對「結婚對象性別必須和您不同」復用的訊息 ID。
+	if player.Sex == target.Sex {
 		SendServerMessage(sess, 661)
 		return
 	}
 
-	if !inChurch(target) {
+	// Java：等級總和 < 50 用 S_SystemMessage 字串，與「必須在教堂」661 區隔。
+	if int(player.Level)+int(target.Level) < 50 {
+		SendSystemMessage(sess, "雙方總等級未等於50以上。")
+		return
+	}
+
+	if !hasRing(player) {
+		SendServerMessage(sess, 659) // "你(妳)沒有結婚戒指"
 		return
 	}
 
 	if !hasRing(target) {
 		SendServerMessage(sess, 660) // "你(妳)的對象沒有結婚戒指"
+		return
+	}
+
+	// Java：教堂檢查置於最後，且雙方都必須在教堂。失敗時送 S_SystemMessage（非 661）。
+	if !inChurch(player) || !inChurch(target) {
+		SendSystemMessage(sess, "必須在教堂中才能進行。")
 		return
 	}
 

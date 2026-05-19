@@ -129,6 +129,16 @@ type NpcInfo struct {
 	// 怪物群體系統（Java: L1MobGroupInfo）
 	GroupInfo *MobGroupInfo // 所屬群體資訊（nil=不屬於任何群體）
 	IsMinion  bool          // true=隊員（不獨立重生）
+
+	// ShowID 副本實例隔離標籤（對應 Java L1NpcInstance.set_showId）。
+	// 0 = 主世界（預設）；>=100 = 副本實例 ID。
+	// AOI 過濾用：相同 ShowID 才互相可見（同 mapID 多副本實例隔離）。
+	// 副本內生成的 NPC 必須由 QuestInstance 設定 ShowID；主世界 NPC 維持 0。
+	ShowID int32
+
+	// Transient 標記是否為「副本內暫態 NPC」（不進入持久化、副本結束時直接銷毀）。
+	// 主世界生成的 NPC 預設 false。
+	Transient bool
 }
 
 // MobGroupInfo 怪物群體運行時狀態。

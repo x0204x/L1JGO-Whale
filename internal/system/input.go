@@ -30,6 +30,7 @@ type InputSystem struct {
 	mapData      *data.MapDataTable
 	petRepo      *persist.PetRepo
 	hauntedHouse handler.HauntedHouseManager // 鬼屋副本（斷線時移除成員）
+	questWorld   handler.QuestWorldManager   // 任務副本（斷線時移除成員 — MISS-P0-003）
 }
 
 func NewInputSystem(
@@ -65,6 +66,11 @@ func NewInputSystem(
 // SetHauntedHouse 設定鬼屋副本管理器（斷線時移除成員用）。
 func (s *InputSystem) SetHauntedHouse(hh handler.HauntedHouseManager) {
 	s.hauntedHouse = hh
+}
+
+// SetQuestWorld 設定任務副本管理器（斷線時移除成員用 — MISS-P0-003）。
+func (s *InputSystem) SetQuestWorld(qw handler.QuestWorldManager) {
+	s.questWorld = qw
 }
 
 func (s *InputSystem) Phase() coresys.Phase { return coresys.PhaseInput }
@@ -303,6 +309,11 @@ func (s *InputSystem) handleDisconnect(sess *net.Session) {
 		// 鬼屋副本：斷線時移除成員
 		if s.hauntedHouse != nil {
 			s.hauntedHouse.RemoveOnDisconnect(player)
+		}
+
+		// 任務副本：斷線時移除成員（MISS-P0-003）
+		if s.questWorld != nil {
+			s.questWorld.RemoveOnDisconnect(player)
 		}
 
 		// Clean up all companion entities (summons, dolls, followers)

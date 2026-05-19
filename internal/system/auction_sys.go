@@ -167,6 +167,35 @@ func (s *AuctionSystem) IsAlreadyBidding(charName string) bool {
 	return false
 }
 
+// CreateSale 將小屋上架至拍賣（Java agsell：5 天截止、賣家 = pc）。
+// 同一 houseID 已有 entry 時回傳 false。
+// WAL 保護：先寫 DB 再加入記憶體快取。
+func (s *AuctionSystem) CreateSale(entry *persist.AuctionEntry) bool {
+	if entry == nil || entry.HouseID == 0 {
+		return false
+	}
+	if _, exists := s.entries[entry.HouseID]; exists {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.repo.InsertAuction(ctx, entry); err != nil {
+		s.log.Error("新增拍賣失敗",
+			zap.Int32("houseID", entry.HouseID),
+			zap.String("oldOwner", entry.OldOwner),
+			zap.Error(err))
+		return false
+	}
+	cached := *entry
+	s.entries[entry.HouseID] = &cached
+	s.log.Info("上架拍賣",
+		zap.Int32("houseID", entry.HouseID),
+		zap.String("oldOwner", entry.OldOwner),
+		zap.Int64("price", entry.Price),
+		zap.Time("deadline", entry.Deadline))
+	return true
+}
+
 // --- 結算邏輯 ---
 
 // settleExpired 結算所有到期的拍賣。

@@ -120,6 +120,25 @@ func (s *DollSystem) UseDoll(sess *net.Session, player *world.PlayerInfo, invIte
 			doll.BonusStunRes += int16(p.Value)
 		case "freeze_resist":
 			doll.BonusFreezeRes += int16(p.Value)
+		case "dmg_reduction":
+			// Java Doll_DmgDown — 受傷減免（目前僅追蹤至 EquipBonuses.DmgReduction；
+			// combat 對 DmgReduction 的讀取為獨立後續任務）。
+			doll.BonusDmgReduce += int16(p.Value)
+		case "weight":
+			// Java Doll_Weight — 額外負重上限。
+			doll.BonusWeight += int16(p.Value)
+		case "hp_regen_tick":
+			// Java DollHprTimer — 每 Param 秒回 Value 點 HP。
+			doll.RegenHPAmount = int16(p.Value)
+			if p.Param > 0 {
+				doll.RegenHPInterval = p.Param * 5 // 秒 → ticks（5 ticks/sec）
+			}
+		case "mp_regen_tick":
+			// Java DollMprTimer — 每 Param 秒回 Value 點 MP。
+			doll.RegenMPAmount = int16(p.Value)
+			if p.Param > 0 {
+				doll.RegenMPInterval = p.Param * 5
+			}
 		case "skill":
 			doll.SkillID = int32(p.Value)
 			doll.SkillChance = p.Chance
@@ -198,6 +217,8 @@ func (s *DollSystem) applyDollBonuses(player *world.PlayerInfo, doll *world.Doll
 	player.Wis += int16(doll.BonusWIS)
 	player.Intel += int16(doll.BonusINT)
 	player.Cha += int16(doll.BonusCHA)
+	player.WeightBonus += int32(doll.BonusWeight)
+	player.EquipBonuses.DmgReduction += int(doll.BonusDmgReduce)
 }
 
 // removeDollBonuses 還原娃娃屬性加成。
@@ -224,6 +245,8 @@ func (s *DollSystem) removeDollBonuses(player *world.PlayerInfo, doll *world.Dol
 	player.Wis -= int16(doll.BonusWIS)
 	player.Intel -= int16(doll.BonusINT)
 	player.Cha -= int16(doll.BonusCHA)
+	player.WeightBonus -= int32(doll.BonusWeight)
+	player.EquipBonuses.DmgReduction -= int(doll.BonusDmgReduce)
 	// 限制 HP/MP 不超過最大值
 	if player.HP > player.MaxHP {
 		player.HP = player.MaxHP

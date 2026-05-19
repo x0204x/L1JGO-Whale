@@ -104,8 +104,16 @@ func sendAddItem(sess *net.Session, item *world.InvItem, optInfo ...*data.ItemIn
 	}
 
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_ADD_ITEM)
-	w.WriteD(item.ObjectID)                     // item object ID
-	w.WriteH(world.ItemDescID(item.ItemID))     // descId — Java: switch(itemId) for material items
+	w.WriteD(item.ObjectID) // item object ID
+	// descId 優先用 YAML itemdesc_id（涵蓋大部分裝備如大馬士革刀=235），為 0 時 fallback hardcoded（spell 素材如 40318=166）
+	descID := uint16(0)
+	if itemInfo != nil && itemInfo.ItemDescID != 0 {
+		descID = uint16(itemInfo.ItemDescID)
+	}
+	if descID == 0 {
+		descID = world.ItemDescID(item.ItemID)
+	}
+	w.WriteH(descID)
 	w.WriteC(item.UseType)                 // use type
 	w.WriteC(byte(item.ChargeCount))       // charge count
 	w.WriteH(uint16(item.InvGfx))         // inventory graphic ID
@@ -190,8 +198,16 @@ func sendInvList(sess *net.Session, inv *world.Inventory, items *data.ItemTable)
 		}
 
 		w.WriteD(item.ObjectID)
-		w.WriteH(world.ItemDescID(item.ItemID))  // descId — Java: switch(itemId) for material items
-		w.WriteC(item.UseType)                    // use type
+		// descId 優先用 YAML itemdesc_id（涵蓋大部分裝備如大馬士革刀=235），為 0 時 fallback hardcoded
+		descID := uint16(0)
+		if itemInfo != nil && itemInfo.ItemDescID != 0 {
+			descID = uint16(itemInfo.ItemDescID)
+		}
+		if descID == 0 {
+			descID = world.ItemDescID(item.ItemID)
+		}
+		w.WriteH(descID)
+		w.WriteC(item.UseType) // use type
 		w.WriteC(byte(item.ChargeCount))          // charge count
 		w.WriteH(uint16(item.InvGfx))            // inv gfx
 		w.WriteC(world.EffectiveBless(item))      // bless: 3=unidentified

@@ -44,8 +44,21 @@ type DollInfo struct {
 	BonusWIS      int16
 	BonusINT      int16
 	BonusCHA      int16
-	BonusStunRes  int16
+	BonusStunRes   int16
 	BonusFreezeRes int16
+
+	// MISS-P1-006：YAML 已用但原本被 switch 默默忽略的 4 個 power 類型。
+	BonusDmgReduce int16 // 對應 Java Doll_DmgDown — 每次受傷減免（目前僅追蹤，combat hook 待補）
+	BonusWeight    int16 // 對應 Java Doll_Weight — 額外負重上限
+
+	// 週期性回復狀態（hp_regen_tick / mp_regen_tick）。
+	// 對應 Java DollHprTimer / DollMprTimer：每 IntervalTicks 個 tick 回復 Amount 點。
+	RegenHPAmount   int16 // 每次回 HP 量（0=未啟用）
+	RegenHPInterval int   // 觸發間隔（ticks，5 ticks≈1 秒）
+	RegenHPCounter  int   // 累計 tick（達 Interval 即觸發並歸零）
+	RegenMPAmount   int16
+	RegenMPInterval int
+	RegenMPCounter  int
 
 	// Doll active skill (optional — some dolls can cast skills).
 	SkillID     int32 // 0 = no skill

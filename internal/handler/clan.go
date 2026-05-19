@@ -91,10 +91,14 @@ func HandleWhoPledge(sess *net.Session, r *packet.Reader, deps *Deps) {
 
 // HandlePledgeWatch 處理 C_PLEDGE_WATCH (opcode 78) — 多用途封包。
 // Java: C_PledgeContent — dataType 決定用途：
-//   13 = 火神精煉（分解物品為結晶）
-//   14 = 火神合成（材料合成裝備）
+//   13 = 火神精煉（分解 → 結晶）
+//   14 = 火神合成（材料 → 裝備）
 //   15 = 寫入血盟公告
 //   16 = 寫入個人備註
+//
+// 開窗封包格式（380 參考 S_EquipmentWindow.java type 48/49）：
+//   opcode S_OPCODE_CHARRESET (64) + writeC(type) + writeD(npcObjID)
+//   + writeC(0x95) + writeC(0x19)
 func HandlePledgeWatch(sess *net.Session, r *packet.Reader, deps *Deps) {
 	dataType := r.ReadC()
 
@@ -106,12 +110,14 @@ func HandlePledgeWatch(sess *net.Session, r *packet.Reader, deps *Deps) {
 	switch dataType {
 	case 13:
 		// 火神精煉（type 48）— Java: C_PledgeContent case 13
+		// 380 客戶端原生介面：分解物品為結晶
 		handleRefineResolve(sess, r, player, deps)
 	case 14:
 		// 火神合成（type 49）— Java: C_PledgeContent case 14
+		// 380 客戶端原生介面：材料合成裝備
 		handleRefineTransform(sess, r, player, deps)
 	case 15, 16:
-		// 血盟公告/個人備註 — 原有邏輯
+		// 血盟公告/個人備註
 		content := r.ReadS()
 		if deps.Clan != nil {
 			deps.Clan.UpdateSettings(sess, player, dataType, content)

@@ -325,7 +325,7 @@ func (s *EquipSystem) FindEquippedSlot(player *world.PlayerInfo, item *world.Inv
 // RecalcEquipStats 重新計算裝備屬性並發送更新封包。
 func (s *EquipSystem) RecalcEquipStats(sess *net.Session, player *world.PlayerInfo) {
 	old := player.EquipBonuses
-	applyEquipStats(player, s.deps.Items, s.deps.ArmorSets)
+	applyEquipStats(player, s.deps.Items, s.deps.ArmorSets, s.deps.ItemPowers)
 
 	// 發送更新封包
 	handler.SendPlayerStatus(sess, player)
@@ -346,7 +346,7 @@ func (s *EquipSystem) RecalcEquipStats(sess *net.Session, player *world.PlayerIn
 func (s *EquipSystem) InitEquipStats(player *world.PlayerInfo) {
 	player.AC = int16(s.deps.Config.Gameplay.BaseAC)
 	detectActiveArmorSet(player, s.deps.ArmorSets)
-	applyEquipStats(player, s.deps.Items, s.deps.ArmorSets)
+	applyEquipStats(player, s.deps.Items, s.deps.ArmorSets, s.deps.ItemPowers)
 }
 
 // SendEquipList 發送完整裝備欄位列表封包（登入時用）。
@@ -446,10 +446,40 @@ func (s *EquipSystem) updateArmorSetOnUnequip(player *world.PlayerInfo) (brokenP
 	return 0
 }
 
+// applyItemPowerBonuses 為單一已裝備物品套用 L1ItemPower 強化加成到 stats。
+// Java: L1ItemPower.getMr/getMpr/getSp/getHitModifierByArmor/get_addhp/getDamageReduction。
+//
+// 設計上抽出為獨立函式供回歸測試（避免重建 ItemTable + PlayerInfo + Equip 等整套狀態）。
+func applyItemPowerBonuses(stats *world.EquipStats, itemPowers *data.ItemPowerTable, itemID int32, enchant int) {
+	if stats == nil || itemPowers == nil {
+		return
+	}
+	for _, rule := range itemPowers.Get(itemID) {
+		bonus := rule.Bonus(enchant)
+		if bonus == 0 {
+			continue
+		}
+		switch rule.Stat {
+		case data.ItemPowerStatMR:
+			stats.MDef += bonus
+		case data.ItemPowerStatMPR:
+			stats.AddMPR += bonus
+		case data.ItemPowerStatSP:
+			stats.AddSP += bonus
+		case data.ItemPowerStatHIT:
+			stats.HitMod += bonus
+		case data.ItemPowerStatHP:
+			stats.AddHP += bonus
+		case data.ItemPowerStatDmgReduce:
+			stats.DmgReduction += bonus
+		}
+	}
+}
+
 // applyEquipStats 計算裝備屬性加成並應用到玩家（不發送封包）。
-func applyEquipStats(player *world.PlayerInfo, items *data.ItemTable, armorSets *data.ArmorSetTable) {
+func applyEquipStats(player *world.PlayerInfo, items *data.ItemTable, armorSets *data.ArmorSetTable, itemPowers *data.ItemPowerTable) {
 	old := player.EquipBonuses
-	neo := calcEquipStats(player, items, armorSets)
+	neo := calcEquipStats(player, items, armorSets, itemPowers)
 
 	player.AC += int16(neo.AC - old.AC)
 	player.Str += int16(neo.AddStr - old.AddStr)
@@ -499,8 +529,8 @@ func applyEquipStats(player *world.PlayerInfo, items *data.ItemTable, armorSets 
 	player.EquipBonuses = neo
 }
 
-// calcEquipStats 計算玩家所有裝備的屬性加成總和（含套裝加成）。
-func calcEquipStats(player *world.PlayerInfo, items *data.ItemTable, armorSets *data.ArmorSetTable) world.EquipStats {
+// calcEquipStats 計算玩家所有裝備的屬性加成總和（含套裝加成與 L1ItemPower 強化加成）。
+func calcEquipStats(player *world.PlayerInfo, items *data.ItemTable, armorSets *data.ArmorSetTable, itemPowers *data.ItemPowerTable) world.EquipStats {
 	var stats world.EquipStats
 	for i := world.EquipSlot(1); i < world.SlotMax; i++ {
 		invItem := player.Equip.Get(i)
@@ -571,6 +601,9 @@ func calcEquipStats(player *world.PlayerInfo, items *data.ItemTable, armorSets *
 		stats.SuckingHP += info.SuckingHP
 		stats.DiceMP += info.DiceMP
 		stats.SuckingMP += info.SuckingMP
+
+		// L1ItemPower：依強化等級為特殊物品 ID 提供額外加成（MISS-P1-005）。
+		applyItemPowerBonuses(&stats, itemPowers, invItem.ItemID, int(invItem.EnchantLvl))
 	}
 	// 套裝加成
 	if player.ActiveSetID > 0 && armorSets != nil {

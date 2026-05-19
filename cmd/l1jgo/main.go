@@ -39,7 +39,7 @@ func main() {
 func printBanner(serverName string, serverID int) {
 	fmt.Println()
 	fmt.Println("\033[36;1m  ┌───────────────────────────────────────────┐\033[0m")
-	fmt.Println("\033[36;1m  │\033[0m           L1JGO-Whale  v0.3.20           \033[36;1m│\033[0m")
+	fmt.Println("\033[36;1m  │\033[0m           L1JGO-Whale  v0.3.28           \033[36;1m│\033[0m")
 	fmt.Println("\033[36;1m  │\033[0m      天堂 3.80C · Go 遊戲伺服器           \033[36;1m│\033[0m")
 	fmt.Println("\033[36;1m  └───────────────────────────────────────────┘\033[0m")
 	fmt.Println()
@@ -287,6 +287,12 @@ func run() error {
 	}
 	printStat("套裝定義", armorSetTable.Count())
 
+	itemPowerTable, err := data.LoadItemPowerTable("data/yaml/item_power.yaml")
+	if err != nil {
+		return fmt.Errorf("load item power table: %w", err)
+	}
+	printStat("物品強化加成", itemPowerTable.Count())
+
 	itemMakingTable, err := data.LoadItemMakingTable("data/yaml/item_making_list.yaml")
 	if err != nil {
 		return fmt.Errorf("load item making table: %w", err)
@@ -298,6 +304,12 @@ func run() error {
 		return fmt.Errorf("load fire crystal table: %w", err)
 	}
 	printStat("火結晶表", fireCrystalTable.Count())
+
+	fireSmithRecipeTable, err := data.LoadFireSmithRecipeTable("data/yaml/firesmith_recipe_list.yaml")
+	if err != nil {
+		return fmt.Errorf("load firesmith recipe table: %w", err)
+	}
+	printStat("火神合成配方", fireSmithRecipeTable.Count())
 
 	resolventTable, err := data.LoadResolventTable("data/yaml/resolvent_list.yaml")
 	if err != nil {
@@ -409,6 +421,12 @@ func run() error {
 	}
 	printStat("任務範本", questData.Count())
 
+	dungeonTable, err := data.LoadDungeonTable("data/yaml/quest_dungeons.yaml")
+	if err != nil {
+		return fmt.Errorf("load dungeon table: %w", err)
+	}
+	printStat("副本定義", dungeonTable.Count())
+
 	trapData, err := data.LoadTrapData("data/yaml")
 	if err != nil {
 		return fmt.Errorf("load trap data: %w", err)
@@ -493,6 +511,7 @@ func run() error {
 		MapData:       mapDataTable,
 		Polys:         polymorphTable,
 		ArmorSets:     armorSetTable,
+		ItemPowers:    itemPowerTable,
 		SprTable:      sprTable,
 		WarehouseRepo: warehouseRepo,
 		WALRepo:       walRepo,
@@ -500,7 +519,8 @@ func run() error {
 		BuffRepo:      buffRepo,
 		Doors:         doorTable,
 		ItemMaking:    itemMakingTable,
-		FireCrystals:  fireCrystalTable,
+		FireCrystals:     fireCrystalTable,
+		FireSmithRecipes: fireSmithRecipeTable,
 		Resolvents:    resolventTable,
 		SpellbookReqs: spellbookReqs,
 		BuffIcons:     buffIconTable,
@@ -688,6 +708,10 @@ func run() error {
 	deps.HauntedHouse = hauntedHouseSys
 	inputSys.SetHauntedHouse(hauntedHouseSys)
 	runner.Register(hauntedHouseSys)
+	questWorldSys := system.NewQuestWorldSystem(worldState, dungeonTable, deps)
+	deps.QuestWorld = questWorldSys
+	inputSys.SetQuestWorld(questWorldSys)
+	runner.Register(questWorldSys)
 	dragonDoorSys := system.NewDragonDoorSystem(worldState, deps)
 	deps.DragonDoor = dragonDoorSys
 	runner.Register(dragonDoorSys)

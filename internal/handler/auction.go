@@ -26,6 +26,9 @@ type AuctionManager interface {
 	PlaceBid(sess *net.Session, player *world.PlayerInfo, houseID int32, amount int64) bool
 	// IsAlreadyBidding 檢查玩家是否已在其他拍賣中出價。
 	IsAlreadyBidding(charName string) bool
+	// CreateSale 將小屋上架至拍賣（Java agsell：5 天截止、賣家 = pc）。
+	// 同一 houseID 已有 entry 時回傳 false（不覆寫）。
+	CreateSale(entry *persist.AuctionEntry) bool
 }
 
 // handleAuctionTalk 處理拍賣 NPC 的對話（點擊 NPC）→ S_AuctionBoard。

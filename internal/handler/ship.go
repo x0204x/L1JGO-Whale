@@ -213,8 +213,11 @@ func HandleEnterShip(sess *net.Session, r *packet.Reader, deps *Deps) {
 	// 取消交易（Java: L1Trade.tradeCancel）
 	cancelTradeIfActive(player, deps)
 
-	// 傳送到目的地
-	teleportPlayer(sess, player, destX, destY, destMapID, 5, deps)
+	// Java C_Ship: 在傳送前送 S_OwnCharPack 把 consumeItem 後的狀態同步給客戶端。
+	sendOwnCharPackPlayer(sess, player)
+
+	// 傳送到目的地（Java: L1Teleport.teleport(pc, locX, locY, mapId, 0, false) — heading 固定 0）
+	teleportPlayer(sess, player, destX, destY, destMapID, 0, deps)
 
 	deps.Log.Info(fmt.Sprintf("下船  角色=%s  目的地=%d  x=%d  y=%d",
 		player.Name, destMapID, destX, destY))

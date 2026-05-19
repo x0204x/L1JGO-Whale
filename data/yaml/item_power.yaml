@@ -1,0 +1,65 @@
+# ============================================================================
+# 物品強化加成（L1ItemPower）— MISS-P1-005
+# ============================================================================
+#
+# Java 對照：com.lineage.server.model.Instance.L1ItemPower（static load()）
+#
+# 每個物品有一條或多條規則：
+#   - per_enchant：每強化 +1 額外提供的點數
+#   - min_enchant：最低觸發強化等級（省略=1，從 +1 開始）
+#   - enchant_offset：計算前先扣除（用於「從 +N 開始才計算」的物品）
+#
+# 公式：bonus = (enchant_level - enchant_offset) * per_enchant，且 enchant >= min_enchant
+#
+# 未涵蓋（需 step-function 或新欄位，留待後續子任務）：
+#   - 體力臂甲 300429 / 法師臂甲 300431 / 守護的臂甲 300430（step-function）
+#   - 火神武器 410207-410214（PVPDMG 維度 step-function）
+#   - 咆哮雙刀 410188（X2 維度，EquipStats 無對應欄位）
+# ----------------------------------------------------------------------------
+
+rules:
+  # ── MR（抗魔加成）─ 22 個簡單線性物品 ───────────────────────────────
+  - { item_id: 20011,  stat: MR, per_enchant: 1, note: "抗魔法頭盔" }
+  - { item_id: 120011, stat: MR, per_enchant: 1, note: "抗魔法頭盔（祝福版）" }
+  - { item_id: 20110,  stat: MR, per_enchant: 1, note: "抗魔法鏈甲" }
+  - { item_id: 120110, stat: MR, per_enchant: 1, note: "抗魔法鏈甲（祝福版）" }
+  - { item_id: 20056,  stat: MR, per_enchant: 2, note: "抗魔法斗篷" }
+  - { item_id: 120056, stat: MR, per_enchant: 2, note: "抗魔法斗篷（祝福版）" }
+  - { item_id: 330005, stat: MR, per_enchant: 1, note: "抗魔法脛甲" }
+  - { item_id: 20117,  stat: MR, per_enchant: 1, note: "巴風特盔甲" }
+  - { item_id: 20049,  stat: MR, per_enchant: 2, note: "巨蟻女皇的金翅膀" }
+  - { item_id: 20050,  stat: MR, per_enchant: 2, note: "巨蟻女皇的銀翅膀" }
+  - { item_id: 20078,  stat: MR, per_enchant: 3, note: "混沌斗篷" }
+  - { item_id: 400019, stat: MR, per_enchant: 1, note: "特製究極抗魔法T恤" }
+  - { item_id: 400023, stat: MR, per_enchant: 1, note: "酷金盔甲" }
+  - { item_id: 300427, stat: MR, per_enchant: 1, note: "塔拉斯長靴" }
+  - { item_id: 21221,  stat: MR, per_enchant: 3, note: "馬昆斯斗篷" }
+  - { item_id: 121221, stat: MR, per_enchant: 3, note: "馬昆斯斗篷（祝福版）" }
+  - { item_id: 310126, stat: MR, per_enchant: 2, note: "暴走的變異披風" }
+  - { item_id: 70092,  stat: MR, per_enchant: 2, note: "神威斗篷" }
+  - { item_id: 70093,  stat: MR, per_enchant: 2, note: "強化抗魔斗篷" }
+  - { item_id: 401028, stat: MR, per_enchant: 1, note: "滅魔的小藤甲" }
+  - { item_id: 401029, stat: MR, per_enchant: 1, note: "滅魔的長袍" }
+  - { item_id: 401030, stat: MR, per_enchant: 1, note: "滅魔的鱗甲" }
+  - { item_id: 401031, stat: MR, per_enchant: 1, note: "滅魔的金屬盔甲" }
+  - { item_id: 400052, stat: MR, per_enchant: 2, note: "神聖的魔法防禦頭盔" }
+  - { item_id: 21227,  stat: MR, per_enchant: 1, note: "戰士團頭盔" }
+
+  # ── MPR（回魔量加成）─ 2 個物品 ─────────────────────────────────────
+  - { item_id: 800,    stat: MPR, per_enchant: 1, note: "冥想魔杖" }
+  - { item_id: 100800, stat: MPR, per_enchant: 1, note: "冥想魔杖（祝福版）" }
+
+  # ── SP（魔攻加成）─ 5 個物品（1 簡單 + 3 門檻線性 + 1 略過 step-function 法師臂甲）─
+  - { item_id: 20107,  stat: SP, per_enchant: 1, min_enchant: 3, enchant_offset: 2, note: "巫妖斗篷（從+3起，每階 +1）" }
+  - { item_id: 120107, stat: SP, per_enchant: 1, min_enchant: 3, enchant_offset: 2, note: "巫妖斗篷（祝福版）" }
+  - { item_id: 21220,  stat: SP, per_enchant: 1, min_enchant: 8, enchant_offset: 7, note: "幻象眼魔的心眼（從+8起）" }
+  - { item_id: 121220, stat: SP, per_enchant: 1, min_enchant: 8, enchant_offset: 7, note: "幻象眼魔的心眼（祝福版）" }
+  - { item_id: 21221,  stat: SP, per_enchant: 1, min_enchant: 7, enchant_offset: 6, note: "馬昆斯斗篷 SP（從+7起）" }
+  - { item_id: 121221, stat: SP, per_enchant: 1, min_enchant: 7, enchant_offset: 6, note: "馬昆斯斗篷 SP（祝福版）" }
+
+  # ── HIT（防具近距離命中加成）─ 1 個物品（門檻線性）─────────────────
+  - { item_id: 400051, stat: HIT, per_enchant: 1, min_enchant: 5, enchant_offset: 4, note: "激怒手套（從+5起）" }
+
+  # ── DMG_REDUCE（傷害減免）─ 2 個物品（門檻線性；守護的臂甲 step-function 待補）
+  - { item_id: 21223,  stat: DMG_REDUCE, per_enchant: 1, min_enchant: 7, enchant_offset: 6, note: "石製手套（從+7起）" }
+  - { item_id: 121223, stat: DMG_REDUCE, per_enchant: 1, min_enchant: 7, enchant_offset: 6, note: "石製手套（祝福版）" }

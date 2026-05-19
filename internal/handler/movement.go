@@ -13,6 +13,30 @@ import (
 var headingDX = [8]int32{0, 1, 1, 1, 0, -1, -1, -1}
 var headingDY = [8]int32{-1, -1, 0, 1, 1, 1, 0, -1}
 
+// dungeonTeleportInvincibilityTicks 副本傳送後絕對屏障持續時間（5 ticks/秒 × 2 秒）。
+// Java: DungeonTable.dg() / DungeonRTable.dg() — pc.setSkillEffect(ABSOLUTE_BARRIER, 2000)。
+const dungeonTeleportInvincibilityTicks int = 10
+
+// applyDungeonTeleportEffect 套用 Java DungeonTable/DungeonRTable 傳送前的副作用：
+//   - 2 秒絕對屏障（skill 78，免疫所有傷害；防止抵達後即遭怪物 aggro 秒殺）
+//   - 重置 HP 累計器（對齊 Java stopHpRegeneration；MP regen 為全域 tick 無需重置）
+//
+// 兩種 regen 函式都會在 AbsoluteBarrier=true 時 skip，因此 2 秒內 HP/MP 都不會回。
+// 注意：若玩家已有 skill 78 buff（cast 取得，預設 12 秒），AddBuff 會替換為 2 秒——
+// 對齊 Java setSkillEffect 同 ID 覆寫的行為。
+func applyDungeonTeleportEffect(player *world.PlayerInfo) {
+	if player == nil {
+		return
+	}
+	player.AbsoluteBarrier = true
+	player.RegenHPAcc = 0
+	player.AddBuff(&world.ActiveBuff{
+		SkillID:            78, // ABSOLUTE_BARRIER
+		TicksLeft:          dungeonTeleportInvincibilityTicks,
+		SetAbsoluteBarrier: true,
+	})
+}
+
 // HandleMove processes C_MOVE (opcode 29).
 // Java C_MoveChar 依語系處理 heading：
 //   language=3 (Taiwan): heading ^= 0x49，且忽略客戶端 X/Y，使用伺服器座標
@@ -83,6 +107,7 @@ func HandleMove(sess *net.Session, r *packet.Reader, deps *Deps) {
 			if !isDock || allowed {
 				// 一般傳送門或碼頭驗證通過 → 傳送（不移動到 destX/destY）
 				cancelTradeIfActive(player, deps)
+				applyDungeonTeleportEffect(player)
 				teleportPlayer(sess, player, portal.DstX, portal.DstY, portal.DstMapID, portal.DstHeading, deps)
 				return
 			}
@@ -97,6 +122,7 @@ func HandleMove(sess *net.Session, r *packet.Reader, deps *Deps) {
 			idx := rand.Intn(len(rp.Destinations))
 			dst := rp.Destinations[idx]
 			cancelTradeIfActive(player, deps)
+			applyDungeonTeleportEffect(player)
 			teleportPlayer(sess, player, dst.X, dst.Y, dst.MapID, rp.DstHeading, deps)
 			return
 		}

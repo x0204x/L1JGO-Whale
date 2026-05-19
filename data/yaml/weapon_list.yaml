@@ -12840,6 +12840,81 @@ weapons:
     tradeable: true
     min_level: 0
     max_level: 0
+  # ---- 火神精煉系統合成成品（來源：yiwei 380 SQL weapon 100366 / 100369）----
+  - item_id: 100366
+    name: 寒冰鎖鏈劍
+    type: chainsword
+    material: iron
+    weight: 10000
+    inv_gfx: 5123
+    grd_gfx: 6946
+    itemdesc_id: 0
+    dmg_small: 23
+    dmg_large: 20
+    range: 2
+    safe_enchant: 6
+    use_royal: false
+    use_knight: false
+    use_mage: false
+    use_elf: false
+    use_darkelf: false
+    use_dragonknight: true
+    use_illusionist: false
+    hit_modifier: 4
+    dmg_modifier: 3
+    add_str: 0
+    add_con: 0
+    add_dex: 0
+    add_int: 0
+    add_wis: 0
+    add_cha: 0
+    add_hp: 0
+    add_mp: 0
+    add_hpr: 0
+    add_mpr: 0
+    add_sp: 0
+    m_def: 0
+    bless: 0
+    tradeable: true
+    min_level: 0
+    max_level: 0
+  - item_id: 100369
+    name: 寒冰奇古獸
+    type: kiringku
+    material: iron
+    weight: 10000
+    inv_gfx: 5125
+    grd_gfx: 6967
+    itemdesc_id: 0
+    dmg_small: 25
+    dmg_large: 25
+    range: 1
+    safe_enchant: 6
+    use_royal: false
+    use_knight: false
+    use_mage: false
+    use_elf: false
+    use_darkelf: false
+    use_dragonknight: false
+    use_illusionist: true
+    hit_modifier: 0
+    dmg_modifier: 0
+    add_str: 0
+    add_con: 0
+    add_dex: 0
+    add_int: 1
+    add_wis: 0
+    add_cha: 0
+    add_hp: 0
+    add_mp: 0
+    add_hpr: 0
+    add_mpr: 0
+    add_sp: 1
+    m_def: 0
+    bless: 0
+    tradeable: true
+    min_level: 0
+    max_level: 0
   - item_id: 200001
     name: 歐西斯匕首
     type: dagger

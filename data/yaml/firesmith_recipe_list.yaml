@@ -1,0 +1,175 @@
+# 火神精煉合成配方 — MakeItem_Window (type 49) 合成路徑
+#
+# 來源：客戶端 MakeInfo.tbl + 反編譯 SmithUI 結構（RVA 0x29774D ccdhdd 封包）
+# 流程：
+#   1. 客戶端讀取 MakeInfo.tbl 顯示配方清單
+#   2. 玩家選配方 → 開啟 MakeItem_Window
+#   3. 客戶端送 C_PledgeContent data=14：
+#        [D npcObjID][H actionID][D mainItem][D plusItem]
+#   4. server 用 actionID 在此表查配方 → 扣材料 + 給成品
+#
+# MakeInfo.tbl 欄位（已由 SmithUI 反編譯確認）：
+#   col1 = actionID（封包 H 欄位，[SmithUI+0x1dc]）
+#   col2 = 火神結晶體（80029）需要數量，對應 Crystalitem_Icon
+#   col3 = 火神契約（80028）需要數量，對應 Contractitem_Icon
+#   col4 = 基礎成功率（%）UI 顯示，火神之槌每個 +1%
+#   col5 = UI display key（圖檔/名稱）
+#
+# 目前 11 筆來自 d:/l1jclient-rustx64/target/text-search/MakeInfo.tbl
+# catalyst_item_id / catalyst_count 不在 MakeInfo.tbl 中（5 個 Catalyst 槽位的具體素材）
+# 後續可由 server SQL／資料表補（yiwei 380 SQL 無對應表）
+
+recipes:
+  - action_id: 1752
+    note: smith_dualblade_of_red_shadow（紅影雙刀）
+    new_item_id: 86
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 400          # 火神結晶體（80029）
+    contract_count: 20          # 火神契約（80028）
+    catalyst_item_id: 0         # TODO catalyst 槽位素材未知
+    catalyst_count: 0
+    success_rate: 1             # 基礎 1%，火神之槌每個 +1%
+    plus_tear_bonus: 0          # 火神之淚（80030）— 380 客戶端未驗證
+    plus_hammer_bonus: 1        # 火神之槌（80027）— 每個 +1%
+
+  - action_id: 1820
+    note: smith_sword_of_windblade（風刃短劍）
+    new_item_id: 12
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 400
+    contract_count: 20
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 1
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1
+
+  - action_id: 992
+    note: smith_sword_of_death_knight（死亡騎士的烈炎之劍）
+    new_item_id: 58
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 200
+    contract_count: 10
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 1
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1
+
+  - action_id: 1094
+    note: smith_enchanted_wand_of_ice_queen（冰之女王魔杖）
+    new_item_id: 121
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 150
+    contract_count: 5
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 1
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1
+
+  - action_id: 12527
+    note: smith_cold_of_chainsword（寒冰鎖鏈劍）
+    new_item_id: 100366
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 125
+    contract_count: 5
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 3
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1
+
+  - action_id: 12528
+    note: smith_cold_of_kiringku（寒冰奇古獸）
+    new_item_id: 100369
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 125
+    contract_count: 5
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 3
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1
+
+  - action_id: 568
+    note: smith_bow_of_sayha（沙哈之弓 / 沙耶之弓）
+    new_item_id: 190
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 100
+    contract_count: 5
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 10
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1
+
+  - action_id: 3551
+    note: smith_chiyu_armor（蚩尤鎧甲）
+    new_item_id: 400024
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 100
+    contract_count: 5
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 8
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1
+
+  - action_id: 978
+    note: smith_robe_of_dark_elder（黑長者長袍）
+    new_item_id: 20160
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 100
+    contract_count: 5
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 10
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1
+
+  - action_id: 3268
+    note: smith_thebe_horus_ring（底比斯賀洛斯戒指）
+    new_item_id: 21093
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 75
+    contract_count: 5
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 10
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1
+
+  - action_id: 3269
+    note: smith_thebe_anubis_ring（底比斯阿努比斯戒指）
+    new_item_id: 21094
+    new_item_count: 1
+    new_enchant_lvl: 0
+    new_bless: 1
+    crystal_count: 75
+    contract_count: 5
+    catalyst_item_id: 0
+    catalyst_count: 0
+    success_rate: 10
+    plus_tear_bonus: 0
+    plus_hammer_bonus: 1

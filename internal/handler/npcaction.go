@@ -217,17 +217,22 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 		handleNpcArmorEnchant(sess, player, deps)
 
 	// ---------- 火神精煉系統 ----------
-	// type 48/49 拖放 UI 在 3.80C 無法使用。
+	// 380 客戶端原生介面：S_EquipmentWindow type 48/49 開啟拖放 UI
+	// 客戶端拖入裝備後送 C_PledgeContent (opcode 78) data=13/14 → handleRefineResolve / handleRefineTransform
 
 	case "itemresolve":
-		// 火神精煉（商店模式）— 和 request firecrystal 相同機制
-		sendFireSmithSellList(sess, player, npc, deps)
+		// 火神精煉（type 48 拖放 UI）— Java 380: S_EquipmentWindow(48, npcId)
+		sendRefineUI(sess, npc.ID, 48)
 	case "itemtransform":
-		// 火神製作 — ItemBlend 模板瀏覽配方 → confirm craft 開啟交易視窗 → 確認製作
-		sendCraftItemBlend(sess, player, npc, deps, 0)
+		// 火神合成（type 49 拖放 UI）— Java 380: S_EquipmentWindow(49, npcId)
+		sendRefineUI(sess, npc.ID, 49)
 	case "request firecrystal":
 		// 火神熔煉（商店賣出格式）— Java: Npc_FireSmith → S_ShopBuyListFireSmith
+		// 與拖放 UI 並行存在的回退路徑（NPC 111414 火神煉化工匠用）
 		sendFireSmithSellList(sess, player, npc, deps)
+	case "request craft itemblend":
+		// 火神工匠 ItemBlend 配方瀏覽（拖放 UI 之外的回退查詢介面）
+		sendCraftItemBlend(sess, player, npc, deps, 0)
 
 	// ---------- 火神工匠系統（Java: L1Blend / 道具製造系統DB化） ----------
 
@@ -262,6 +267,12 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 		default: // NPC 71264 回憶蠟燭嚮導等 → 角色重置
 			StartCharReset(sess, player, deps)
 		}
+
+	// 副本框架 demo（MISS-P0-003 Stage E）
+	case "enter_demo_dungeon":
+		enterDemoDungeon(sess, player, deps)
+	case "exit_demo_dungeon":
+		exitDemoDungeon(sess, player, deps)
 
 	// ---------- 城堡管理 NPC 動作 ----------
 
@@ -1279,22 +1290,23 @@ func classIDToName(classID int32) string {
 	}
 }
 
-// sendRefineUI 發送火神精煉/合成 UI 封包。
-// sendRefineUI 發送火神精煉/合成 UI 封包。
-// Java S_Refine.java（380火神煉化）：opcode 64 + type + npcObjID + 尾碼
-// Java S_EquipmentWindow（815版）：同格式但尾碼不同
-// 客戶端回應走 C_PledgeContent (opcode 78) type=13（精煉）或 type=14（合成）。
-// type=48: 精煉（itemresolve），type=49: 合成（itemtransform）
+
+// sendRefineUI 發送火神精煉/合成原生拖放 UI 封包。
+// Java 380 參考：S_EquipmentWindow(int type, int value) — 當 type==48||49 時：
 //
-// 尾碼測試記錄：
-// - 0x95, 0x19（S_EquipmentWindow 815）：視窗開啟，無法拖裝備
-// - 0xE3, 0x92（S_Refine 380）：視窗開啟，無法拖裝備
+//	writeC(S_OPCODE_CHARRESET)  // opcode 64（在 Go 命名為 S_OPCODE_CHARSYNACK）
+//	writeC(type)                // 48=精煉, 49=合成
+//	writeD(value)               // NPC object ID
+//	writeC(149)                 // 0x95
+//	writeC(25)                  // 0x19
+//
+// 客戶端拖入裝備後回傳 C_PledgeContent (opcode 78) data=13/14 → handleRefineResolve/Transform。
 func sendRefineUI(sess *net.Session, npcObjID int32, refineType byte) {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_CHARSYNACK)
 	w.WriteC(refineType) // 48=精煉, 49=合成
 	w.WriteD(npcObjID)   // NPC object ID
-	w.WriteC(0)          // 尾碼（3.80C 正確值待確認）
-	w.WriteC(0)
+	w.WriteC(0x95)       // 380 尾碼 byte1（149）
+	w.WriteC(0x19)       // 380 尾碼 byte2（25）
 	sess.Send(w.Bytes())
 }
 
