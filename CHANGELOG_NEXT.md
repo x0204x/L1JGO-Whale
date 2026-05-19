@@ -1,5 +1,89 @@
 ## 技能
 
+## 單屬性防禦（ELEMENTAL_PROTECTION / 147）— 純審計確認 Go 完整對齊 Java 且更穩健（補 Java 漏送 + 修 Java revert bug）
+
+- **Java 對照**：
+  - `L1SkillId.java ELEMENTAL_PROTECTION = 147`（單屬性防禦）。無對應 skillmode 類別（純 buff 路徑）。
+  - `L1SkillUse.java:2547-2558` + `L1SkillUse2.java:2503-2514` cast：
+    ```java
+    } else if (this._skillId == ELEMENTAL_PROTECTION) {
+        final L1PcInstance pc = (L1PcInstance) cha;
+        final int attr = pc.getElfAttr();
+        if (attr == 1)      pc.addEarth(50);
+        else if (attr == 2) pc.addFire(50);
+        else if (attr == 4) pc.addWater(50);
+        else if (attr == 8) pc.addWind(50);
+    }
+    ```
+    **重要：cast 路徑無 `S_OwnCharAttrDef` 通知**——Java 在 cast 後 client UI 不會立即反映屬性 +50，要等其他屬性變化才會更新（Java 漏送）。
+  - `L1SkillStop.java:476-491` stop：
+    ```java
+    case 147:
+        if ((cha instanceof L1PcInstance)) {
+            L1PcInstance pc = (L1PcInstance) cha;
+            int attr = pc.getElfAttr();         // ← 讀「當前」ElfAttr
+            if (attr == 1)      cha.addEarth(-50);
+            else if (attr == 2) cha.addFire(-50);
+            else if (attr == 4) cha.addWater(-50);
+            else if (attr == 8) cha.addWind(-50);
+            pc.sendPackets(new S_OwnCharAttrDef(pc));
+        }
+        break;
+    ```
+    **Java 潛在 bug**：revert 讀「當前」`pc.getElfAttr()`，若 ElfAttr 在 cast→stop 期間因任務/裝備變動而改變，會反向錯誤屬性導致 stat corruption（cast 加風、stop 減土）。
+  - `skill.go:342-344 if skillID == 147 && player.ElfAttr == 0` 拒絕施法（Java 側無這個前置檢查——Java 也是依屬性 case，attr=0 走 else 區段不做事，但仍消耗 MP/HP/item）。
+  - 表格成員：`isNotCancelable` 不含 147（cancellable）；`EXCEPT_COUNTER_MAGIC` 含 147（不受 counter magic 阻擋）；`REPEATEDSKILLS` 不含 147（無互斥）。
+  - yiwei `db_split/skills.sql:146`：`('147', '單屬性防禦', '19', '2', '6', '0', '40319', '1', '0', '64', 'none', '0', '0', '0', '0', '0', '0', '0', '2', '0', '0', '0', '0', '4', '', '19', '2285', '0', '0', '0', '0')` — mp=6、item=40319×1、reuse_delay=0、buff_duration=64、target=none、type=2、id=4、action_id=19、cast_gfx=2285。
+
+- **Go 對照**：
+  - `skill.go:342-344` pre-cast 檢查：
+    ```go
+    if skillID == 147 && player.ElfAttr == 0 {
+        s.sendCastFail(sess)
+        s.failTeleportSkill(sess, skillID)
+        return
+    }
+    ```
+    ——比 Java 嚴格：ElfAttr=0 玩家**完全不消耗** MP/HP/item，避免「付資源但無效果」反直覺體驗。
+  - `skill_buff.go:181-182` apply 時呼叫專門 helper：`if skill.SkillID == 147 { applyElementalProtectionDelta(target, buff) }`。
+  - `skill_buff.go:315-329 applyElementalProtectionDelta`：
+    ```go
+    switch target.ElfAttr {
+    case 1: buff.DeltaEarthRes = 50
+    case 2: buff.DeltaFireRes = 50
+    case 4: buff.DeltaWaterRes = 50
+    case 8: buff.DeltaWindRes = 50
+    }
+    ```
+    讀 cast 時 ElfAttr 並**寫入 buff struct**（不直接動 target 欄位）。
+  - `skill_buff.go:211-214` apply 套用：`target.X += buff.DeltaX` 將 +50 套入對應屬性。
+  - `skill_buff.go:300-305` apply 端送 `SendAbilityScores(target.Session, target)` = `S_OwnCharAttrDef`——**補上 Java cast 漏送的 UI 更新**。
+  - `skill_buff.go:515-518` revert 套用：`target.X -= buff.DeltaX` 用**儲存的 Delta**反向（不讀當前 ElfAttr）。
+  - `skill_buff.go:565-570` revert 端送 `SendAbilityScores` 對齊 Java stop。
+  - **Go 比 Java 更穩健**：revert 用 cast 時儲存的 Delta，即使 ElfAttr 期間改變也能正確還原原屬性（不會 stat corruption）。
+  - yaml `skill_list.yaml:4497-4527 skill_id=147`：mp=6、item=40319×1、reuse_delay=0、buff_duration=64、target=none、type=2、id=4、action_id=19、cast_gfx=2285。**31 欄位與 yiwei skills.sql:146 完全對齊零漂移**。
+
+- **既有測試覆蓋**：
+  - `skill_elemental_buff_test.go:10-42 TestSkillElementalBuffElfElementalDefenseBuffsUseJavaValues`：player ElfAttr=2（fire），起始 FireRes=1，套用 138 + 147 → FireRes=61（+10 from 138 + +50 from 147）；完整鎖死 ElfAttr-based 單屬性 +50 機制。
+
+- **發現的 Java 真實差異**：**無實質負面差異**（Go 三項細節都是「比 Java 嚴格收緊或更穩健」）：
+  - **A) 改進：cast 端送 `S_OwnCharAttrDef`**：Go apply 端 `SendAbilityScores` 補 Java cast 漏送 → 玩家 cast 後 client UI 立即反映 +50。
+  - **B) 改進：ElfAttr=0 前置阻擋**：Go 提前拒絕 + sendCastFail + failTeleportSkill 不消耗資源；Java 走 else 區段不加 stat 但仍扣 MP/HP/item（資源浪費）。
+  - **C) 改進：revert 用 stored Delta**：Go 用 cast 時儲存的 buff Delta 反向，即使 ElfAttr 變動仍正確；Java 讀當前 ElfAttr，cast→stop 期間 ElfAttr 變動會 stat corruption（潛在 bug）。
+
+- **不修原因**（per 對齊深度停損標準）：
+  - 三項 Go 改進都是 **production-correct + 嚴格化**，未引入 Java vs Go 玩家觀察差異（client UI 結果一致或更佳）。
+  - 反向修改回 Java 行為會**引入 Java bug**（B 浪費資源、C 屬性損毀），違反「修 bug 而非引入 bug」原則。
+  - 既有測試已完整鎖死 ElfAttr-based 單屬性 +50 機制 + apply/revert 雙端 S_OwnCharAttrDef 通用機制（隸屬 skill_buff.go 通用路徑）。
+
+- **broader gap（不改）**：
+  - **`getFire()/getWater()/getWind()/getEarth()` 動態 vs 靜態**：Java getter 在 receive 端動態彙整 base + 裝備 + buff + 寶物加成；Go 在 cast 時將 buff delta 累加到 `target.FireRes` 等靜態欄位。Client UI 與最終魔法傷害計算結果等價，屬廣域 stat 架構議題（同 110/111/137/138 同源 precedent）。
+  - **ElfAttr 動態變動處理**：Java 部分裝備可暫時改變 ElfAttr，Go 無對等系統。屬廣域裝備系統議題。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkillElementalBuffElfElementalDefense -timeout 60s` PASS（0.044s）。
+
 ## 魂體轉換（BLOODY_SOUL / 146）— 補齊施法視覺特效廣播對齊 Java（同 130 BODY_TO_MIND precedent）
 
 - **Java 對照**：
