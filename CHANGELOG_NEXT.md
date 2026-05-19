@@ -1,5 +1,24 @@
 ## 技能
 
+## 暗隱術（BLIND_HIDING / 97）— 純審計無代碼變更
+
+- 純審計 `97 BLIND_HIDING`：Go 已完整對齊 Java `L1SkillUse.java:2559-2562` 與 `L1SkillUse2.java:2511-2514` 的施法路徑與相關生態。
+- **核心行為已對齊**：
+  - **施法立即效果**：Go `skill_self.go case 97` 送 `SendInvisible(true)` 給施法者 + `BuildRemoveObject` 廣播給附近玩家，對齊 Java `pc.sendPackets(new S_Invis(pc.getId(), 1))` + `pc.broadcastPacketAll(new S_RemoveObject(pc))`。
+  - **隱身旗標**：`buffs.lua [97] = { invisible = true }` → `applyBuffEffect` 設 `target.Invisible = true`，對齊 Java skillmode 隱身註冊。
+  - **Icon emission**：`buff_icon_map.yaml skill_id=97 type=invis` 透過 `sendBuffIcon "invis"` 重複送 `SendInvisible(durationSec > 0)`，與 Java 同向；雖然 Go 雙路徑送 invis 圖示一次屬內部重複（但 client 處理為 idempotent）。
+  - **持續時間**：yaml `buff_duration: 32`（32 秒）由 `applyBuffEffect` 套用 `target.AddBuff(... TicksLeft: 32*5)`，對齊 Java `_skill.getBuffDuration() * 1000`（SQL=32 秒）。
+  - **被偵測解除**：Go `skill_self.go case 13, 72`（DETECTION / COUNTER_DETECTION）遍歷 nearby 同時移除 60 與 97 buff，對齊 Java `L1SkillUse.detection()` 路徑。
+  - **行動解除**：Go `cancelInvisibility`（`skill_buff.go:350-367`）同時移除 60 與 97，於攻擊/施法/使用道具時觸發，對齊 Java `L1BuffUtil.cancelInvisibility`。
+  - **反咒語豁免**：`counterMagicExempt[97] = true`（`skill_buff.go:403`）對齊 Java `EXCEPT_COUNTER_MAGIC` 含 BLIND_HIDING。
+  - **無 REPEATEDSKILLS**：Java `L1SkillUse.java:1741-1762` 全 10 個群組不含 97，Go `buffs.lua [97]` 無 exclusions，對齊允許與其他 buff 並存。
+- **不動處**：
+  - `cancelInvisibility` 額外送 `SendPutObject` 給附近玩家是 Go 對 UI 即時性的加強（Java 依靠 movement 觸發重新出現），不破壞 Java 對齊。
+- **broader gap（不改）**：
+  - **客戶端隱身切換時序**：Go 走 VisibilitySystem 下一 tick（200ms 內）刷新 known set，Java 為立即同步呼叫；兩者皆能正確讓附近玩家「看不到」隱身者，差異不可感知。
+  - **yaml mp_consume/reuse_delay/type 等**：與廣域 yaml drift 同源 broader gap。
+- 驗證：無代碼變更，既有測試覆蓋 60/97 共用 cancel 路徑（attack/cast cancel 與 detection 解除）。
+
 ## 立方：和諧（CUBE_BALANCE / 220）— 純審計無代碼變更
 
 - 純審計 `220 CUBE_BALANCE`：Go 已完整實作並與 Java 行為對齊；docs 表格「未實作，需補地面立方」為過期標註，本步更新為「已對齊」。
