@@ -1,5 +1,54 @@
 ## 技能
 
+## 大地屏障（EARTH_BIND / 157）— 純審計確認核心 1-12s 凍結 + PC/NPC 雙路徑 + 廣域 immunity 整合完整對齊 Java
+
+- **Java 對照**：
+  - `L1SkillId EARTH_BIND = 157`，`skillmode/EARTH_BIND.start()`：
+    - `i = rad.nextInt(12) + 1` 1-12 秒隨機。
+    - `if (!srcpc.castleWarResult())` 同陣營友軍 gate。
+    - `setSkillEffect(157, i * 1000)` apply。
+    - PC 目標：`sendPacketsAll(S_Poison(id, 2)) + sendPackets(S_Paralysis(TYPE_FREEZE, true))`。
+    - NPC 目標：`broadcastPacketAll(S_Poison(id, 2)) + setParalyzed(true)`。
+  - `EARTH_BIND.stop()`：PC `sendPacketsAll(S_Poison(id, 0)) + sendPackets(S_Paralysis(4, false))`；NPC `broadcastPacketAll(S_Poison(id, 0)) + setParalyzed(false)`。
+  - `L1SkillUse.java:378-383` castle_area 旗幟區阻擋 cast + msg「戰爭旗幟內禁止使用大地屏障」。
+  - `L1SkillUse.java:757-758` `if (target.hasSkillEffect(EARTH_BIND) && (skillId == EARTH_BIND || FREEZING_BLIZZARD)) return false` restack 防止。
+  - `L1Character.java:337-339` `if (hasSkillEffect(EARTH_BIND)) return true` 列入 paralysis-class 控制效果（與 FOG_OF_SLEEPING/SHOCK_STUN/PHANTASM/ICE_LANCE/DARK_BLIND 同組）。
+  - `L1MagicPc.calcProbabilityMagic case EARTH_BIND`（line 521-534）三段 `EARTH_BIND_1/2/3` + INT/MR 微調。
+  - `L1MagicPc.java:118 + :190` target hasSkillEffect(EARTH_BIND) 抗性檢查。
+  - `L1Cube.java:88/119` 持 EARTH_BIND 目標對 cube damage/freeze 免疫。
+  - yiwei `db_split/skills.sql:156`：`('157', '大地屏障', '20', '4', '10', '0', '40319', '2', '1200', '12', 'buff', '3', '0', '0', '0', '33', '50', '1', '1', '0', '8', '0', '0', '16', '', '19', '2251', '0', '0', '0', '280')` — mp=10、item=40319×2、reuse_delay=**1200**、buff_duration=**12**、target=buff、target_to=3、prob_value=33、prob_dice=**50**、attr=1、type=1、ranged=**8**、id=16、action_id=19、cast_gfx=2251、sys_msg_fail=280。
+
+- **Go 對照**：
+  - `skill_buff.go:1118-1128 case 157` PC→PC 路徑：`if HasBuff(157) || Paralyzed → return`（restack 防止）；`earthBind.BuffDuration = 1 + RandInt(12)`；`applyBuffEffect(target, &earthBind)` 透過 lua `[157] = { paralyzed = true }` 設 `target.Paralyzed = true`；cast_gfx 廣播。
+  - `skill_status.go:518-530 case 157` PC→NPC 路徑：`checkNpcMRResist` MR 閘 + `1 + RandInt(12)` 隨機 + `npc.Paralyzed = true` + `npc.AddDebuff(157, dur*5)` + `BuildPoison(npc.ID, 2)` 廣播 + cast_gfx。
+  - `skill_buff.go:255-264 eff.Paralyzed` apply：`buff.SetParalyzed = true` + `target.Paralyzed = true` + `case 157` 派發 `SendParalysis(FreezeApply)` + `broadcastPlayerPoison(target, 2)`。
+  - `skill_buff.go:677/694-697 needFreezeRemove` revert：`SendParalysis(FreezeRemove)` + `broadcastPlayerPoison(target, 0)`。
+  - `skill_status.go:831 playerDebuffSkills[157] = true` MR 抗性閘。
+  - 廣域 immunity 整合：
+    - `ground_effect.go:85/94/108/116` cube 凍結/麻痺免疫對齊 Java `L1Cube:88/119`。
+    - `skill_dragonknight.go:129` paralysis-class 攻擊免疫。
+    - `weapon_skill.go:224` 武器 special 對 paralyzed 目標免疫。
+    - `skill_buff.go:949 case 87 SHOCK_STUN` 對 HasBuff(157) 目標 fail。
+  - NPC AI `npc_ai.go:1488 case 157` 清除路徑。
+  - yaml `skill_list.yaml:4807-4837`：mp=10、item=40319×2、reuse_delay=**0**、buff_duration=**16**、target=buff、target_to=3、prob_value=33、prob_dice=**30**、attr=1、type=1、ranged=**-1**、id=16、action_id=19、cast_gfx=2251、sys_msg_fail=280。
+  - **4 項 yaml 漂移**：reuse_delay=0 vs 1200、buff_duration=16 vs 12、prob_dice=30 vs 50、ranged=-1 vs 8（Go 跟 cat-fei）。注意 case 157 用 `1 + RandInt(12)` 覆寫 buff_duration，yaml buff_duration 無實際效用。
+
+- **既有測試覆蓋**：
+  - SHOCK_STUN 測試已覆蓋對 HasBuff(157) 目標的失敗行為（skill_buff.go:949）。
+  - 廣域 immunity 整合於 ground_effect / dragonknight / weapon_skill 測試間接覆蓋。
+
+- **發現的 Java 真實差異**：**無**（核心 mechanic 完整對齊：1-12s 隨機凍結、PC/NPC 雙路徑、S_Paralysis FreezeApply/Remove、S_Poison cast/stop、MR 抗性閘、廣域 immunity 整合、NPC AI 清除路徑）。
+
+- **broader gap（不改，待後續系統議題處理）**：
+  - **A) `castleWarResult()` 同陣營友軍 gate**：Java skill 對同陣營玩家免疫，Go 無此檢查——屬城堡戰陣營判定子系統議題。
+  - **B) `L1SkillUse:378-383` castle_area 旗幟區 cast 阻擋**：Java 在城堡戰旗幟區內阻擋 EARTH_BIND cast，Go 無此檢查——屬城堡戰旗幟區判定議題。
+  - **C) `ConfigElfSkill.EARTH_BIND_1/2/3` 三段公式**：Java 用 3 段 lvldiff probability + INT/MR 微調；Go 用 generic checkPlayerMRResist 簡化版——屬廣域 ConfigElfSkill probability 表議題（同 173/174 同源）。
+  - **D) yaml 4 項漂移**：reuse_delay=0 vs 1200、buff_duration=16 vs 12、prob_dice=30 vs 50、ranged=-1 vs 8（Go 跟 cat-fei）——屬廣域 yiwei/cat-fei SQL 同步議題。case 157 用 RandInt(12) 覆寫 buff_duration，實際效用未受影響。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - 無針對 157 的新測試需執行。
+
 ## 暴風之眼（STORM_EYE / 156）— 純審計確認核心 BowHit ±2 + BowDmg ±3 + icon + REPEATEDSKILLS[0] 5 項互斥完整對齊 Java
 
 - **Java 對照**：
