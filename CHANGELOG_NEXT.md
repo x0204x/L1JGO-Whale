@@ -1,5 +1,73 @@
 ## 技能
 
+## 心靈轉換（BODY_TO_MIND / 130）— 修正施法視覺特效廣播缺失
+
+- **Java 對照**：
+  - `L1SkillId.java:447-450 BODY_TO_MIND = 130`（心靈轉換）。
+  - `L1SkillMode.load() line 98`：`_skillMode.put(Integer.valueOf(130), new BODY_TO_MIND());` 註冊 skillmode。
+  - `skillmode/BODY_TO_MIND.java:13-19 start(L1PcInstance srcpc, ...)`：核心邏輯極簡，僅 `srcpc.setCurrentMp(srcpc.getCurrentMp() + 2)` 然後 `return dmg=0`。NPC start/stop 皆為 no-op。
+  - `L1Character.java:279-284 setCurrentMp` + `L1PcInstance.java:1725-1736` override：`Math.min(i, getMaxMp())` 內建 MaxMp clamp + 變化時送 `S_MPUpdate(currentMp, MaxMp)`，若 MP 無變化則 early return 不送 packet。
+  - `L1SkillUse.java:481-486 TYPE_NORMAL` 流程：`runSkill() → useConsume() → sendGrfx(true) → setDelay()`。`useConsume()` 消耗 `mp_consume=0` + `hp_consume=8`（Java SQL `db_split/skills.sql:129`）。
+  - `L1SkillUse.sendGrfx:1489-1683`：對 PC user + target='none' + type != ATTACK，進入 1637 "補助魔法或詛咒魔法" else 分支：
+    - 1642：`_player.sendPacketsAll(new S_DoActionGFX(self.id, _actid=19))` ← Go 已對齊（後置 BuildActionGfx）。
+    - 1645-1680 各 skillId 特殊處理皆不命中 130。
+    - 1681 default：`_player.sendPacketsAll(new S_SkillSound(targetid, _gfxid=2179))` ← **原 Go 缺失，本次補上**。
+  - `L1SkillMode.isNotCancelable():31-64`：**不含 130**（cancellable by CANCELLATION）。
+  - `L1SkillUse.EXCEPT_COUNTER_MAGIC:148`：**含 130**（魔法屏障無法抵擋）。
+  - `L1SkillUse.REPEATEDSKILLS:1741-1762`：10 群均不含 130，無互斥技能。
+  - yiwei `db_split/skills.sql:129`：`(130, '心靈轉換', 17, 1, 0, 8, 0, 0, 100, 0, 'none', 0, ..., 2, ..., 2, '', 19, 2179, 0, 702, 0, 0)` — 31 欄位。
+- **Go 對照**：
+  - `skill_self.go:121-133 case 130`：原本只 `player.MP += 2 + MaxMP clamp + sendMpUpdate`，**未送 cast_gfx 廣播**；後置 `:172-175 BuildActionGfx(action_id=19)` 對齊 Java S_DoActionGFX 但 cast_gfx=2179 缺失。
+  - `skill.go:328-332 hp_consume`：HP ≤ 8 拒絕 + SendServerMessage(skillMsgNotEnoughHP) 對齊 Java `useConsume` 失敗。
+  - `skill.go:449-452`：HP -= 8 + sendHpUpdate 對齊 Java useConsume HP 消耗。
+  - `skill_buff.go:409 counterMagicExempt[130]=true` 對齊 Java EXCEPT_COUNTER_MAGIC 含 130。
+  - `scripts/combat/buffs.lua:236-276 NON_CANCELLABLE`：**不含 130**，對齊 Java isNotCancelable 不含 130。
+  - 無 `buffs.lua [130]` entry（因技能僅做 MP 加值，無持續 buff stat）。
+- **修正**：`skill_self.go` case 130 補上 cast_gfx 廣播：
+  ```go
+  case 130: // 心靈轉換 — 恢復 2 MP（Java: BODY_TO_MIND +2）
+      // Java skillmode/BODY_TO_MIND.java:16 setCurrentMp(currentMp + 2)
+      player.MP += 2
+      if player.MP > player.MaxMP {
+          player.MP = player.MaxMP
+      }
+      sendMpUpdate(sess, player)
+      // Java L1SkillUse.sendGrfx:1681 default 分支送 S_SkillSound(self.id, cast_gfx=2179)
+      if skill.CastGfx > 0 {
+          handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+      }
+  ```
+  與既有 `case 186 BLOODLUST` 同模式（line 137-146）。
+- **yaml 對照**（Go `skill_list.yaml:3970-4000` vs yiwei `skills.sql:129`）：
+
+| 欄位 | Go yaml | yiwei SQL | 備註 |
+|------|---------|-----------|------|
+| name | 心靈轉換 | 心靈轉換 | ✓ |
+| skill_level | 17 | 17 | ✓ |
+| skill_number | 1 | 1 | ✓ |
+| mp_consume | 0 | 0 | ✓ |
+| hp_consume | 8 | 8 | ✓ |
+| reuse_delay | **400** | **100** | ✗ Go 跟貓飛 |
+| buff_duration | 0 | 0 | ✓ |
+| target | none | none | ✓ |
+| type | 2 | 2 | ✓ |
+| id | 2 | 2 | ✓ |
+| action_id | 19 | 19 | ✓ |
+| cast_gfx | 2179 | 2179 | ✓ |
+| sys_msg_happen | 702 | 702 | ✓ |
+
+reuse_delay 為唯一差異，cat-fei `(130,'心靈轉換',17,1,0,8,0,0,400,...)` 也是 400，Go 跟貓飛——屬 yiwei/cat-fei SQL 漂移廣域議題。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkill -timeout 120s` PASS（13.884s）。
+- **不寫新測試**：cast_gfx 廣播為 single-line BroadcastToPlayers 包裝，與 case 186 BLOODLUST 同模式（既有 buff cast 測試已驗證 `BuildSkillEffect` 廣播路徑）。新增「測試 case 130 送出 BuildSkillEffect」屬「Go 通用機制 + 對齊行為」鎖死測試，違反停損標準。
+- **broader gap（不改）**：
+  - **case 146 BLOODY_SOUL 同樣缺 cast_gfx 廣播**：Java `BLOODY_SOUL.start` 經 sendGrfx 同樣走 1681 default 分支送 S_SkillSound(self, cast_gfx=11005)，Go case 146（同檔案 line 128-135）也只送 MP+20 + sendMpUpdate 無 cast_gfx 廣播。146 已標 ✅ 對齊（前次 audit 只修 MP 值 +20），依「不可偷換範圍」記錄為待 146 重 audit 時處理，本次不擴張範圍修。
+  - **Java sendGrfx 末尾 1686-1694 通用 status refresh**：對 _targetList 每位 PC 送 `S_SPMR + S_OwnCharStatus + S_PacketBox(UPDATE_ER)` 三項 status 刷新封包。BODY_TO_MIND 無 stat 變化，這三項封包對 client 無功能影響（client 端狀態不變）。屬廣域 buff cast 後置 status refresh 缺口（與多項 self-skill 同源），不在 130 單體範圍。
+  - **reuse_delay 100 vs 400**：yiwei 100ms vs cat-fei/Go 400ms。Go 跟貓飛現代 Lineage R 數值，屬廣域 yiwei/cat-fei SQL 同步議題（與 114 GLOWING_AURA、134 COUNTER_MIRROR、158、159、173 等多項技能同源），不在 130 單體範圍。
+  - **HP→MP 4:1 比例設計**：Java/Go 均消耗 8 HP 換 2 MP（淨虧 6 HP），這是 BODY_TO_MIND 的設計平衡（緊急 MP 補充但要付出大量 HP 代價），兩端一致無偏離。
+
 ## 魔法防禦（RESIST_MAGIC / 129）— 純審計，Java 預設 buff 路徑與 Go 通用 mr+SPMR 完全等價
 
 - **Java 對照**：

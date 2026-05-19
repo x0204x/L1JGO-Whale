@@ -119,11 +119,19 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 		}
 
 	case 130: // 心靈轉換 — 恢復 2 MP（Java: BODY_TO_MIND +2）
+		// Java skillmode/BODY_TO_MIND.java:16 `setCurrentMp(currentMp + 2)`，
+		// L1PcInstance.setCurrentMp 內建 MaxMp clamp + S_MPUpdate（已對齊 Go sendMpUpdate）。
 		player.MP += 2
 		if player.MP > player.MaxMP {
 			player.MP = player.MaxMP
 		}
 		sendMpUpdate(sess, player)
+		// Java `L1SkillUse.sendGrfx` 第 1681 行 default 分支對 target='none' + type=buff 走
+		// `_player.sendPacketsAll(new S_SkillSound(self.id, cast_gfx))` 廣播施法效果（cast_gfx=2179）。
+		// 後置 BuildActionGfx 已負責 S_DoActionGFX(action_id=19)，這裡補上 cast_gfx 廣播。
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+		}
 
 	case 146: // 魂體轉換 — Java `BLOODY_SOUL.start()` 第 19 行
 		// `setCurrentMp(currentMp + ConfigElfSkill.BLOODY_SOULADDMP)`，
