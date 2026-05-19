@@ -1,5 +1,17 @@
 ## 技能
 
+## 精準射擊（STRIKER_GALE / 174）— 純審計重新確認核心 1.1x 遠程增傷 + UPDATE_ER UI 通知 + MR 抗性閘完整對齊 Java
+
+- **Java 對照**：`L1PcInstance.getEr()` 持有 STRIKER_GALE 時 `return 0` UI 顯示；`L1SkillStop case STRIKER_GALE` 還原通知；`STRIKER_DMG2=1.1` 遠程增傷。
+- **Go 對照**（無代碼變更）：
+  - `skill_elemental.go:193-198 strikerGaleRangedDamage`：`target.HasBuff(174) → damage * 11 / 10`。
+  - `:200-205 strikerGaleRangedDamageToNpc`：NPC 目標 `HasDebuff(174)` 1.1x。
+  - `combat.go:477` NPC 弓箭 + `pvp.go:310` PvP 弓箭兩路皆掛接。
+  - `executeBuffSkill` 套用後送 `SendUpdateER(sess, 0)`；`removeBuffAndRevert(174)` 與 `tickPlayerBuffs` 到期送 `SendUpdateER(sess, target.Dodge)`。
+  - `playerDebuffSkills[174]=true` 走 `checkPlayerMRResist`；`buffs.lua [174]={}` flag-only。
+- **broader gap（不改）**：(A) NPC 目標無 `case 174` 屬「全體 elf debuff NPC 目標」族群差異（同 157/173 同源）；(B) cast probability 三段公式 (`STRIKER_GALE_1/2/3 = 70/40/20`) Go 用 generic MR 公式屬廣域 ConfigElfSkill 議題。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 汙染之水（POLLUTE_WATER / 173）— 純審計重新確認核心 PC heal 藥水減半 + 治療法術減半 + MR 抗性閘完整對齊 Java
 
 - **Java 對照**：`UserAddHp.java:69-71 / UserAddHp_FR.java:91-93` 持有 POLLUTE_WATER → 藥水 `addhp >>= 1`；`L1SkillUse2:2002-2005` 治療法術 `_heal >>= 1`。
