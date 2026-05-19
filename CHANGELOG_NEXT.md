@@ -1,5 +1,46 @@
 ## 技能
 
+## 魔法消除（ERASE_MAGIC / 153）— 移除錯誤 cancelAllBuffs 並補 PvP MR 閘，broader gap MR/=4 + consume hook 仍延後
+
+- **Java 對照**：
+  - `L1SkillId.java:510 ERASE_MAGIC = 153`，無對應 skillmode 類別（走 generic `cha.setSkillEffect(_skillId, _getBuffDuration)` apply 路徑——`L1SkillUse.java:1357-1360` mode==null 分支）。
+  - `L1SkillUse.java:1940-1955` + `L1SkillUse2.java:1948-1962` **consume-on-cast hook**：
+    - TYPE_ATTACK 命中 target → `if (cha.hasSkillEffect(ERASE_MAGIC)) cha.removeSkillEffect(ERASE_MAGIC)` 消耗（line 1940-1942）。
+    - TYPE_CURSE/TYPE_PROBABILITY cast on target & `skillId != ERASE_MAGIC` → 同樣 `cha.removeSkillEffect(ERASE_MAGIC)`（line 1953-1955）。
+  - `L1Character.java:1767-1768` **真實效果**：`if (hasSkillEffect(153)) return mr >> 2;`——`getMr()` getter 對持有 153 buff 的角色直接回傳 `mr / 4`（**乘法/移位** 路徑非加法 delta）。
+  - `L1SkillUse.java:3063-3066` **isErase 抗性閘**：`if (skillId == ERASE_MAGIC || SLOW || MANA_DRAIN || MASS_SLOW || ENTANGLE || WIND_SHACKLE) && isErase==false → 免疫`。
+  - `L1MagicPc.java:506-519` cast probability 三段：`ERASE_MAGIC_1/2/3 = 5/10/15`（攻擊方等級 > = < 防禦方）+ `INT*INT - MR*MR` 微調（預設 INT=0, MR=0 不啟動）。
+  - `L1SkillUse.java:799` **isExceptCounterMagic** 含 ERASE_MAGIC（不受 counter magic 抵消）。
+  - `L1SkillStop.java:492-497` stop：`(if PC) pc.sendPackets(new S_PacketBoxIconAura(152, 0))` icon clear（注意 icon_id=skill_id-1=152）。
+  - `L1WeaponSkill.java:421/593/764` (W_SK0010/0015, W_SK005/006/007) 武器 special attack：`pc1.setSkillEffect(ERASE_MAGIC, 32*1000)` 觸發 32 秒 buff。
+  - yiwei `db_split/skills.sql:152`：`('153', '魔法消除', '20', '0', '32', '0', '40319', '1', '1200', '32', 'buff', '3', '0', '0', '0', '33', '50', '0', '1', '0', '6', '0', '0', '1', '', '19', '10706', '0', '0', '0', '280')` — mp=**32**、item=40319×1、reuse_delay=**1200**、buff_duration=32、target=buff、target_to=3、prob_value=33、prob_dice=**50**、attr=0、type=1（TYPE_PROBABILITY）、ranged=**6**、id=1、cast_gfx=**10706**、sys_msg_fail=280。
+
+- **Go 對照**（修正前 vs 修正後）：
+  - 修正前 `skill_buff.go:1153-1155`：`case 153: s.cancelAllBuffs(target)`——**錯誤實作**，套用 44 CANCELLATION 的「buff 全消」語義，與 Java 32s MR/4 debuff 截然相反。**主動有害**：153 在 Go 變成 100% 機率（無 MR 閘）的 strip-all-buffs 神技，比 Java 任何技能都更強。
+  - 修正後：刪除錯誤的 `case 153` 區塊，fall-through 至 default `applyBuffEffect(target, skill)` 走純 flag buff 應用（無屬性 delta，buffs.lua 無 [153] 條目）。
+  - `skill_status.go:828-829 playerDebuffSkills`：新增 `153: true`——PvP 對玩家 cast 153 時走 `checkPlayerMRResist` MR 閘（與 152 ENTANGLE 同 precedent）。
+  - `clearShockStunEraseMagic` (skill_status.go:173) 既有對 87 SHOCK_STUN 的 consume hook 保留——`removeBuffAndRevert(target, 153)` 移除 153 buff（修正前 153 從未被 applyBuffEffect 真的設定，此 hook 為 no-op；修正後 hook 終於有實質作用）。
+  - yaml `skill_list.yaml:4683-4713`：mp=**10**、buff_duration=32、prob_value=33、prob_dice=**30**、type=1、ranged=**-1**、cast_gfx=**2181**、sys_msg_happen=0、sys_msg_fail=280。**漂移欄位**：mp=10 vs 32、reuse_delay=0 vs 1200、prob_dice=30 vs 50、ranged=-1 vs 6、cast_gfx=2181 vs 10706（Go 跟 cat-fei）。
+
+- **既有測試覆蓋**：
+  - 無針對 153 的單元測試。`skill_status.go clearShockStunEraseMagic` 路徑由 87 SHOCK_STUN 測試覆蓋。
+
+- **本次修正範圍**（criterion (b) Go 確實有錯）：
+  - **A) 移除錯誤的 `case 153: cancelAllBuffs`**：消除「100% 機率 strip-all-buffs」的有害行為，restore 至 flag buff apply 語義（仍非完整 Java MR/4，但至少不再有 strip-all 副作用）。
+  - **B) playerDebuffSkills 加入 153**：補上 PvP MR 抗性閘，比照 152 ENTANGLE 模式。Go 走 generic `checkPlayerMRResist` 公式（`50 + lvldiff*3 + INT - MR`）非 Java `ConfigElfSkill.ERASE_MAGIC_1/2/3=5/10/15` 三段公式——屬 broader ConfigElfSkill probability 表議題。
+
+- **broader gap（不改，待後續系統級重構）**：
+  - **C) MR/=4 乘法效果**：Java `L1Character.getMr() return mr >> 2` 多項屬於 getter override 即時計算；Go MR 系統採加法 DeltaMR delta 路徑（無乘法 / 除法 multiplier 支援）。修補需新增「multiplier delta」或「override getter chain」，影響整個屬性計算管線——屬廣域 stat computation 架構議題，與 174 STRIKER_GALE 「getEr() return 0」乘法 override 同源。
+  - **D) consume-on-cast hook**：Java TYPE_ATTACK 命中 / TYPE_CURSE/PROBABILITY cast 兩條路徑都會消耗 ERASE_MAGIC buff。Go 既有 `clearShockStunEraseMagic` 只覆蓋 87 SHOCK_STUN 一條路徑，廣域 consume hook 缺失——應在 `combat.go` 命中傷害結算 + `skill_buff.go executeBuffSkill` 入口統一加 `if target.HasBuff(153) && skill.SkillID != 153 { removeBuffAndRevert(target, 153) }`。屬廣域 buff lifecycle 議題。
+  - **E) isErase 抗性閘**：Java `L1SkillUse:3063-3066` 對 ERASE_MAGIC/SLOW/MANA_DRAIN/MASS_SLOW/ENTANGLE/WIND_SHACKLE 共享 isErase resist gating；Go 完全無此機制。屬「魔法抗性子分類」廣域議題（同 SLOW/MASS_SLOW/ENTANGLE 家族）。
+  - **F) 武器 special 觸發路徑**：W_SK005/006/007/0010/0015 武器 special attack 32 秒 buff 套用，與整體武器 special 子系統 Go 未實作同源——屬廣域 weapon skill schema 缺口。
+  - **G) ConfigElfSkill probability 三段公式**：5/10/15 + INT*INT - MR*MR 微調；Go 用 generic `checkPlayerMRResist` 簡化版。屬廣域 ConfigElfSkill probability 表議題（同 173/174 audit 同源）。
+  - **H) yaml 多項漂移**：mp=10 vs 32、reuse_delay=0 vs 1200、prob_dice=30 vs 50、ranged=-1 vs 6、cast_gfx=2181 vs 10706——Go 跟 cat-fei。屬廣域 yiwei/cat-fei SQL 同步議題。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -timeout 60s` PASS（16.998s 全綠）。
+
 ## 地面障礙（ENTANGLE / 152）— 純審計確認 case 1 haste 互消完整對齊 Java，三項 slow 家族共通缺口待 29/76 audit 重構
 
 - **Java 對照**：

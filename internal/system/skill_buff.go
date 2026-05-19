@@ -1150,9 +1150,6 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		handler.SendGlobalChat(sess, 9, "\\f2破壞盔甲 施放成功!")
 		return
 
-	case 153: // 魔法消除 — 解除 buff
-		s.cancelAllBuffs(target)
-
 	case 167: // 風之枷鎖 — 降低目標攻擊速度
 		// Java: WIND_SHACKLE.java — 不可重複施加；發送 S_PacketBoxWindShackle
 		if target.HasBuff(167) {

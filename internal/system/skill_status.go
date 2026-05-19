@@ -827,6 +827,7 @@ var playerDebuffSkills = map[int32]bool{
 	103: true, // 暗黑盲咒
 	133: true, // 弱化屬性
 	152: true, // 究極緩速術
+	153: true, // 魔法消除（Java L1MagicPc.calcProbabilityMagic case ERASE_MAGIC 用 ConfigElfSkill 5/10/15 + INT/MR；Go 走 generic checkPlayerMRResist 屬 broader gap）
 	157: true, // 大地屏障
 	161: true, // 封印禁地
 	167: true, // 風之枷鎖
