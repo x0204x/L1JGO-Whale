@@ -1,5 +1,22 @@
 ## 技能
 
+## 暗影防護（SHADOW_ARMOR / 99）— 純審計無代碼變更
+
+- 純審計 `99 SHADOW_ARMOR`：Go 已完整對齊 Java `skillmode/SHADOW_ARMOR.java`。
+- **核心行為已對齊**：
+  - **MR +5**：`buffs.lua [99] = { mr = 5 }` 透過 `applyBuffEffect` 寫 `buff.DeltaMR = 5` 並套用 `target.MR += 5`，對齊 Java `pc.addMr(5)`。
+  - **`S_SkillIconShield(3, duration)`**：`buff_icon_map.yaml skill_id=99 type=shield param=3` 透過 `sendBuffIcon "shield"` 送 `SendIconShield(sess, durationSec, 3)`，對齊 Java `pc.sendPackets(new S_SkillIconShield(3, integer))`。
+  - **`S_SPMR(pc)`**：`applyBuffEffect` 在 `buff.DeltaMR != 0` 時送 `SendMagicStatus(SP, MR)`，對齊 Java `pc.sendPackets(new S_SPMR(pc))`。
+  - **stop 反向**：`removeBuffAndRevert` → `revertBuffStats` 將 MR -5、`cancelBuffIcon` 送 `S_SkillIconShield(3, 0)`，且 DeltaMR != 0 觸發 S_SPMR 再次廣播，對齊 Java stop 三步驟。
+  - **不可被相消**：`NON_CANCELLABLE[99] = true` (`buffs.lua:248`) 對齊 Java `L1SkillMode.isNotCancelable` (line 35) 含 SHADOW_ARMOR。
+  - **反咒語豁免**：`counterMagicExempt[99] = true` (`skill_buff.go:403`) 對齊 Java `EXCEPT_COUNTER_MAGIC` (line 147) 含 99。
+  - **無 REPEATEDSKILLS 互斥**：Java `L1SkillUse.java:1741-1762` 全 10 個群組不含 99；Go `buffs.lua [99]` 無 exclusions，對齊。
+  - **refresh 行為**：Java `if (!hasSkillEffect) { setSkillEffect + addMr(5) }` + 不論如何送 icon/SPMR。Go `target.AddBuff` 透過 `old != nil → revertBuffStats(old)` 先還原舊 buff，再套用新 buff，淨效果 MR 仍為 +5；icon 與 SPMR 重送。雙方 refresh 後 MR 值與 packet 序列等價。
+- **broader gap（不改）**：
+  - **NPC caster path**：Java NPC caster stub 直接 return 0；Go 透過 SkillSystem 由 PC 技能流程驅動，NPC 不會 cast 99，路徑無差異。
+  - **yaml mp_consume/buff_duration drift**：與廣域同源 broader gap。
+- 驗證：無代碼變更，既有 buff 流程覆蓋 MR delta 與 icon 路徑。
+
 ## 武器附毒（ENCHANT_VENOM / 98）
 
 - 補齊 Java `L1AttackPc.addPcPoisonAttack`（line 754 + 2914-2921）對遠程攻擊也觸發毒附加的對齊缺口：
