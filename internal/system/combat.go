@@ -205,8 +205,9 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 		s.applyDragonKnightWeaknessFromMelee(player, npc.ID)
 	}
 
-	// 破壞盔甲傷害倍率（Java: L1AttackPc — 近戰非弓攻擊 damage *= 1.58）
-	if damage > 0 && npc.HasDebuff(112) {
+	// 破壞盔甲傷害倍率（Java: L1AttackPc.java:732-736 — `_weaponType != 20 && _weaponType != 62` 才套用 1.58x，
+	// 即排除 bow(20) 與 claw(62)；對應 ConfigSkill.ARMOR_BREAK_DMG=1.58）。
+	if damage > 0 && npc.HasDebuff(112) && weaponType != "bow" && weaponType != "claw" {
 		damage = int32(float64(damage) * 1.58)
 	}
 	damage = darkElfPhysicalDamage(player, damage, weaponType)

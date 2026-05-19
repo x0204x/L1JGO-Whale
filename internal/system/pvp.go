@@ -88,8 +88,10 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 		s.applyDragonKnightWeaknessFromMelee(attacker, target.CharID)
 	}
 
-	// 破壞盔甲傷害倍率（Java: L1AttackPc — 近戰非弓攻擊 damage *= 1.58）
-	if damage > 0 && target.HasBuff(112) {
+	// 破壞盔甲傷害倍率（Java: L1AttackPc.java:1516-1518 — `_targetPc.hasSkillEffect(ARMOR_BREAK) && isShortDistance()`
+	// 才套用 ConfigSkill.ARMOR_BREAK_DMG(1.58)；`isShortDistance()` 等價於 `_weaponType != 20 && _weaponType != 62`
+	// 即排除 bow(20) 與 claw(62)）。
+	if damage > 0 && target.HasBuff(112) && weaponType != "bow" && weaponType != "claw" {
 		damage = int32(float64(damage) * 1.58)
 	}
 	damage = darkElfPhysicalDamage(attacker, damage, weaponType)

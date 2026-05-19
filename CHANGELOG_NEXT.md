@@ -1,5 +1,24 @@
 ## 技能
 
+## 破壞盔甲（ARMOR_BREAK / 112）— 補齊 1.58x 傷害弓/爪武器排除
+
+- 對齊 Java `L1AttackPc.java`：
+  - **PvE PC→NPC** line 732-736：`if ((_weaponType != 20) && (_weaponType != 62)) if (_target.hasSkillEffect(ARMOR_BREAK)) _damage *= 1.58;`
+  - **PvP PC→PC** line 1516-1518：`if ((_targetPc.hasSkillEffect(ARMOR_BREAK)) && (isShortDistance())) dmg *= ConfigSkill.ARMOR_BREAK_DMG;`
+  - `isShortDistance()` line 3322-3328：`return _weaponType != 20 && _weaponType != 62;`（等價於 PvE 直接判斷）
+- **發現的 Java 真實差異**：原 Go combat.go:209 + pvp.go:92 對 `HasDebuff(112)`/`HasBuff(112)` 目標套用 1.58x 倍率時**未檢查武器類型**，導致弓 (weaponType 20 → "bow") 與爪 (62 → "claw") 武器也錯誤享受 1.58x 加成，違反 Java 「ARMOR_BREAK 為近戰專屬」設計。
+- **修正**：兩條路徑加上 `weaponType != "bow" && weaponType != "claw"` 過濾條件，對齊 Java `_weaponType != 20 && _weaponType != 62`。Go 端 weaponType 字串映射（"bow"/"claw"）已在 `combat.go:929-934` 武器損壞 PvP 邏輯沿用過，本步重用同一映射慣例。
+- **其餘對齊（無修改）**：
+  - **PC 施法 dispatch**：`skill_buff.go:1125-1146 case 112` — `calcArmorBreakProb`（60/40/20 atk/def lvl + magichit + BaseInt 加成）+ `removeBuffAndRevert + applyBuffEffect`（8 秒）+ S_SkillSound(3400) 廣播 + S_PacketBoxIconAura(119, 8) target + 系統訊息「破壞盔甲 施放成功!」對齊 Java skillmode/ARMOR_BREAK.java:23-35。
+  - **NPC 施法 dispatch**：`skill_status.go:720-735` — `calcArmorBreakProbNpc` 同公式 + `npc.AddDebuff(112, dur*5)` + 3400 GFX 對齊 Java skillmode line 37-46。
+  - **機率公式**：`calcArmorBreakProb`/`Npc` `skill_status.go:859-905` — 60/40/20 prob + `shockStunIntMagicHit(intel)` `(INT-20)/3` for 23-127 範圍 + `shockStunBaseIntMagicHit(caster)` BaseInt（排除 EquipBonuses+buff DeltaIntel）25-44 → `+(BaseInt-15)/10`、>=45 → +5。對齊 Java `L1MagicPc.calcProbabilityMagic` line 728-746 + L1AttackList.INTH 表。
+  - **buff 計時**：`buffs.lua [112] = {}` 旗標型 debuff + `[112]=true` NON_CANCELLABLE。8 秒 hardcoded 對齊 Java `setSkillEffect(ARMOR_BREAK, 8*1000)`。
+  - **counterMagicExempt**：Java EXCEPT_COUNTER_MAGIC 不含 112（line 145-156 列表中跳過 112），Go `skill_buff.go:405` `109/110/111/113/114...` 同樣跳過 112，正確對齊（112 可被相消攔截）。
+- **broader gap（不改）**：
+  - **`getArmorBreakLevel()` 娃娃加成缺失**：Java `L1MagicPc.calcProbabilityMagic` line 729 `attackLevel += _pc.getArmorBreakLevel()`，數值由 `Doll_ArmorBreakLevel` 魔法娃娃 setDoll/removeDoll 維護。Go 無 `ArmorBreakLevel` 欄位、無 doll executor，導致娃娃加成的 ARMOR_BREAK 機率提升不生效。屬廣域 magic doll executor 系統缺口，與其他 `Doll_*` executor（Doll_DmgUp/HitUp 等）同類缺失，需 doll system 全面實作時統一補齊。本步維持單一技能 audit 範圍不修。
+  - **FoeSlayer skill 187 damage 路徑 ARMOR_BREAK 1.58x 無 weaponType 過濾**：`skill_dragonknight.go:328, 359` 兩處 FoeSlayer 對 buff 112 目標套 1.58x，未檢查 weaponType。FoeSlayer 是 dragon knight 三段攻擊 skill，Java 是否複用 L1AttackPc 通用流程或自行計算需於 187 audit 時驗證。本步維持不變待 187 對應 audit。
+- **不寫新測試**：weaponType 過濾為 2 行條件 + 1 字串比對，與既有 `processMeleeAttack`/`HandlePvPAttack` 路徑緊密耦合且 melee 攻擊路徑已被大量整合測試覆蓋（如 elemental venom/burning spirit 等同源插入點測試）。依停損標準避免新增 sole-purpose 防回歸測試。
+
 ## 迴避提升（DRESS_EVASION / 111）— 純審計無代碼變更
 
 - 純審計 `111 DRESS_EVASION`：Go 完整對齊 Java `skillmode/DRESS_EVASION.java` 與 `L1PcInstance.java:3357-3403 getEr()` 套用 +18 + UPDATE_ER 雙路徑通知。無 REPEATEDSKILLS 群組成員（Java 10 個群組均不含 111）。
