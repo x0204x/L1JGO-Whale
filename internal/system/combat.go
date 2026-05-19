@@ -293,13 +293,33 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 
 // ==================== 遠程攻擊 ====================
 
-// processRangedAttack 對目標施加遠程攻擊。
+// ExecuteRangedAttackOnNpc 同步執行一次完整弓箭攻擊（不經佇列）。
+// 供需要在當前 tick 內連發多次完整 onAction 流程的技能（如三重矢 132）呼叫。
+// Java 對照：`cha.onAction(srcpc)` 走 L1AttackPc 弓箭流程一次。
+func (s *CombatSystem) ExecuteRangedAttackOnNpc(player *world.PlayerInfo, npcID int32) {
+	if player == nil {
+		return
+	}
+	s.processRangedAttackForPlayer(player, npcID)
+}
+
+// processRangedAttack 對目標施加遠程攻擊（佇列入口，由 CombatSystem.Update 呼叫）。
 func (s *CombatSystem) processRangedAttack(sessID uint64, targetID int32) *handler.NpcKillResult {
 	ws := s.deps.World
 	player := ws.GetBySession(sessID)
 	if player == nil || player.Dead {
 		return nil
 	}
+	return s.processRangedAttackForPlayer(player, targetID)
+}
+
+// processRangedAttackForPlayer 遠程攻擊主體實作；接受已解析的玩家指標。
+func (s *CombatSystem) processRangedAttackForPlayer(player *world.PlayerInfo, targetID int32) *handler.NpcKillResult {
+	ws := s.deps.World
+	if player == nil || player.Dead {
+		return nil
+	}
+	sessID := player.SessionID
 
 	// 麻痺/暈眩/凍結/睡眠時無法攻擊
 	if player.Paralyzed || player.Sleeped {
@@ -470,6 +490,12 @@ func (s *CombatSystem) processRangedAttack(sessID uint64, targetID int32) *handl
 		}
 		// 娃娃技能觸發（Java: L1AttackPc 迴圈 getDolls → startDollSkill）
 		damage += processDollSkillProc(player, npc, nearby, s.deps)
+	}
+
+	// 三重矢（skill 132）正在發射時，每發弓矢套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率。
+	// 對齊 Java `L1AttackPc.java:2002-2004 if (_pc.getIsTRIPLE_ARROW()) dmg *= ConfigSkill.TRIPLE_ARROW_DMG`。
+	if damage > 0 && player.TripleArrowActive {
+		damage *= tripleArrowDmgMultiplier
 	}
 
 	// 廣播遠程攻擊動畫（含箭矢投射物）

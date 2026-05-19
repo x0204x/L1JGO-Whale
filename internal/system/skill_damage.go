@@ -14,6 +14,10 @@ const (
 	skillFinalBurn   = int32(108)
 )
 
+// tripleArrowDmgMultiplier 對齊 yiwei `各職業技能相關設置.properties: Triple_Arrow_Dmg = 5.0`
+// （Java `ConfigSkill.TRIPLE_ARROW_DMG`，套用於 `L1AttackPc.java:1512/2002`）。
+const tripleArrowDmgMultiplier = 5
+
 func (s *SkillSystem) canSkillReachTarget(caster *world.PlayerInfo, skill *data.SkillInfo, mapID int16, x, y int32) bool {
 	if caster == nil || skill == nil {
 		return false
@@ -61,6 +65,24 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 		return
 	}
 
+	// 三重矢（132）PvP：對齊 Java `TRIPLE_ARROW.start()` for-loop 3 次 `cha.onAction(srcpc)`，
+	// 走完整 L1AttackPc PvP 弓箭流程：每發獨立命中骰、武器/箭矢/DEX_DMG/buff 加成、扣箭矢、
+	// 傷害套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率（由 HandlePvPFarAttack 讀 attacker.TripleArrowActive）。
+	if skill.SkillID == 132 && s.deps.PvP != nil {
+		player.TripleArrowActive = true
+		for i := 0; i < 3; i++ {
+			s.deps.PvP.HandlePvPFarAttack(player, target)
+			if target.Dead || target.HP <= 0 {
+				break
+			}
+		}
+		player.TripleArrowActive = false
+		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
+		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))
+		return
+	}
+
 	targets := []*world.PlayerInfo{target}
 	if skill.Area > 0 {
 		for _, other := range nearby {
@@ -90,9 +112,6 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 			applyMindBreakMPDrain(p)
 		}
 		hitCount := res.HitCount
-		if skill.SkillID == 132 && hitCount < 3 {
-			hitCount = 3
-		}
 		if hitCount < 1 {
 			hitCount = 1
 		}
@@ -114,14 +133,6 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 		s.applyIllusionistControlAttackEffect(player, p, skill)
 		s.applyDragonKnightBindAttackEffect(player, p, skill)
 		s.applyDragonKnightFreezeAttackEffect(player, p, skill)
-	}
-
-	// 132 TRIPLE_ARROW：Java `TRIPLE_ARROW.start()` 第 45-46 行收尾廣播
-	// `S_SkillSound(srcpc.getId(), 4394)`（加速封包）+ `S_SkillSound(srcpc.getId(), 11764)`（特效動畫）。
-	if skill.SkillID == 132 {
-		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
-		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
-		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))
 	}
 
 	if skill.Area > 0 {
@@ -417,18 +428,23 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		return
 	}
 
-	// Triple Arrow (132)：消耗 1 箭矢
-	if skill.SkillID == 132 {
-		arrow := FindArrow(player, s.deps)
-		if arrow == nil {
-			s.sendCastFail(sess)
-			return
+	// 三重矢（132）：對齊 Java `TRIPLE_ARROW.start()` for-loop 3 次 `cha.onAction(srcpc)`，
+	// 走完整 L1AttackPc 弓箭流程：每發獨立命中骰、武器/箭矢/DEX_DMG/buff 加成、扣箭矢、
+	// 傷害套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率（由 processRangedAttack 讀 player.TripleArrowActive）。
+	// 廣播 4394（加速封包）+ 11764（特效動畫）對應 Java skillmode 第 45-46 行收尾。
+	if skill.SkillID == 132 && s.deps.Combat != nil {
+		player.TripleArrowActive = true
+		for i := 0; i < 3; i++ {
+			s.deps.Combat.ExecuteRangedAttackOnNpc(player, npc.ID)
+			if npc.Dead {
+				break
+			}
 		}
-		if player.Inv.RemoveItem(arrow.ObjectID, 1) {
-			handler.SendRemoveInventoryItem(sess, arrow.ObjectID)
-		} else {
-			handler.SendItemCountUpdate(sess, arrow)
-		}
+		player.TripleArrowActive = false
+		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
+		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))
+		return
 	}
 
 	// 武器傷害
@@ -501,11 +517,6 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 	if skill.SkillID == skillJoyOfPain {
 		s.applyJoyOfPainReady(player)
 		res.Damage = 0
-	}
-
-	// 三重矢（132）：強制 3 次命中
-	if skill.SkillID == 132 && res.HitCount < 3 {
-		res.HitCount = 3
 	}
 
 	hits := []hitTarget{{npc: npc, dmg: int32(res.Damage), hitCount: res.HitCount, drainMP: int32(res.DrainMP)}}
@@ -648,14 +659,6 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 				break
 			}
 		}
-	}
-
-	// 132 TRIPLE_ARROW：Java `TRIPLE_ARROW.start()` 第 45-46 行收尾廣播
-	// `S_SkillSound(srcpc.getId(), 4394)`（加速封包）+ `S_SkillSound(srcpc.getId(), 11764)`（特效動畫）。
-	if skill.SkillID == 132 {
-		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
-		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
-		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))
 	}
 
 	// 吸血系技能：傷害轉為治療（Java: CHILL_TOUCH / VAMPIRIC_TOUCH — heal = this._dmg）

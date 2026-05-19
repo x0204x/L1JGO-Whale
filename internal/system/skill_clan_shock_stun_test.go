@@ -98,6 +98,8 @@ func (s *shockStunCombatSpy) HandleNpcDeath(_ *world.NpcInfo, _ *world.PlayerInf
 
 func (s *shockStunCombatSpy) AddExp(_ *world.PlayerInfo, _ int32) {}
 
+func (s *shockStunCombatSpy) ExecuteRangedAttackOnNpc(_ *world.PlayerInfo, _ int32) {}
+
 func hasGlobalSystemMessageText(packets [][]byte, text string) bool {
 	want := append(packet.EncodeString(text), 0)
 	for _, pkt := range packets {

@@ -134,13 +134,11 @@ function calc_physical_skill(ctx)
         damage = base + str_dmg + dmg_mod
 
         -- Skill-specific bonuses
+        -- 注：三重矢（132）已改走 combat.go 的 ExecuteRangedAttackOnNpc × 3
+        -- + pvp.go 的 HandlePvPFarAttack × 3 完整弓箭路徑（含 DEX_DMG / 箭矢 / 武器 buff），
+        -- 倍率由 player.TripleArrowActive 旗標在 processRangedAttack/HandlePvPFarAttack 內套用，不再走本函式。
         if sid == 108 then      -- Critical Strike: guaranteed extra damage
             damage = damage + level + math.floor(str / 3)
-        elseif sid == 132 then  -- Triple Arrow: 3 separate hits, each × yiwei TRIPLE_ARROW_DMG=5
-            -- Java L1AttackPc.java:1512/2002 `if (_pc.getIsTRIPLE_ARROW()) dmg *= ConfigSkill.TRIPLE_ARROW_DMG`
-            -- yiwei config `各職業技能相關設置.properties: Triple_Arrow_Dmg = 5.0`
-            hit_count = 3
-            damage = damage * 5
         elseif sid == 208 then  -- Bone Break/Skull Destruction
             damage = damage + math.floor(level / 3)
         end

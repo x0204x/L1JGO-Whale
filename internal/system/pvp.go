@@ -323,6 +323,12 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 	damage = applyImmuneToHarmDamage(target, damage)
 	damage = applyReductionArmorDamage(target, damage, true)
 
+	// 三重矢（skill 132）正在發射時，每發弓矢套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率。
+	// 對齊 Java `L1AttackPc.java:1512-1514 if (_pc.getIsTRIPLE_ARROW()) dmg *= ConfigSkill.TRIPLE_ARROW_DMG`（calcPcDamage 路徑）。
+	if damage > 0 && attacker.TripleArrowActive {
+		damage *= tripleArrowDmgMultiplier
+	}
+
 	handler.SendArrowAttackPacket(attacker.Session, attacker.CharID, target.CharID, damage, attacker.Heading,
 		attacker.X, attacker.Y, target.X, target.Y)
 	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)

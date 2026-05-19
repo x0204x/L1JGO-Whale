@@ -61,6 +61,9 @@ func (q *captureCombatQueue) HandleNpcDeath(_ *world.NpcInfo, _ *world.PlayerInf
 func (q *captureCombatQueue) AddExp(_ *world.PlayerInfo, _ int32) {
 }
 
+func (q *captureCombatQueue) ExecuteRangedAttackOnNpc(_ *world.PlayerInfo, _ int32) {
+}
+
 func attackReader(targetID int32) *packet.Reader {
 	w := packet.NewWriterWithOpcode(packet.C_OPCODE_ATTACK)
 	w.WriteD(targetID)

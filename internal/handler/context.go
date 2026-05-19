@@ -29,6 +29,10 @@ type CombatQueue interface {
 	HandleNpcDeath(npc *world.NpcInfo, killer *world.PlayerInfo, nearby []*world.PlayerInfo) *NpcKillResult
 	// AddExp 增加經驗值並檢查升級。
 	AddExp(player *world.PlayerInfo, expGain int32)
+	// ExecuteRangedAttackOnNpc 同步執行一次完整的弓箭物理攻擊（不經佇列）。
+	// 對齊 Java `cha.onAction(srcpc)` 走 L1AttackPc 弓箭流程：消耗箭矢、命中/傷害骰、武器效果觸發、廣播、扣血、仇恨。
+	// 供三重矢（skill 132）等需要在當前 tick 內連發多次完整攻擊的技能呼叫。
+	ExecuteRangedAttackOnNpc(player *world.PlayerInfo, npcID int32)
 }
 
 // SkillRequest is queued by the handler and processed by SkillSystem in Phase 2.

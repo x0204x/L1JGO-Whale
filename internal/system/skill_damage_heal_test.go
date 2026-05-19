@@ -221,21 +221,45 @@ func TestSkillDamageHealChillTouchLeechesFromPlayerTarget(t *testing.T) {
 	}
 }
 
-func TestSkillTripleArrowDamagesPlayerTargetThreeTimes(t *testing.T) {
+// tripleArrowPvPSpy 記錄 HandlePvPFarAttack 被呼叫的次數與當下的 TripleArrowActive 狀態，
+// 用來驗證三重矢（skill 132）走完整 PvP 弓箭路徑 × 3 而非舊的單次傷害複製 3 次的退化路徑。
+type tripleArrowPvPSpy struct {
+	farCalled         int
+	flagDuringCallTrue bool
+	attacker          *world.PlayerInfo
+	target            *world.PlayerInfo
+}
+
+func (s *tripleArrowPvPSpy) HandlePvPAttack(_, _ *world.PlayerInfo) {}
+func (s *tripleArrowPvPSpy) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
+	s.farCalled++
+	s.attacker = attacker
+	s.target = target
+	if attacker != nil && attacker.TripleArrowActive {
+		s.flagDuringCallTrue = true
+	}
+}
+func (s *tripleArrowPvPSpy) AddLawfulFromNpc(_ *world.PlayerInfo, _ int32) {}
+func (s *tripleArrowPvPSpy) TriggerPinkName(_, _ *world.PlayerInfo)        {}
+
+// TestSkillTripleArrowRoutesThroughPvPFarAttackThreeTimes 驗證三重矢（132）PvP 路徑
+// 對齊 Java `TRIPLE_ARROW.start()` 第 39-41 行 `for (int i = 0; i < 3; i++) cha.onAction(srcpc)`：
+// 走 3 次完整 PvP 弓箭流程（HandlePvPFarAttack），TripleArrowActive 旗標在呼叫期間為 true、
+// 結束時還原為 false。
+func TestSkillTripleArrowRoutesThroughPvPFarAttackThreeTimes(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
-		SessionID: 1,
-		Session:   newSkillTestSession(t, 1),
-		CharID:    1001,
-		Name:      "caster",
-		X:         100,
-		Y:         100,
-		MapID:     4,
-		Level:     90,
-		Str:       35,
-		Dex:       35,
-		DmgMod:    50,
-		HitMod:    100,
+		SessionID:     1,
+		Session:       newSkillTestSession(t, 1),
+		CharID:        1001,
+		Name:          "caster",
+		X:             100,
+		Y:             100,
+		MapID:         4,
+		Level:         90,
+		Str:           35,
+		Dex:           35,
+		CurrentWeapon: 20,
 	})
 	target := addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 2,
@@ -250,6 +274,8 @@ func TestSkillTripleArrowDamagesPlayerTargetThreeTimes(t *testing.T) {
 		AC:        100,
 	})
 	s := newSkillTestSystem(t, ws)
+	pvp := &tripleArrowPvPSpy{}
+	s.deps.PvP = pvp
 	skill := &data.SkillInfo{
 		SkillID:  132,
 		Target:   "attack",
@@ -260,23 +286,42 @@ func TestSkillTripleArrowDamagesPlayerTargetThreeTimes(t *testing.T) {
 
 	s.executeAttackSkill(caster.Session, caster, skill, target.CharID)
 
-	lostHP := int32(1000) - target.HP
-	if lostHP < 150 {
-		t.Fatalf("三重矢應對玩家目標套用 3 次傷害，lostHP=%d targetHP=%d", lostHP, target.HP)
+	if pvp.farCalled != 3 {
+		t.Fatalf("三重矢 PvP 應呼叫 HandlePvPFarAttack 3 次，got=%d", pvp.farCalled)
 	}
-	if got := countSkillAttackPackets(drainSkillTestPackets(target.Session)); got != 3 {
-		t.Fatalf("三重矢應送出 3 個攻擊表現封包，got=%d", got)
+	if !pvp.flagDuringCallTrue {
+		t.Fatalf("三重矢期間 attacker.TripleArrowActive 應為 true（讓 HandlePvPFarAttack 內部套用 ×5 倍率）")
+	}
+	if caster.TripleArrowActive {
+		t.Fatalf("三重矢結束後 attacker.TripleArrowActive 應還原為 false")
+	}
+	if pvp.attacker != caster || pvp.target != target {
+		t.Fatalf("HandlePvPFarAttack 接到的 (attacker, target) 不符 expected=(%p,%p) got=(%p,%p)",
+			caster, target, pvp.attacker, pvp.target)
+	}
+	pkts := drainSkillTestPackets(caster.Session)
+	if !containsSkillEffect(pkts, caster.CharID, 4394) || !containsSkillEffect(pkts, caster.CharID, 11764) {
+		t.Fatalf("三重矢收尾應廣播 S_SkillSound 4394 + 11764（Java TRIPLE_ARROW.start() 第 45-46 行）")
 	}
 }
 
-func countSkillAttackPackets(packets [][]byte) int {
-	count := 0
+// containsSkillEffect 檢查封包流是否包含指定 objectID/gfxID 的 S_SkillSound（opcode S_OPCODE_EFFECT）。
+// 格式：[opcode 1B][objectID 4B LE][gfxID 2B LE]。
+func containsSkillEffect(packets [][]byte, objectID, gfxID int32) bool {
 	for _, pkt := range packets {
-		if len(pkt) >= 2 && pkt[0] == packet.S_OPCODE_ATTACK && pkt[1] == 18 {
-			count++
+		if len(pkt) < 7 {
+			continue
+		}
+		if pkt[0] != packet.S_OPCODE_EFFECT {
+			continue
+		}
+		gotObj := int32(binary.LittleEndian.Uint32(pkt[1:5]))
+		gotGfx := int32(binary.LittleEndian.Uint16(pkt[5:7]))
+		if gotObj == objectID && gotGfx == gfxID {
+			return true
 		}
 	}
-	return count
+	return false
 }
 
 func TestSkillDamageHealSelfAreaAttackDamagesNearbyPlayersAndNpcs(t *testing.T) {
