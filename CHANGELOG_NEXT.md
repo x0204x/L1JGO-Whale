@@ -1,5 +1,84 @@
 ## 技能
 
+## 世界樹的呼喚（TELEPORT_TO_MATHER / 131）— 補齊兩項視覺特效封包對齊 Java
+
+- **Java 對照**：
+  - `L1SkillId.java:451-454 TELEPORT_TO_MATHER = 131`（世界樹的呼喚）。
+  - `L1SkillMode.load() line 101`：`_skillMode.put(Integer.valueOf(131), new TELEPORT_TO_MATHER())` 註冊 skillmode。
+  - `skillmode/TELEPORT_TO_MATHER.java:19-61`：
+    - 前置三項 buff 阻擋：`hasSkillEffect(230)` → S_ServerMessage(1413) return；`hasSkillEffect(4000)` → S_ServerMessage("\\fY已被束縛的效果無法瞬移") return；`hasSkillEffect(THUNDER_GRAB=192)` → S_ServerMessage("\\fY身上有奪命之雷的效果無法瞬移") + `S_Paralysis(TYPE_TELEPORT_UNLOCK, false)` return。
+    - 自動掛機狀態清理：Test_Auto/IsAuto/RestartAuto/DeathReturn 設 0。
+    - `isEscapable()` 檢查：
+      - true → `setTeleportX(33047) + setTeleportY(32338) + setTeleportMapId(4) + setTeleportHeading(5) + sendPacketsAll(new S_SkillSound(self.id, 169)) + Teleportation.teleportation(pc)`。
+      - false → S_ServerMessage(276) + S_Paralysis(TYPE_TELEPORT_UNLOCK)。
+  - `L1SkillUse.sendGrfx:1637-1683`：對 target='none' + type != ATTACK 走 1637 else 分支，內部 `if ((_skillId != TELEPORT) && (_skillId != MASS_TELEPORT) && (_skillId != TELEPORT_TO_MATHER))` ＝ **跳過整個 S_DoActionGFX + skill-specific S_SkillSound 區塊**對三項傳送技能；末尾 1686-1694 對 _targetList 仍送 S_SPMR/S_OwnCharStatus/UPDATE_ER status refresh。
+  - `Teleportation.java:56-396 teleportation(pc)`：完整傳送流程，含血盟倉庫 lock 釋放、`killSkillEffectTimer(32)` 取消冥想術、setLocation、`S_MapID`、`S_OtherCharPacks` 廣播、`S_OwnCharPack` 自己、寵物/娃娃跟隨、限時地圖偵測、`finally { S_Paralysis(TELEPORT_UNLOCK) }`。
+  - yiwei `db_split/skills.sql:130`：`('131', '世界樹的呼喚', '17', '2', '10', '0', '0', '0', '0', '0', 'none', '0', '0', '0', '0', '0', '0', '0', '128', '0', '0', '0', '0', '4', '', '19', '169', '0', '0', '0', '0')` — mp=10、target=none、type=128、id=4、action_id=19、cast_gfx=169。
+- **Go 對照**：
+  - `skill.go:393-395`：`if skillID == 131 && s.teleportToMatherBlockedBeforeConsume(sess, player) { return }` 在 MP 消耗前阻擋。
+  - `skill_heal_resurrect.go:27-49 teleportToMatherBlockedBeforeConsume`：
+    - `HasBuff(230)` → SendServerMessage(1413) return true ✓
+    - `HasBuff(4000)` → SendNormalChat(0, "\\fY已被束縛的效果無法瞬移") return true ✓
+    - `HasBuff(192)` → SendNormalChat(...) + SendParalysis(TeleportUnlock) return true ✓
+    - `!MapData.Escapable` → SendServerMessage(276) + SendParalysis(TeleportUnlock) return true ✓
+  - `skill.go:320 removeBuffAndRevert(player, 32)`：MEDITATION 取消對齊 Java `killSkillEffectTimer(32)`。
+  - 原 `skill_heal_resurrect.go:52-61 executeResurrection case 131`：
+    ```go
+    actData := handler.BuildActionGfx(player.CharID, byte(skill.ActionID))
+    handler.BroadcastToPlayers(nearby, actData)  // ← 對所有復活技能廣播，Java 對 131 跳過
+    case 131:
+        handler.TeleportPlayer(sess, player, 33047, 32338, 4, 5, s.deps)  // ← 缺 cast_gfx 廣播
+    ```
+  - `TeleportPlayer`（`handler/npcaction.go:575-796`）末尾 `sendTeleportUnlock(sess)` 對齊 Java finally。
+- **發現的兩項 Java 真實差異**：
+  - **(A) Java 跳過 S_DoActionGFX 對 131**：Java sendGrfx 1639 exclusion 列表含 `TELEPORT_TO_MATHER`，Go executeResurrection 對所有復活技能（含 131）廣播 BuildActionGfx，導致 131 多送一個 S_DoActionGFX 動作動畫封包。
+  - **(B) Go 缺 S_SkillSound(self, 169) 廣播**：Java skillmode 在 Teleportation 前送 `sendPacketsAll(new S_SkillSound(self.id, 169))`，附近玩家會看到母樹傳送音效視覺；Go 原本只 TeleportPlayer 無此廣播。
+- **修正**：`skill_heal_resurrect.go executeResurrection` 補上兩項：
+  ```go
+  // Java L1SkillUse.sendGrfx:1639 對 TELEPORT/MASS_TELEPORT/TELEPORT_TO_MATHER 跳過 S_DoActionGFX
+  if skill.SkillID != 131 {
+      actData := handler.BuildActionGfx(player.CharID, byte(skill.ActionID))
+      handler.BroadcastToPlayers(nearby, actData)
+  }
+  switch skill.SkillID {
+  case 131:
+      // Java skillmode/TELEPORT_TO_MATHER.java:52 sendPacketsAll(S_SkillSound(self.id, 169))
+      if skill.CastGfx > 0 {
+          handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+      }
+      handler.TeleportPlayer(sess, player, 33047, 32338, 4, 5, s.deps)
+  ```
+  61/75/165 維持送 BuildActionGfx 對齊 Java（這三項不在 sendGrfx exclusion 列表）。
+- **yaml 對照**（Go `skill_list.yaml:4001-4031` vs yiwei `skills.sql:130`）：
+
+| 欄位 | Go yaml | yiwei SQL | 備註 |
+|------|---------|-----------|------|
+| name | 世界樹的呼喚 | 世界樹的呼喚 | ✓ |
+| skill_level | 17 | 17 | ✓ |
+| skill_number | 2 | 2 | ✓ |
+| mp_consume | 10 | 10 | ✓ |
+| hp_consume | 0 | 0 | ✓ |
+| reuse_delay | 0 | 0 | ✓ |
+| target | none | none | ✓ |
+| target_to | 0 | 0 | ✓ |
+| type | 128 | 128 | ✓ |
+| id | 4 | 4 | ✓ |
+| action_id | 19 | 19 | ✓ |
+| cast_gfx | 169 | 169 | ✓ |
+
+31 欄位完全對齊。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run "TestSkillCallOfNature" -timeout 120s` PASS（既有 4 個復活相關測試通過）。
+  - `cd server && go test ./internal/system -run TestSkill -timeout 180s` PASS（14.174s，全 skill 測試無迴歸）。
+- **不寫新測試**：既有 `TestSkillCallOfNatureTeleportToMotherReturnsCasterToMotherTree` 已覆蓋核心座標傳送行為。新增「測試 case 131 跳過 BuildActionGfx」與「測試 case 131 廣播 cast_gfx」屬「鎖死 Java 對齊行為」測試，違反停損標準。
+- **broader gap（不改）**：
+  - **Java Test_Auto/IsAuto 自動掛機狀態清理**：Go 無 auto-hunting 系統，無對應狀態可清，屬廣域 auto-hunting 缺口。
+  - **Java sendGrfx 末尾 1686-1694 通用 status refresh**：對 _targetList 送 S_SPMR + S_OwnCharStatus + S_PacketBox(UPDATE_ER)。TELEPORT_TO_MATHER 無 stat 變化，對 client 無功能影響。屬廣域 cast 後置 status refresh 缺口（與 130 audit 同源）。
+  - **Lua resurrection.lua [131]={hp_ratio=0.5, mp_ratio=0.5} 為 routing 觸發器**：實際 hp/mp_ratio 從未被讀取消費，純為讓 `isResurrectionSkill==true` 走 `executeResurrection` 路由。Java/Go 雙方對 131 都不做 HP/MP 復原，行為一致但 Go 端 routing 結構奇特。重構此邏輯需動 isResurrectionSkill 判定方式或新建 executeTeleportSelfSkill，屬 routing 重構議題，不在 131 單體範圍。
+  - **TELEPORT/MASS_TELEPORT 端 BuildActionGfx 跳過**：skill 5/69 走 `executeTeleportSpell`（skill_teleport.go）獨立路徑，本身不送 BuildActionGfx——已隱式對齊 Java sendGrfx 1639 exclusion，無需修正。
+
 ## 心靈轉換（BODY_TO_MIND / 130）— 修正施法視覺特效廣播缺失
 
 - **Java 對照**：

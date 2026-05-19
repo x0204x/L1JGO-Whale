@@ -53,11 +53,20 @@ func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.Playe
 	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 
 	// 廣播施法動畫
-	actData := handler.BuildActionGfx(player.CharID, byte(skill.ActionID))
-	handler.BroadcastToPlayers(nearby, actData)
+	// Java `L1SkillUse.sendGrfx:1639` 對 TELEPORT/MASS_TELEPORT/TELEPORT_TO_MATHER 三項
+	// 跳過 `S_DoActionGFX` 整個分支——傳送技能不送施法動作，避免動畫與「消失/出現」視覺衝突。
+	if skill.SkillID != 131 {
+		actData := handler.BuildActionGfx(player.CharID, byte(skill.ActionID))
+		handler.BroadcastToPlayers(nearby, actData)
+	}
 
 	switch skill.SkillID {
-	case 131: // 世界樹的呼喚 — 範圍復活
+	case 131: // 世界樹的呼喚 — 回母樹（33047, 32338, map 4, heading 5）
+		// Java `skillmode/TELEPORT_TO_MATHER.java:52` 在 Teleportation 之前廣播
+		// `S_SkillSound(self.id, 169)` 給附近玩家——讓施法者消失前播放傳送音效。
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
+		}
 		handler.TeleportPlayer(sess, player, 33047, 32338, 4, 5, s.deps)
 
 	case 61, 75: // 返生術 / 終極返生術 — 需要目標同意
