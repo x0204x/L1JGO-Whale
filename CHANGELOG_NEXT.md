@@ -1,5 +1,15 @@
 ## 技能
 
+## 屬性之火（ELEMENTAL_FIRE / 171）— 純審計重新確認核心 33% 機率 1.5x 近戰增傷 + 弓/格鬥排除完整對齊 Java BuffDmgUp
+
+- **Java 對照**：`L1AttackPc.BuffDmgUp` 對持有 ELEMENTAL_FIRE 近戰非弓非格鬥攻擊者 33% 機率 1.5x；yiwei `skills.sql:170` 31 欄位。
+- **Go 對照**（無代碼變更）：
+  - `skill_elemental.go:177-191 elfMeleeDamageWithRoll`：`HasBuff(171)` + `elementalFireRoll < 33` + `!isRangedWeaponType` → `damage * 3 / 2`。
+  - `combat.go` melee + `pvp.go` PvP 近戰兩路皆掛接 `elfMeleeDamage`。
+  - yaml `skill_list.yaml:5241` 31 欄位中 29 項對齊 yiwei sql:170，2 項漂移（reuse_delay=0 vs 100、cast_gfx=4402 vs 11777）皆 Go 跟 cat-fei。
+- **broader gap（不改）**：(A) Java `BuffDmgUp` 內 `else if (BURNING_SPIRIT)` 分支屬皇室職業 buff，與 171 無關；(B) yaml 2 項漂移屬廣域 SQL 同步議題。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 水之元氣（WATER_LIFE / 170）— 純審計重新確認核心 heal 雙倍 + WATER_LIFE cancel packet + 完整 heal-list 移除路徑對齊 Java
 
 - **Java 對照**：`L1SkillUse2:1996-2000` heal 計算前 `if (target.hasSkillEffect(WATER_LIFE)) _heal <<= 1`；`L1SkillUse2:2112-2117` heal-list `(HEAL/EXTRA_HEAL/GREATER_HEAL/FULL_HEAL/HEAL_ALL/NATURES_TOUCH/NATURES_BLESSING)` cast → `removeSkillEffect(WATER_LIFE)`；`L1SkillStop case 170 S_PacketBoxWaterLife`。
