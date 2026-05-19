@@ -1,5 +1,87 @@
 ## 技能
 
+## 地面障礙（ENTANGLE / 152）— 純審計確認 case 1 haste 互消完整對齊 Java，三項 slow 家族共通缺口待 29/76 audit 重構
+
+- **Java 對照**：
+  - `L1SkillId.java:506 ENTANGLE = 152`（地面障礙）。無對應 skillmode 類別。
+  - `L1SkillUse.java:1465-1467` + `L1SkillUse2.java:1482-1484` icon cast：與 SLOW/MASS_SLOW 同組 ENTANGLE 走通用 slow icon 路徑。
+  - `L1SkillUse.java:2147-2188` + `L1SkillUse2.java:2137-2178` apply（SLOW/MASS_SLOW/ENTANGLE 同組）：
+    ```java
+    if (cha instanceof L1PcInstance) {
+        if (pc.getHasteItemEquipped() > 0) continue;  // 急速道具免疫
+    }
+    if (cha.getBraveSpeed() == 5) continue;           // 強化勇水免疫
+    switch (cha.getMoveSpeed()) {
+        case 0:  // 正常速度
+            pc.sendPackets(new S_SkillHaste(pc.id, 2, duration));
+            cha.broadcastPacketAll(new S_SkillHaste(cha.id, 2, duration));  // ← 廣播 duration 非 0
+            cha.setMoveSpeed(2);
+            break;
+        case 1:  // 已加速
+            // 找出 HASTE/GREATER_HASTE/STATUS_HASTE 中存在者
+            cha.removeSkillEffect(skillNum);            // 移除既有 haste
+            cha.removeSkillEffect(this._skillId);       // 移除自身 slow
+            cha.setMoveSpeed(0);                        // 速度歸零（互抵）
+            continue;
+    }
+    ```
+  - `L1SkillStop.java:660-668` stop（SLOW/MASS_SLOW/ENTANGLE 同組）：`(if PC) pc.sendPacketsAll(new S_SkillHaste(pc.id, 0, 0)) + cha.setMoveSpeed(0)`。
+  - `L1BuffUtil.java:152-153`：其他系統可主動 `killSkillEffectTimer(ENTANGLE)`。
+  - `skillmode/HASTE.java:49-50`：對 target 施 HASTE 時若已有 ENTANGLE → 觸發互消邏輯。
+  - 表格成員：`isNotCancelable` 不含 152（cancellable）；`EXCEPT_COUNTER_MAGIC` 含 152 line 794（不受 counter magic 阻擋）；`REPEATEDSKILLS` 不含 152（**無顯式 mutex 群組**——靠 case 1 haste 互消 catch-all 處理）。
+  - yiwei `db_split/skills.sql:151`：`('152', '地面障礙', '19', '7', '20', '0', '40319', '1', '0', '64', 'buff', '3', '0', '0', '0', '33', '50', '1', '1', '0', '10', '0', '0', '128', '', '19', '2250', '0', '711', '0', '280')` — mp=20、item=40319×1、reuse_delay=0、buff_duration=64、target=buff、target_to=3、prob_value=33、prob_dice=**50**、attr=1、type=1、ranged=10、id=128、action_id=19、cast_gfx=2250、sys_msg_happen=**711**、sys_msg_fail=280。
+
+- **Go 對照**：
+  - `buffs.lua:121 [152] = { move_speed = 2, exclusions = {43, 54} }`：MoveSpeed=2（slow）+ exclusions={43 HASTE, 54 STATUS_HASTE}（顯式 mutex 對應 Java case 1 移除 haste）。
+  - `skill_buff.go:217-227` apply 「速度互抵邏輯」：
+    ```go
+    if eff.MoveSpeed > 0 {
+        if eff.MoveSpeed == 2 && target.MoveSpeed == 1 {     // 套 slow，目標已 hasted
+            s.cancelSpeedBuffs(target, 1)                      // 移除所有 haste buffs
+            target.MoveSpeed = 0
+            target.HasteTicks = 0
+            s.sendSpeedToAll(target, 0, 0)                     // 廣播速度歸零
+        } else if eff.MoveSpeed == 1 && target.MoveSpeed == 2 {
+            s.cancelSpeedBuffs(target, 2)
+            // ... 對稱處理
+        } else {
+            buff.SetMoveSpeed = byte(eff.MoveSpeed)
+            target.MoveSpeed = byte(eff.MoveSpeed)
+            target.HasteTicks = buff.TicksLeft
+            s.sendSpeedToAll(target, byte(eff.MoveSpeed), uint16(skill.BuffDuration))
+        }
+    }
+    ```
+    **完美對齊 Java case 0/1 機制**——`cancelSpeedBuffs(target, 1)` 對 target 的 haste 類型 buff 全掃移除，比 Java 顯式只查 HASTE/GREATER_HASTE/STATUS_HASTE 三項更廣域穩健。
+  - `skill_buff.go:483 cancelSpeedBuffs` 通用實作：迭代 target.ActiveBuffs 找出對應 speedType 的 buff 並 RemoveBuff + revertBuffStats。
+  - `:307 sendBuffIcon` 透過 `buff_icon_map.yaml` 查 152 → 視 type 送對應 icon（若有註冊）。
+  - 沒走 executeBuffSkill 的 cast_gfx 廣播分支：因 152 屬 debuff（target_to=3 對敵），走 `executeNpcDebuffSkill`／PC→PC debuff 路徑。
+  - yaml `skill_list.yaml:4652-4682 skill_id=152`：mp=20、buff_duration=64、prob_value=33、prob_dice=**30**、attr=1、type=1、ranged=10、id=128、cast_gfx=2250、sys_msg_happen=**0**、sys_msg_fail=280。
+  - **2 項 yaml 漂移**：`prob_dice=30 vs yiwei 50`、`sys_msg_happen=0 vs yiwei 711`。
+
+- **既有測試覆蓋**：
+  - 無針對 152 的單元測試。`skill_cube_ground_effect_test.go` 涉及 NpcID 80152 屬不同領域。
+
+- **發現的 Java 真實差異（slow 家族共通缺口，criterion a）**：
+  - **A) HasteItemEquipped > 0 免疫**：Java `if (pc.getHasteItemEquipped() > 0) continue` 對佩戴急速道具的玩家完全免疫 slow，Go 無此檢查。
+  - **B) BraveSpeed == 5 免疫**：Java `if (cha.getBraveSpeed() == 5) continue` 對強化勇水狀態玩家免疫 slow，Go 無此檢查。
+  - **C) broadcast duration 差異**：Java case 0 廣播 `S_SkillHaste(cha.id, 2, duration)` **帶實際 duration**，Go `sendSpeedToAll(target, byte(eff.MoveSpeed), uint16(skill.BuffDuration))` 帶 duration（**已對齊**），但 case 1 互抵時 Go 用 `(target, 0, 0)` 對齊 Java setMoveSpeed(0) 廣播。重新核對 — 此差異**不存在**（既有實作正確）。
+
+- **不修原因**（per 對齊深度停損標準）：
+  - A、B 屬 SLOW(29)/MASS_SLOW(76)/ENTANGLE(152) **slow 家族共通缺口**，單一 152 audit 修補會留下 29/76 不對齊。應在 29 或 76 audit 時統一補上 helper 套用三項（`isSlowImmune(target)`）。
+  - 已建立 slow 家族待重構議題清單，依「不可偷換範圍」維持 out-of-scope。
+
+- **broader gap（不改）**：
+  - **A/B 免疫機制**（如上，slow 家族共通議題）。
+  - **yaml 2 項漂移**：prob_dice=30 vs 50（Go 跟 cat-fei）、sys_msg_happen=0 vs 711（Go 跟 cat-fei 移除 Java cast 訊息）。屬廣域 yiwei/cat-fei SQL 同步議題。
+  - **Java `L1BuffUtil.killSkillEffectTimer` 主動取消路徑**：Java 多處可主動取消 ENTANGLE timer，Go 無對等廣域 hook（同 150 audit 同源）。
+  - **HASTE skillmode 端互消反查**：Java `skillmode/HASTE.java:49-50` 顯式在 cast haste 時檢查 hasSkillEffect(ENTANGLE) → 移除，Go 透過 `cancelSpeedBuffs(target, 2)` 通用 catch-all 處理（功能對等更穩健）。
+  - **`L1SkillUse.sendGrfx` 末尾 1686-1694 _targetList 通用 status refresh**：屬廣域 buff cast 後置缺口（同 130/146/148/149/150/151 audit 同源）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - 無針對 152 的測試需執行。
+
 ## 大地防護（EARTH_SKIN / 151）— 純審計確認 AC ±6 + S_SkillIconShield(6) + REPEATEDSKILLS[1] 雙項互斥完整對齊 Java
 
 - **Java 對照**：
