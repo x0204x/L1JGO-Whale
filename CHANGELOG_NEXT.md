@@ -1,5 +1,38 @@
 ## 技能
 
+## 暗影之牙（SHADOW_FANG / 107）— 純審計無代碼變更
+
+- 純審計 `107 SHADOW_FANG`：Go 完整對齊 Java `L1SkillUse.java:2458-2468` + `L1ItemInstance.setSkillWeaponEnchant():1088-1123` 的武器附魔系統。
+- **核心行為已對齊**：
+  - **dispatch**：`skill.go:489-491 case 12, 107` → `executeTargetedWeaponEnchant(sess, player, skill, targetID)` 並 `return` 短路。卷軸路徑 `skill_magic_scroll.go:92 case 12, 107` 同樣短路。對齊 Java `L1SkillUse.java:315-319 case ENCHANT_WEAPON/BLESSED_ARMOR/SHADOW_FANG → _itemobjid = target_id`（targetID 解讀為背包物品 ObjectID）。
+  - **物品驗證**：`skill_weapon.go:276-285`：
+    - `weapon = player.Inv.FindByObjectID(itemObjID)` → nil → `SendServerMessage(79)`。
+    - `itemInfo.Category != data.CategoryWeapon` → `SendServerMessage(79)`。
+    - 對齊 Java `item.getItem().getType2() == 1`（type 1 = 武器）else `S_ServerMessage(79)`。
+  - **套用 enchant**：`skill_weapon.go:246-262 applySkillWeaponEnchant`：
+    ```go
+    weapon.DmgByMagic = 0       // ← 重置舊值（對齊 Java setSkillWeaponEnchant cancel old timer + reset to 0）
+    weapon.HitByMagic = 0
+    switch skill.SkillID {
+    case 107:
+        weapon.DmgByMagic = 5
+    }
+    weapon.DmgMagicExpiry = skill.BuffDuration * 5  // ticks (192*5 = 960 ticks = 192s)
+    ```
+    對齊 Java `L1ItemInstance.setSkillWeaponEnchant():1088-1123`：cancel old timer + `setDmgByMagic(0)+setHolyDmgByMagic(0)+setHitByMagic(0)` reset + `case 107 setDmgByMagic(5)` + schedule new Timer with `skillTime` ms = buff_duration * 1000 ms。
+  - **icon**：`skill_weapon.go:299-301 SendWeaponEnchantIcon(sess, 2951, buff_duration, true)` 對齊 Java `S_PacketBox(SKILL_WEAPON_ICON, 2951, buff_duration, true)`。
+  - **stats 更新**：`RecalcEquipStats` 在 enchant 後重新計算裝備加成；`equip.go:528-533` 在 RecalcEquipStats 內讀取 `weapon.DmgByMagic > 0 && weapon.DmgMagicExpiry > 0 → stats.DmgMod += weapon.DmgByMagic`，等同於 Java 角色 `_dmgup` 累加裝備加成的方式。
+  - **到期**：`buff_tick.go:61-81 tickItemMagicEnchant` 每 tick 遞減 `DmgMagicExpiry`，歸零時 `DmgByMagic = 0 + HitByMagic = 0 + DmgMagicExpiry = 0 → changed=true → RecalcEquipStats`。對齊 Java EnchantTimer 到期 `setDmgByMagic(0)+setHolyDmgByMagic(0)+setHitByMagic(0)`。
+  - **重施可刷新**：Java SHADOW_FANG 無 `!hasSkillEffect` 守衛，重施由 `setSkillWeaponEnchant` 內部 `if (_isRunning) → cancel timer + reset` 處理；Go `applySkillWeaponEnchant` 同樣先 reset 再設新值，等效對齊（與 skill 106 UNCANNY_DODGE 不同：106 是 player buff 且 Java 有守衛跳過重施，107 是 weapon enchant 且 Java 允許重施刷新）。
+  - **counterMagicExempt**：`skill_buff.go:405 counterMagicExempt[107] = true` 對齊 Java `EXCEPT_COUNTER_MAGIC` (`L1SkillUse.java:148`) 含 107——SHADOW_FANG 自我增益不被反魔法盾抵擋。
+  - **NON_CANCELLABLE**：`buffs.lua:250 [107] = true` 對齊 Java `L1SkillMode.isNotCancelable()` 第 36 行明確列出 SHADOW_FANG（防禦性設定，實際 weapon enchant 不存在於 player.ActiveBuffs 中，CANCELLATION 不會接觸到）。
+- **發現一處無害死碼（不修）**：
+  - `scripts/combat/buffs.lua:84 [107] = { dmg_mod = 5 }`：從未被觸發——dispatcher `skill.go:489` 與 `skill_magic_scroll.go:92` 的 `case 12, 107` 短路 return，永不走 default → `applyBuffEffect` → `get_buff(107)` 路徑。若未來誤被觸發（如新增測試直接呼叫 applyBuffEffect with SkillID:107）會與 `weapon.DmgByMagic` 的 +5 重複計算（player buff +5 unconditional × weapon enchant +5 conditional on equip），結果錯誤地產生 +10 dmg_mod。屬具誤導性的歷史 dead code 但目前不會觸發；依「不可偷換範圍」+「做半套不如不做」+ Karpathy 「Don't remove pre-existing dead code unless asked」記錄不修。
+- **broader gap（不改）**：
+  - **Java timer vs Go tick 精度**：Java 使用 ms 級 `Timer.schedule(skillTime)`，Go 使用 200ms tick（buff_duration*5）。192s buff 在 Java 為精確 192000ms，Go 為 960 ticks ≈ 192s（tick 邊界誤差 < 200ms）。屬廣域 buff timer 精度差異，影響所有 tick-driven buffs。
+  - **yaml mp_consume/buff_duration/reuse_delay drift**：與廣域同源 broader gap。
+- 驗證：無代碼變更，既有 dispatcher + applySkillWeaponEnchant + tickItemMagicEnchant 路徑已具備正確行為（含 ENCHANT_WEAPON skill 12 共用實作）。
+
 ## 暗影閃避（UNCANNY_DODGE / 106）— 補齊 Java skillmode 重施守衛
 
 - 補齊 `106 UNCANNY_DODGE` 重施守衛：Java `skillmode/UNCANNY_DODGE.java:17 if (!srcpc.hasSkillEffect(106))` 把 `setSkillEffect + add_dodge(5) + S_PacketBoxIcon1` 三項包在守衛裡——重施時三項皆跳過（buff timer 不刷新、dodge 不再加、客戶端不收到 icon 更新）。Go `skill_self.go` default 路徑無此守衛，重施會：(1) 在 `target.Dodge` 上重複加減（透過 AddBuff 替換舊 buff + revertBuffStats 反向，net 結果 dodge 正確，但中間 SendDodgeIcon 送出膨脹數值產生圖示閃動）、(2) 替換 buff 等同刷新 timer 延長 buff 持續時間——兩者為 criterion (a) 真實 Java vs Go 差異。本步在 `skill_self.go` applyBuffEffect 前加守衛，重施時跳過 buff 處理但保留外層 cast GFX（2950）廣播（對齊 Java L1SkillUse outer flow）。
