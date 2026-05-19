@@ -1,5 +1,15 @@
 ## 技能
 
+## 能量激發（ADDITIONAL_FIRE / 176）— 純審計重新確認核心負重 HP/MP 回復旗標完整對齊 Java（無屬性加成）
+
+- **Java 對照**：`L1PcInstance.isRegenHp/isRegenMp` 行 775/831 對 ADDITIONAL_FIRE 純為旗標（同 169 EXOTIC_VITALIZE 相同設計）。
+- **Go 對照**（無代碼變更）：
+  - `buffs.lua:143 [176]={}` flag-only。
+  - `regen.lua` HP/MP 負重檢查：`if weight_pct >= 120 and not has_exotic_vitalize and not has_additional_fire then blocked = true`。
+  - `engine.go:1337+1358-1359` 與 `:1391+1411` 傳遞 `HasAdditionalFire: p.HasBuff(176)` 至 Lua。
+- **broader gap（不改）**：(A) Java `HprExecutor.bonus /= 2` 對 `getBaseCon() >= 45 + 負重` 減半屬廣域 regen 公式差（同 169 同源）；(B) yaml 多項漂移屬廣域 SQL 同步議題。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 火焰之魂（SOUL_OF_FLAME / 175）— 純審計重新確認核心 1.5x 近戰增傷 + 弓/格鬥排除完整對齊 Java
 
 - **Java 對照**：`L1AttackPc.java:1455-1457/1945-1947` 對 SOUL_OF_FLAME 近戰非弓非格鬥 `_weaponDamage = weaponMaxDamage * SOUL_OF_FLAME_DAMAGE`（yiwei 1.5）。
