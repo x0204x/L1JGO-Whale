@@ -326,6 +326,10 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 		}
 		handler.SendHpUpdate(target.Session, target)
 
+		// 武器附毒（skill 98）：玩家遠程命中時 10% 機率對目標施加傷害毒
+		// Java: L1AttackPc.addPcPoisonAttack（L1AttackPc 涵蓋近戰與遠程）→ L1DamagePoison.doInfection(3000, 5)
+		applyEnchantVenomPoisonToPlayer(attacker, target, s.deps)
+
 		if target.HP <= 0 {
 			isDuel := attacker.FightId == target.CharID && target.FightId == attacker.CharID
 			s.deps.Death.KillPlayer(target)

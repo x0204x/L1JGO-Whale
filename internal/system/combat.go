@@ -501,6 +501,10 @@ func (s *CombatSystem) processRangedAttack(sessID uint64, targetID int32) *handl
 		// 武器吸血/吸魔（Java: L1AttackPc.commit）
 		applyWeaponDrain(player, npc)
 
+		// 武器附毒（skill 98）：玩家遠程命中時 10% 機率對目標施加傷害毒
+		// Java: L1AttackPc.addPcPoisonAttack（L1AttackPc 涵蓋近戰與遠程）→ L1DamagePoison.doInfection(3000, 5)
+		applyEnchantVenomPoisonToNpc(player, npc, s.deps)
+
 		// 受傷累加仇恨
 		AddHate(npc, sessID, damage)
 

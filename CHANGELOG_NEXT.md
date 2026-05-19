@@ -1,5 +1,18 @@
 ## 技能
 
+## 武器附毒（ENCHANT_VENOM / 98）
+
+- 補齊 Java `L1AttackPc.addPcPoisonAttack`（line 754 + 2914-2921）對遠程攻擊也觸發毒附加的對齊缺口：
+  - **Before**：Go 只在 `combat.go processMeleeAttack` 與 `pvp.go HandlePvPAttack`（兩個近戰路徑）觸發 `applyEnchantVenomPoisonToNpc/Player`。攻擊者持有 98 buff 但用弓箭遠程攻擊時，10% 附毒完全不觸發。
+  - **After**：`combat.go processRangedAttack`（PvE 遠程 → NPC）與 `pvp.go HandlePvPFarAttack`（PvP 遠程）也呼叫對應 `applyEnchantVenomPoison`，於 `damage > 0` 套用後執行。Java `L1AttackPc` 類涵蓋近戰與遠程，`addPcPoisonAttack` guards 為 `_weaponId != 0`（弓也是武器）。
+- **不動處**：
+  - `applyEnchantVenomPoisonToPlayer/Npc` guards 已對齊 Java：`HasBuff(98) + Equip.Weapon() != nil + roll < 10 (10% chance) + canApplyPoisonToPlayer（PoisonType==0 + 無 104/6687 抗性）`。
+  - 毒傷數值與週期：Go `applyDamagePoisonToPlayer` 設 amount=5、PoisonTicksLeft=150（30 秒）、PoisonDmgTimer 每 15 ticks（3 秒）扣血，對齊 Java `L1DamagePoison.doInfection(_pc, target, 3000, 5)`（interval 3000ms, dmg 5）。
+- **broader gap（不改）**：
+  - **NPC 攻擊者附毒**：Java `L1AttackNpc.addNpcPoisonAttack` 為 NPC 自己持毒 buff 時 attack PC 附毒（與 98 不同路徑）。屬獨立 NPC 攻擊系統範疇。
+  - **yaml mp_consume/buff_duration drift**：與廣域同源 broader gap。
+- 驗證：`go build ./...` 通過；`go test ./... -count=1` 全綠（system 19.006s，handler 1.003s）。
+
 ## 暗隱術（BLIND_HIDING / 97）— 純審計無代碼變更
 
 - 純審計 `97 BLIND_HIDING`：Go 已完整對齊 Java `L1SkillUse.java:2559-2562` 與 `L1SkillUse2.java:2511-2514` 的施法路徑與相關生態。
