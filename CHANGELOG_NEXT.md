@@ -1,5 +1,22 @@
 ## 技能
 
+## 疼痛的歡愉（JOY_OF_PAIN / 218）
+
+- 補齊 Java `L1PcInstance.receiveDamage:2737-2773` 對所有 PC→PC 傷害源觸發 backlash 的對齊缺口：
+  - **Before**：Go 只在 `skill_damage.go executeAttackSkillOnPlayer` 與 `skill_self_area.go` 兩個 skill 傷害路徑呼叫 `applyJoyOfPainBacklash`。攻擊者持有 218 buff 但使用 melee/ranged 普通攻擊時，反傷完全不觸發。
+  - **After**：`SkillManager` 介面新增 `ApplyJoyOfPainBacklash` 方法（轉發到原 unexported `applyJoyOfPainBacklash`），`pvp.go HandlePvPAttack` 與 `HandlePvPFarAttack` 在 `damage > 0` 時於 `target.HP -=` 套用前呼叫，使 melee/ranged PvP 也能觸發反傷與一次性消耗 buff。
+  - 對應修改 `internal/handler/skill_test.go captureSkillManager` mock 補上 `ApplyJoyOfPainBacklash` no-op 實作。
+- **不動處**：
+  - `joyOfPainTicks = 16*5` (80 ticks = 16 秒) 已對齊 Java `setSkillEffect(JOY_OF_PAIN, 16 * 1000)`。
+  - `applyJoyOfPainReady` 已有 `HasBuff(218) → 系統訊息「已經準備疼痛的歡愉。」` 對齊 Java `sendPackets(new S_SystemMessage("已擁有此狀態"))`。
+  - Skill 218 既有 skill 傷害路徑（skill_damage.go:201 / skill_self_area.go:88）保留，melee/ranged hook 是補新增。
+- **broader gap（不改）**：
+  - **`joyOfPainDivisor = 5` vs Java `JOY_OF_PAIN_COUNTDMG` default=1**：Java 為 ConfigIllusionstSkill admin-tunable，預設 1（無除減）。Go 硬編碼 5（除以 5 → 反傷大幅降低）。屬營運平衡常數差異，需確認伺服器希望比照 Java default 或保留 Go 既有平衡。改動會破壞既有測試 `TestSkillIllusionistControlJoyOfPainBacklashDamagesCasterOnce` 期望（target HP=50/divisor 5 → backlash 10）。
+  - **`joyOfPainMaxDmg = 1000` vs Java `JOY_OF_PAIN_DMG` default=100**：Go 上限 10x Java 預設。同屬平衡常數差異。
+  - **GM 反傷致死特例**：Java `attackPc.isGm() → setCurrentHp(MaxHp)` 反傷致死時 GM 復滿；Go 統一設 `HP=1`。屬 GM-only edge case 影響小。
+  - **NPC 攻擊者反傷**：Java 處理 `attacker instanceof L1MonsterInstance` 走 `attackNpc.receiveDamage(this, nowDamage)`；Go 沒有對應路徑。但實務上 NPC 不會 cast JOY_OF_PAIN 取得 buff，此 case 為 Java 死碼。
+- 驗證：`go build ./...` 通過；`go test ./... -count=1` 全綠（system 18.853s）；handler 套件 mock 補完後恢復編譯。
+
 ## 恐慌（PANIC / 217）
 
 - 補齊兩項 Java `skillmode/PANIC.java` 對 Go 的對齊缺口：

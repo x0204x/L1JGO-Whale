@@ -50,6 +50,9 @@ func (m *captureSkillManager) ConsumeSkillResources(_ *net.Session, _ *world.Pla
 
 func (m *captureSkillManager) ApplyBuffStats(_ *world.PlayerInfo, _ *world.ActiveBuff) {}
 
+func (m *captureSkillManager) ApplyJoyOfPainBacklash(_, _ *world.PlayerInfo, _ []*world.PlayerInfo) {
+}
+
 func TestHandleUseSpellBlockedByShockStunBeforeSkillQueueLikeJava(t *testing.T) {
 	ws := world.NewState()
 	sess := newHandlerTestSession(t, 1)

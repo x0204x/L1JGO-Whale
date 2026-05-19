@@ -150,6 +150,12 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 		handler.SendDamageNumbers(attacker.Session, target.CharID, damage)
 	}
 
+	// 疼痛的歡愉（218）：攻擊者持有 buff 時依 target 既有失血量反傷攻擊者
+	// Java `L1PcInstance.receiveDamage:2737-2773` 在 PC→PC 所有傷害源（含 melee）觸發
+	if damage > 0 && s.deps.Skill != nil {
+		s.deps.Skill.ApplyJoyOfPainBacklash(attacker, target, nearby)
+	}
+
 	if damage > 0 {
 		target.HP -= int32(damage)
 		if target.HP < 0 {
@@ -305,6 +311,12 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 	// 浮動傷害數字（PvP 遠程）
 	if attacker.AttackView {
 		handler.SendDamageNumbers(attacker.Session, target.CharID, damage)
+	}
+
+	// 疼痛的歡愉（218）：攻擊者持有 buff 時依 target 既有失血量反傷攻擊者
+	// Java `L1PcInstance.receiveDamage:2737-2773` 在 PC→PC 所有傷害源（含 ranged）觸發
+	if damage > 0 && s.deps.Skill != nil {
+		s.deps.Skill.ApplyJoyOfPainBacklash(attacker, target, nearby)
 	}
 
 	if damage > 0 {

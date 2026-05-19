@@ -179,6 +179,12 @@ func (s *SkillSystem) applyJoyOfPainReady(caster *world.PlayerInfo) {
 	}
 }
 
+// ApplyJoyOfPainBacklash 對外提供疼痛的歡愉反傷觸發點（SkillManager 介面）。
+// 供 pvp.go 等通用傷害路徑共用，與 skill 路徑（skill_damage.go/skill_self_area.go）走同一實作。
+func (s *SkillSystem) ApplyJoyOfPainBacklash(attacker, target *world.PlayerInfo, nearby []*world.PlayerInfo) {
+	s.applyJoyOfPainBacklash(attacker, target, nearby)
+}
+
 func (s *SkillSystem) applyJoyOfPainBacklash(attacker, target *world.PlayerInfo, nearby []*world.PlayerInfo) {
 	if attacker == nil || target == nil || attacker.CharID == target.CharID || !attacker.HasBuff(skillJoyOfPain) {
 		return

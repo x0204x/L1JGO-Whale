@@ -73,6 +73,10 @@ type SkillManager interface {
 	ConsumeSkillResources(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo)
 	// ApplyBuffStats 套用 buff 的所有屬性加成（靜默，不發送封包）。供登入恢復 buff 使用。
 	ApplyBuffStats(player *world.PlayerInfo, buff *world.ActiveBuff)
+	// ApplyJoyOfPainBacklash 觸發疼痛的歡愉反傷（攻擊者已持有 buff 218 時對攻擊者扣 HP 並消耗 buff）。
+	// Java: L1PcInstance.receiveDamage:2737-2773 對所有 PC→PC 傷害源觸發；Go 既有 skill 路徑已接，
+	// 此介面方法供 pvp.go melee/ranged 等通用傷害路徑共用。
+	ApplyJoyOfPainBacklash(attacker, target *world.PlayerInfo, nearby []*world.PlayerInfo)
 }
 
 // DeathManager 處理玩家死亡與重生。由 system.DeathSystem 實作。
