@@ -1,5 +1,36 @@
 ## 技能
 
+## 烈炎武器（BURNING_WEAPON / 163）— 純審計確認核心 DmgMod ±6 + HitMod ±3 + REPEATEDSKILLS[0] 5 項武器 buff 互斥完整對齊 Java
+
+- **Java 對照**：
+  - `L1SkillId.java BURNING_WEAPON = 163`，無對應 skillmode（走 generic apply 路徑）。
+  - `L1SkillUse.java:2595-2599` 套用：`_targetPc.addDmgup(6); _targetPc.addHitup(3); _targetPc.sendPackets(new S_PacketBoxIconAura(162, _user.getSkillEffectTimeSec(BURNING_WEAPON)))`——icon param = skillID-1 = 162。
+  - `L1SkillStop.java:546-553` 解除：`_pc.addDmgup(-6); _pc.addHitup(-3); _pc.sendPackets(new S_PacketBoxIconAura(162, 0))`。
+  - `L1BuffUtil.braveStart` 不涉及（僅 brave-speed 族）。
+  - `L1SkillUse.REPEATEDSKILLS[0] = {148, 149, 156, 163, 166}`：163 與 148 ENCHANT_WEAPON、149 SHADOW_FANG、156 STORM_EYE、166 BLESS_WEAPON 互斥（cast 163 時清除 4 項武器 buff）。
+  - yiwei `db_split/skills.sql:162`：`('163', '烈炎武器', '21', '2', '30', '0', '40319', '4', '0', '300', 'none', '0', '0', '0', '0', '0', '0', '0', '1', '0', '0', '-1', '1', '1', '', '19', '11776', '0', '0', '723', '280')` — mp=30、item=40319×4、buff_duration=300、type=2（TYPE_BUFF）、target=none、cast_gfx=**11776**、sys_msg_happen=**723**、sys_msg_stop=**280**。
+
+- **Go 對照**：
+  - `buffs.lua:132 [163] = { dmg_mod = 6, hit_mod = 3, exclusions = {148, 149, 156, 166} }`——核心 DmgMod ±6 + HitMod ±3 + REPEATEDSKILLS[0] 4 項互斥（148/149/156/166）**完整對齊** Java。
+  - `skill_buff.go:161-162 + 195-196 + 513-514` 標準 buff apply/revert：DmgMod/HitMod delta 由 buffs.lua 配置驅動，套用時 `+6 / +3`，revert 時 `-6 / -3`——對齊 Java addDmgup/addHitup 對稱。
+  - `skill_buff.go:exclusions` 機制：cast 163 時 loop exclusions 對 target 移除既有 148/149/156/166 buff——對齊 Java REPEATEDSKILLS[0] 互斥邏輯。
+  - `buff_icon_map.yaml:66-67`：`skill_id: 163, type: aura`（無 param → 預設 iconID = skill_id-1 = 162）——對齊 Java `S_PacketBoxIconAura(162, ...)` icon ID。
+  - yaml `skill_list.yaml:4993-5023`：mp=30、item=40319×4、buff_duration=300、type=2、target=none、cast_gfx=**2242**、sys_msg_happen=**0**、sys_msg_stop=**0**——**3 項漂移**（cast_gfx、sys_msg_happen、sys_msg_stop Go 跟 cat-fei）。
+
+- **既有測試覆蓋**：
+  - `skill_buff` 系列測試覆蓋 DmgMod/HitMod delta apply/revert 路徑。
+  - REPEATEDSKILLS[0] 互斥邏輯由 148/149/156/166/163 任一 cast 觸發；先前 148/149/156 audit 已確認 exclusions 配置正確。
+
+- **發現的 Java 真實差異**：**無**（核心 DmgMod ±6 + HitMod ±3 + icon 162 + REPEATEDSKILLS[0] 4 項互斥完整對齊）。
+
+- **broader gap（不改）**：
+  - **A) yaml cast_gfx 漂移**：Go=2242 vs yiwei=11776（Go 跟 cat-fei）——同 148/149/150/156 系列「武器/防具 buff 家族」共通 SQL 同步議題。
+  - **B) yaml sys_msg_happen/sys_msg_stop 漂移**：Go=0/0 vs yiwei=723/280（Go 跟 cat-fei）——同樣屬廣域 yiwei/cat-fei SQL 同步議題。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - 無針對 163 的新測試需執行（既有 skill_buff DmgMod/HitMod + REPEATEDSKILLS[0] exclusions 路徑已覆蓋）。
+
 ## 召喚強力屬性精靈（GREATER_ELEMENTAL / 162）— 純審計重新確認核心 5 項機制 + NPC ID 映射完整對齊 Java，兩項召喚家族共通缺口維持延後
 
 - **Java 對照**：
