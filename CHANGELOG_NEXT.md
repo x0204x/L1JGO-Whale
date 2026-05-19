@@ -1,5 +1,24 @@
 ## 技能
 
+## 耐力（PATIENCE / 211）— 純審計無代碼變更
+
+- 純審計 `211 PATIENCE`，發現 Java vs Go 行為差異但暫不修改（待使用者決定）：
+  - **Java 行為**：無 skillmode 檔案、無 L1SkillUse case 處理、無 HprExecutor `_skill.put(PATIENCE, ...)`、無 addHpr 呼叫。L1SkillUse 走 default 路徑 `cha.setSkillEffect(_skillId, _getBuffDuration)`——**僅設 buff 圖示與計時，無任何 stat 加成**。Java yiwei 中 PATIENCE 只在 `EXCEPT_COUNTER_MAGIC` 清單（不可被 counter magic 反射）。
+  - **Go 行為**：`buffs.lua [211] = { hpr = 5 }`——給予 +5 HPR/tick。Java 中找不到此 +5 HPR 的依據。
+- **divergence 分析**：
+  - 若改為 `[211] = {}` 對齊 Java：PATIENCE 變成「只有 buff 圖示沒有任何效果」的純裝飾技能，違反「做半套不如不做」原則。
+  - 若保留現狀 +5 HPR：與 Java yiwei 不對齊，但給玩家有意義的回血效果（與 Go 既有 6 級「中等回血」介面定位相符）。
+  - 既有 Go 設計可能引用其他 L1 server 版本（如 fly 版、官方韓版設定），Java yiwei 也可能是 incomplete 參考。
+- **本步無代碼變更**——保留 Go 現狀 +5 HPR。記為「Java yiwei 對應實作為空、Go 給予 HPR +5」之已知差異，待使用者明確決定後再處理。
+- 配套 yaml drift（broader gap）：
+  - `mp_consume 25` ✓ 與 Java 一致
+  - `buff_duration 600` ✓ 與 Java 一致
+  - `reuse_delay 0→1000` — Java SQL=1000，Go=0。屬冷卻 tuning。
+  - `target buff→none`、`target_to 3→0` — Java 為 self-cast 無 target；Go target='buff' target_to=3 走標準 buff 路徑。客戶端體驗可能無感。
+  - `type 4→2` — Java type=2 (CHANGE)，Go=4 (CURSE)。可能影響 buff 分類。
+  - `ranged 3→0` — Java 為 0（self-only），Go=3。
+- 驗證：`go build ./...` 通過（無代碼變更）。
+
 ## 立方：地裂（CUBE_QUAKE / 210）
 
 - 補齊 `CUBE_QUAKE` 地面效果四項 immune buff 檢查，對齊 Java `L1Cube.giveEffect:110-121 case STATUS_CUBE_QUAKE_TO_ENEMY`：
