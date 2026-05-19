@@ -1,5 +1,35 @@
 ## 技能
 
+## 魔法防禦（RESIST_MAGIC / 129）— 純審計，Java 預設 buff 路徑與 Go 通用 mr+SPMR 完全等價
+
+- **Java 對照**：
+  - `L1SkillId.java:443-446 RESIST_MAGIC = 129` 註解「魔法防禦129」。
+  - **無 `skillmode/RESIST_MAGIC.java`**——`L1SkillMode.load()` 並未註冊 129，cast 走 `L1SkillUse`/`L1SkillUse2` 的 default buff 分支。
+  - `L1SkillUse.java:2528-2531` + `L1SkillUse2.java:2480-2483`：`if (this._skillId == RESIST_MAGIC) { pc.addMr(10); pc.sendPackets(new S_SPMR(pc)); }`——施法即 MR+10 並送 S_SPMR 通知。
+  - **無 `L1SkillStop` 條目**：移除 buff 走通用 `L1BuffUtil` 路徑，由通用 stop 處理還原。
+  - `L1SkillMode.isNotCancelable()` 第 31-64 行：**不含 129**，RESIST_MAGIC 可被 CANCELLATION 解除。
+  - `L1SkillUse.java:145-153 EXCEPT_COUNTER_MAGIC`：**含 129**（第 148 行），魔法屏障無法抵擋。
+  - `L1SkillUse.java:1741-1762 REPEATEDSKILLS`：10 群均不含 129，無互斥技能。
+  - **yiwei `db_split/skills.sql:128`**：`(129,'魔法防禦',17,0,5,0,40319,1,0,1200,'none',0,...,0,2,...,1,'',19,2186,0,0,719,0)` ＝ skill_level=17、mp=5、item=40319、duration=1200、target='none'、target_to=0、type=2、id=1、action_id=19、cast_gfx=2186、sys_msg_stop=719。
+- **Go 對照**：
+  - `scripts/combat/buffs.lua:109 [129] = { mr = 10 }` — 唯一 stat 為 `mr=10`（精準對齊 Java `addMr(10)`），無 hit_mod/dmg_mod/exclusions/任何其他干擾。
+  - `internal/scripting/engine.go:407 MR: lInt(rt, "mr")` 將 lua `mr` 欄位反序列化為 `BuffEffect.MR`。
+  - `internal/system/skill_buff.go:164 buff.DeltaMR = int16(eff.MR)`：apply 時計入 buff 結構。
+  - `internal/system/skill_buff.go:198 target.MR += buff.DeltaMR`：apply 時實際加到玩家 MR 屬性。
+  - `internal/system/skill_buff.go:295-299 if buff.DeltaMR != 0 || buff.DeltaSP != 0 { handler.SendMagicStatus(target.Session, byte(target.SP), uint16(target.MR)) }` ＝ Java `pc.sendPackets(new S_SPMR(pc))`。註解明確標 `RESIST_MAGIC` 為對齊目標之一。
+  - `internal/system/skill_buff.go:510 target.MR -= buff.DeltaMR` + `:562-564` 反向送 SendMagicStatus，對齊 Java 通用 stop 還原 + 重送 S_SPMR。
+  - `internal/system/skill_buff.go:409 counterMagicExempt[129]=true` 對齊 Java `EXCEPT_COUNTER_MAGIC` 含 129。
+  - `scripts/combat/buffs.lua:236-276 NON_CANCELLABLE`：**不含 129**，對齊 Java `isNotCancelable` 不含 129（cancellable by CANCELLATION）。
+  - `target='none'` 走 `skill.go:511-513 default → executeSelfSkill`（owner: skill_self.go）→ generic `applyBuffEffect` 路徑。
+- **yaml 對照**：`data/yaml/skill_list.yaml:3939-3969 skill_id=129`：name=魔法防禦、skill_level=17、skill_number=0、mp_consume=5、hp_consume=0、item_consume_id=40319、item_consume_count=1、reuse_delay=0、buff_duration=1200、target=none、target_to=0、damage_value=0、damage_dice=0、damage_dice_count=0、probability_value=0、probability_dice=0、attr=0、type=2、lawful=0、ranged=0、area=0、through=0、id=1、name_id=''、action_id=19、cast_gfx=2186、cast_gfx2=0、sys_msg_happen=0、sys_msg_stop=719、sys_msg_fail=0 — **31 欄位逐一對齊** yiwei `skills.sql:128`。
+- **結論：純審計，無 Java 真實差異需修**。
+  - 核心行為（MR+10 套用、S_SPMR 通知、cancellable、counter magic 豁免、無互斥）兩端等價。
+  - 既有 generic buff path 與 counterMagicExempt 表已正確覆蓋。
+- **不寫新測試**：純通用 buff path（mr=10 → DeltaMR → target.MR + SendMagicStatus）已被其他 MR buff 測試（如 SHADOW_ARMOR）涵蓋；新增「Go 本來就對 + 防回歸」測試違反「對齊深度停損標準」第 1 條。
+- **broader gap（不改）**：
+  - **`getMr()` 動態計算 vs Go 靜態 `target.MR`**：Java `L1PcInstance.getMr()` 在 receive 端動態彙整 base、裝備、buff、寶物加成；Go 在 cast 時將 buff delta 累加到 `target.MR` 靜態欄位。雖然 client UI 顯示與最終魔法抗性計算結果等價，但屬廣域 stat 系統架構議題（同 110/111 DEX→AC、137 Wis→MR 等先例），非單一技能可修。
+  - **DB schema 來源唯一**：yiwei `db_split/skills.sql` 與貓飛 `lineage381.sql` 偶有資料漂移（如 mp/duration/cast_gfx 微調），本子項以 yiwei 為對齊源，cat-fei 端差異屬廣域 SQL 同步議題（與多項 elf/illusion 技能同源）。
+
 ## 幻象（AVATA / 120）— 純佔位技能，兩端皆無實作（純審計）
 
 - **Java 對照**：grep `AVATA` 在全 yiwei src 只命中 `L1SkillId.java:441 public static final int AVATA = 120;` 一處（其餘 `AVATA*` 匹配為 `BRAVE_AVATAR`/`ILLUSION_AVATAR` 等不同技能）。**無 `skillmode/AVATA.java`、無 `L1SkillUse` case、無 `L1SkillStop` case、無 timer、無攻擊路徑引用**——skill 120 純常數定義，未實作任何行為。
