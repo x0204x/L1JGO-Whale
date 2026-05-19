@@ -1,5 +1,25 @@
 ## 技能
 
+## 立方：和諧（CUBE_BALANCE / 220）— 純審計無代碼變更
+
+- 純審計 `220 CUBE_BALANCE`：Go 已完整實作並與 Java 行為對齊；docs 表格「未實作，需補地面立方」為過期標註，本步更新為「已對齊」。
+- **核心行為已對齊**：
+  - **Spawn NPC + GFX**：`cubeBalanceNpcID=80152`、GFX 6724（從 NPC 模板載入），對齊 Java `L1SkillUse.java:1834 L1SpawnUtil.spawnEffect(80152, ...)`。
+  - **狀態 ID**：`cubeStatusBalance = 1025`，對齊 Java `L1SkillId.STATUS_CUBE_BALANCE = 1025`。
+  - **MP 恢復**：Go `cubeEffectIntervalTicks=20`（4 秒）+5 MP，對齊 Java `L1Cube.java:148-154 _timeCounter % 4 == 0 → setCurrentMp + 5`。
+  - **HP 傷害**：Go `cubeBalanceDamageIntervalTicks=25`（5 秒）-25 HP，對齊 Java `_timeCounter % 5 == 0 → receiveDamage 25`。
+  - **PC 與 NPC 雙路徑**：Go 在 `applyCubeEnemy` 與 `applyCubeEnemyNpc` 各自處理；Java 在 `L1Cube.giveEffect case STATUS_CUBE_BALANCE` 分 PC/Monster 分支處理。
+  - **無 immune buff 檢查**：Java BALANCE 沒有 STATUS_FREEZE/ABSOLUTE_BARRIER/ICE_LANCE/EARTH_BIND immunity（與 IGNITION/QUAKE 不同）；Go 也沒有，對齊。
+  - **同類立方範圍驗證**：Go `hasNearbySameCube` 檢查 chebyshev 距離 ≤ 3，發 `S_ServerMessage 1412`「已在地板上召喚了魔法立方塊。」對齊 Java `L1SkillUse.java:391-411 getVisibleObjects(pc, 3) + S_ServerMessage(1412)`。
+  - **EXCEPT_COUNTER_MAGIC**：Java 與 Go 都未列入 220（CUBE_BALANCE 為 ground target 非單體針對技能，魔法屏障不適用）。
+  - **NON_CANCELLABLE**：Java/Go 都未列入（cube buff 為短暫地面效果非持久 buff）。
+  - **生命週期**：Go `effect.TicksLeft = skill.BuffDuration * 5` = 20 秒 × 5 ticks/sec = 100 ticks；對齊 Java `_skill.getBuffDuration() = 20` 秒（SQL `buff_duration=20`）。
+- **divergence（已知與其他 cube 同源 broader gap）**：
+  - **立方放置位置**：Go 對所有四個 cube skills（205/210/215/220）統一使用 `player.X, player.Y`（施法者腳下），Java 使用 `_targetX, _targetY`（點擊位置）。屬全 cube skill 同源 broader gap，若要對齊需同時調整四個 cube 行為與測試，超出單一子項範圍。
+- **broader gap（不改）**：
+  - **yaml mp_consume/reuse_delay/area/type 等**：與 207-219 同源 yaml drift，本步不調整。
+- 驗證：無代碼變更；既有測試 `TestSkillCubeGroundEffectCubeBalanceRestoresMPAndDamagesTarget` 覆蓋核心 MP+5/-25 HP 行為。
+
 ## 化身（ILLUSION_AVATAR / 219）
 
 - 清除 `buffs.lua [219]` 的 `exclusions = {204, 209, 214}` stale 互斥群，對齊 Java `skillmode/ILLUSION_AVATAR.java` 沒有 REPEATEDSKILLS 互斥，與 Java `L1SkillMode.java:38-39 isNotCancelable` 將四個 illusion buff 同列「不可被相消移除」一致——意即四個 illusion buff 可並存。
