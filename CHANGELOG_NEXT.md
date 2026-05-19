@@ -1,5 +1,31 @@
 ## 技能
 
+## 雙重破壞（DOUBLE_BREAK / 105）— 純審計無代碼變更
+
+- 純審計 `105 DOUBLE_BREAK`：Go 完整對齊 Java `L1AttackPc.calcDamage` weapon switch case 11/12 的雙重破壞傷害數學。
+- **核心行為已對齊**：
+  - **施法路徑**：`skill_list.yaml skill_id:105 target:none buff_duration:192` → `executeSelfSkill` default → `applyBuffEffect` → `buffs.lua [105] = {}` 空效果表（純旗標）。對齊 Java 無 skillmode 走 L1SkillUse default `setSkillEffect(105, _getBuffDuration)`。
+  - **觸發條件**：`skill_damage.go:326 if attacker.HasBuff(105) && doubleBreakRoll < doubleBreakChance(attacker, weaponType)` → `damage *= doubleBreakMultiplier (=2)`。對齊 Java case 11/12 `if (_pc.hasSkillEffect(DOUBLE_BREAK) && _random.nextInt(100) < totalchance && !ConfigSkill.DOUBLE_BREAK_NO_WEAPON) → weaponTotalDamage *= ConfigSkill.DOUBLE_BREAK_DMG`。
+  - **機率公式對齊**：
+    - **Claw**：`doubleBreakChance("claw") = 20 + (level-45)/5 if level>45 else 0`。對齊 Java case 11 `totalchance = 20 + addchance` 其中 `addchance = (_pc.getLevel() - 45) / 5 if _pc.getLevel() > 45 else 0`。
+    - **Edoryu**：`doubleBreakChance("edoryu") = 20 + (level-45)/5 + 5`。對齊 Java case 12 `totalchance2 = 20 + addchance2 + ConfigSkill.DOUBLE_BREAK_CHANCE(=5)`。
+    - **其他武器（bow/sword 等）**：`doubleBreakChance default = 0`。對齊 Java case 11/12 only（其他 weapon case 不檢查 DOUBLE_BREAK）。
+  - **倍率對齊**：Go `doubleBreakMultiplier = 2` 對齊 Java properties `DOUBLE_BREAK_DMG = 2.0`（覆蓋 ConfigSkill 預設 1.5）。
+  - **roll 範圍對齊**：Go `world.RandInt(100)` = `rand.Intn(100)` → [0, 99]；`roll < chance` 命中 `chance` 個值。對齊 Java `_random.nextInt(100) < totalchance` 同樣 [0, 99] 命中 `totalchance` 個值。
+  - **PvE/PvP melee 全覆蓋**：`combat.go:212 processMeleeAttack` 與 `pvp.go:95 HandlePvPAttack` 皆呼叫 `darkElfPhysicalDamage(attacker, damage, weaponType)`。
+  - **PvE/PvP ranged 自然排除**：`combat.go:459 processRangedAttack` 與 `pvp.go:298 HandlePvPFarAttack` 呼叫 `darkElfPhysicalDamage(attacker, damage, "bow")`（為 102 BURNING_SPIRIT 補上的路徑）但 `doubleBreakChance("bow") = 0` 自然排除。對齊 Java DOUBLE_BREAK 只在 weapon switch case 11/12（claw/edoryu）處理，與弓無關。
+  - **counterMagicExempt**：`counterMagicExempt[105] = true` 對齊 Java `EXCEPT_COUNTER_MAGIC` (line 148) 含 105——DOUBLE_BREAK 自我增益不被反魔法盾抵擋。
+  - **NON_CANCELLABLE 不含 105**：對齊 Java `isNotCancelable` 不含 105——可被 CANCELLATION 解除。
+  - **既有測試**：`skill_darkelf_buff_test.go:60-87` Player level 50 + buff 102/105 + edoryu：
+    - `darkElfPhysicalDamageWithRolls(player, 100, "edoryu", 0, 0)` → 期望 300：105 chance = 20+1+5 = 26，roll 0 < 26 觸發 ×2 → 200；102 roll 0 < 15 觸發 ×3/2 → 300 ✓
+    - `darkElfPhysicalDamageWithRolls(player, 100, "edoryu", 99, 99)` → 期望 100：兩者 roll 99 ≥ chance 均不觸發 ✓
+- **broader gap（不改）**：
+  - **attack packet 雙擊視覺標記 0x04 缺失**：Java edoryu DOUBLE_BREAK 觸發時設 `_attackType = 4`（L1AttackPc:987），透過 `S_AttackPacketPc(pc, target, type, dmg)` 最後一個 byte 送給客戶端觸發雙擊動畫。Go `handler/broadcast.go:353 BuildAttackPacket` 簽名無 type 參數，硬編碼末 byte = 0，客戶端看不到雙擊視覺。此問題同時影響 4 個獨立系統：(1) edoryu DOUBLE_BREAK skill proc 視覺、(2) edoryu 武器自身雙擊（`_weaponDoubleDmgChance`）、(3) 暴擊 0x02、(4) 鏡反射 0x08。屬廣域 attack packet 動畫旗標缺口，非 skill 105 獨有。注意 Java claw DOUBLE_BREAK（line 962）**不**設 `_attackType=4`，因此 claw 路徑反而自然對齊。修補需重構 BuildAttackPacket 簽名 + 所有 caller + 暴擊/鏡反射等獨立系統，半補只 edoryu DOUBLE_BREAK 而留其他三個為 0 = 半成品，依「不可偷換範圍」+「做半套不如不做」記錄不修。
+  - **DOUBLE_BREAK_NO_WEAPON 替代公式**：Java properties `DOUBLE_BREAK_NO_WEAPON = false` 為生產設定，當 true 時走 L1AttackPc:1759/2066 替代公式（用 `_weaponDoubleDmgChance` 而非 level bonus）。Go 不模擬此 config，依賴預設 false 行為。屬廣域 config 對齊缺口。
+  - **edoryu 武器自身雙擊 `_weaponDoubleDmgChance`**：Java case 12 line 968-971 另有獨立的 weapon 雙擊系統（非 DOUBLE_BREAK skill），與 105 對齊無關。
+  - **yaml mp_consume/buff_duration/reuse_delay drift**：與廣域同源 broader gap。
+- 驗證：無代碼變更，既有 `TestSkillDarkElfBuffBurningSpiritAndDoubleBreakAreProcFlags` 已透過 `darkElfPhysicalDamageWithRolls` 鎖定 105 觸發 + 不觸發兩條路徑。
+
 ## 毒性抵抗（VENOM_RESIST / 104）— 純審計無代碼變更
 
 - 純審計 `104 VENOM_RESIST`：Go 完整對齊 Java `L1Poison.isValidTarget()` 對 VENOM_RESIST 與 DRAGON5 兩種 buff 的阻擋。
