@@ -1,5 +1,17 @@
 ## 技能
 
+## 風之枷鎖（WIND_SHACKLE / 167）— 純審計重新確認 PC + NPC 雙路徑 + speed slow +25% + MR 抗性閘完整對齊 Java
+
+- **Java 對照**：`WIND_SHACKLE.skillmode` 對 PC `setSkillEffect(167, integer*1000) + S_PacketBoxWindShackle(charID, duration)`、對 NPC `setSkillEffect(167, integer*1000)`；`L1NpcInstance.java:2629-2633` 對 ATTACK_SPEED/MAGIC_SPEED `sleepTime += sleepTime/4`（+25%）。
+- **Go 對照**（無代碼變更）：
+  - `skill_buff.go:1163-1171 case 167` PC 路徑：`HasBuff(167) dedup → applyBuffEffect → SendWindShackle(charID, duration) + BroadcastBuildSkillEffect`。
+  - `skill_status.go:737-753 case 167` NPC 路徑：`HasDebuff(167) dedup → checkNpcMRResist → AddDebuff(167, dur*5) + BroadcastBuildSkillEffect`。
+  - `npc_ai.go:1280-1283 setNpcAtkCooldown` + `:1296-1298 setNpcSubMagicCooldown` 對 `HasDebuff(167)` 加 `cooldown += cooldown/4`。
+  - `playerDebuffSkills[167]=true` 走統一 `checkPlayerMRResist`。
+  - `buffs.lua [167]={}` flag-only。
+- **broader gap（不改）**：(A) yaml 多項資料漂移屬廣域 SQL 同步議題；(B) `L1MagicPc.calcProbabilityMagic case WIND_SHACKLE` 三段公式 Go 用 generic MR 公式屬廣域 ConfigElfSkill probability 議題（同 157/173/174 同源）。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 暴風神射（STORM_SHOT / 166）— 純審計重新確認核心 BowDmg ±5 + BowHit ±(-1) + REPEATEDSKILLS[0] 5 項武器 buff 互斥完整對齊 Java
 
 - **Java 對照**：`L1SkillUse.java:2611-2615 addBowDmgup(5) + addBowHitup(-1) + S_PacketBoxIconAura(165, duration)`、`L1SkillStop.java:569 addBowDmgup(-5) + addBowHitup(1) + S_PacketBoxIconAura(165, 0)`；REPEATEDSKILLS[0]={148,149,156,163,166}。
