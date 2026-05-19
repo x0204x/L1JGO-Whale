@@ -821,7 +821,11 @@ func handleCallClanYesNo(sess *net.Session, player *world.PlayerInfo, callerID i
 	}
 	caller := deps.World.GetByCharID(callerID)
 	if caller != nil && caller.ClanID == player.ClanID {
-		TeleportPlayer(sess, player, caller.X, caller.Y, caller.MapID, 5, deps)
+		// Java `C_Attr.callClan` 第 1226 行：傳送至 `leader.X + (rand%5 - rand%5), leader.Y + (rand%5 - rand%5)`
+		// （`(int)(Math.random()*5)` ＝ 0..4），最終分佈 [-4..+4] 防止盟員疊在盟主同格上。
+		dx := int32(world.RandInt(5) - world.RandInt(5))
+		dy := int32(world.RandInt(5) - world.RandInt(5))
+		TeleportPlayer(sess, player, caller.X+dx, caller.Y+dy, caller.MapID, 5, deps)
 	}
 }
 

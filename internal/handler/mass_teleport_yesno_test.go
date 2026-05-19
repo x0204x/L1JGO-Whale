@@ -122,8 +122,12 @@ func TestHandleAttrCallClanResponseUsesJavaCAttrCase729(t *testing.T) {
 
 	HandleAttr(memberSess, packet.NewReader(w.RawBytes()), &Deps{World: ws, Log: zap.NewNop()})
 
-	if member.X != caller.X || member.Y != caller.Y || member.MapID != caller.MapID {
-		t.Fatalf("Java C_Attr case 729 接受呼喚盟友後應傳送到呼喚者位置，位置=%d,%d,%d", member.X, member.Y, member.MapID)
+	// Java `C_Attr.callClan` 第 1226 行：傳送至 `leader.X + (rand%5 - rand%5), leader.Y + (rand%5 - rand%5)`，
+	// 最終分佈 [-4..+4] 防止盟員與盟主疊格。驗證 member 目標位置在 caller ±4 範圍內且 MapID 一致。
+	if member.MapID != caller.MapID || member.X < caller.X-4 || member.X > caller.X+4 ||
+		member.Y < caller.Y-4 || member.Y > caller.Y+4 {
+		t.Fatalf("Java C_Attr case 729 接受呼喚盟友後應傳送到盟主 ±4 範圍內，位置=%d,%d,%d 盟主=%d,%d,%d",
+			member.X, member.Y, member.MapID, caller.X, caller.Y, caller.MapID)
 	}
 	if member.PendingYesNoType != 0 || member.PendingYesNoData != 0 {
 		t.Fatalf("C_Attr 729 回應後應清除 pending，type=%d data=%d", member.PendingYesNoType, member.PendingYesNoData)

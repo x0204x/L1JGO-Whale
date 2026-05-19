@@ -1,5 +1,23 @@
 ## 技能
 
+## 呼喚盟友（CALL_CLAN / 116）— 修正接受呼喚後傳送座標分散範圍
+
+- **Java 對照**：
+  - `skillmode/CALL_CLAN.java:20-31`：施法時 `clanPc.setTempID(pc.getId()) + sendPackets(new S_Message_YN(729))`，僅暫存盟主 ID 與發 Y/N 對話。
+  - `C_Attr.java:505-512 case 729`：玩家點 Yes 時呼叫 `callClan(pc)`。
+  - `C_Attr.java:1129-1228 callClan`：
+    1. 取出 leader (`findObject(getTempID())`)、`setTempID(0)`、`isParalyzedX()` 阻擋。
+    2. 多數 escapable/castle/questmap 檢查被註解（line 1148-1192），active 邏輯只剩 leader 非 null 與 paralyze。
+    3. 最終傳送：`L1Location newLocation = leader.getLocation().randomLocation(0, true)` (radius=0 ≈ 取盟主原位置)，再加 `(int)(Math.random()*5) - (int)(Math.random()*5)` 在 X 與 Y 各加 `[-4..+4]` 隨機偏移，最後 `L1Teleport.teleport(pc, ..., 5, true, 0)`（heading=5）。
+- **發現的 Java 真實差異**：原 Go `handleCallClanYesNo` 直接 `TeleportPlayer(sess, player, caller.X, caller.Y, caller.MapID, 5, deps)` 傳送到盟主**精確同格座標**，與 Java `[-4..+4]` 隨機散佈不符——多人連續被呼喚時會全部疊在盟主同一格，視覺與碰撞行為與 Java 不同。
+- **修正**：`handler/npcaction.go handleCallClanYesNo` 加入隨機偏移計算 `dx = RandInt(5) - RandInt(5)`、`dy = RandInt(5) - RandInt(5)`，最終傳送座標 `caller.X+dx, caller.Y+dy`，與 Java line 1226 完全等價（`Math.random()*5` 強制轉 int = 0..4，差分 = -4..+4）。
+- **測試更新**：`mass_teleport_yesno_test.go TestHandleAttrCallClanResponseUsesJavaCAttrCase729` 斷言改為 `MapID 必須一致 + X/Y 在 caller ±4 範圍內`，反映 Java 隨機散佈行為。
+- **架構合規**：`handleCallClanYesNo` 仍是薄層（解析、驗證、呼叫 TeleportPlayer），無遊戲狀態直接變更（teleport 內部負責）。已使用既有 `world.RandInt` helper（單線程遊戲迴圈安全）。
+- **broader gap（不改）**：
+  - **聯盟呼喚（4976 callClan1）同源 spread 缺失**：Java `C_Attr.java:1339 callClan1` 採完全相同的 `(rand%5 - rand%5)` 散佈公式，Go `handleAllianceCallClanYesNo` 也是傳送到精確位置。屬同源 bug 但聯盟系統與 CALL_CLAN(116) 是不同技能 ID，留待 alliance/4976 自身審計或廣域 callClan 重構時一併處理。
+  - **被呼喚者狀態的 Java escapable/castle/questmap 多重檢查全被註解掉**：Java line 1148-1192 多項地圖安全檢查（escapable/戰爭旗幟內/副本地圖）已被註解，active 邏輯只剩 paralyze。Go 可選擇實作這些檢查作為 over-strict 保護，但屬「Go 比 Java 嚴格」而非「Go 偏離 Java」，不在 audit 修正範圍。
+  - Go 的 `Sleeped` 額外阻擋（Java 只查 `isParalyzedX`）：Go 多了一層 sleep 阻擋，屬增加而非偏離 Java，且 sleep 中無法操作 Y/N dialog 本就為 dead code，不需移除。
+
 ## 鋼鐵士氣（SHINING_AURA / 115）— 修正 yaml `cast_gfx` 對齊 cat-fei 視覺特效
 
 - **驗證**：技能 ID 對照表既有註記「資料驅動，需驗證隊伍/血盟範圍」。本次比對 cat-fei `貓飛版_lineage381.sql` skills 表：`(115,'鋼鐵士氣',15,2,40,0,0,0,0,640,'none',12,0,0,0,0,0,0,2,0,0,-1,0,4,'$1977',19,2943,...)`。Go yaml 整體（名稱/mp=40/duration=640/target_to=12/name_id=$1977）皆與貓飛對齊，唯獨 `cast_gfx: 3941` 與貓飛 `2943` 不符（115 cast_gfx 3941 與 117 cast_gfx 3942 僅差 1，疑似當初編寫時 copy 117 後改錯數字）。
