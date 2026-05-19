@@ -1,5 +1,38 @@
 ## 技能
 
+## 增幅防禦（REDUCTION_ARMOR / 88）— 純審計無代碼變更
+
+- 純審計 `88 REDUCTION_ARMOR`：Go 完整對齊 Java 「無 skillmode + 4 攻擊路徑 flat 傷害減免」設計，公式 `dmg -= (max(targetLvl, 50) - 50) / 5 + (pvpPhysical ? 10 : 1)`。
+- **Java 設計確認**：
+  - **無獨立 skillmode/REDUCTION_ARMOR.java**——cast 走 L1SkillUse 預設路徑（讀 skill SQL 表 + `setSkillEffect(88, duration*1000)`）。
+  - **4 處 damage 路徑各自檢查 `hasSkillEffect(88)`**：
+    - `L1AttackPc.java:1617-1620` PC→PC melee + ranged：`dmg -= (max(targetLvl, 50) - 50) / 5 + 10`（PvP 物理 +10 base）
+    - `L1AttackNpc.java:437-440` NPC→PC physical：`dmg -= (max(targetLvl, 50) - 50) / 5 + 1`（+1 base）
+    - `L1MagicPc.java:1148-1151, 1296-1299` PC magic→PC：`+1` base
+    - `L1MagicNpc.java:357-360` NPC magic→PC：`+1` base
+- **Go 對照**：
+  - **buff 旗標**：`buffs.lua:90 [88] = {}` 純旗標，註解明確標 `flat 傷害減免（npc_ai/pvp/magic 路徑套用 applyReductionArmorDamage），不是 AC 加成`，避免未來誤改為 AC buff。
+  - **NON_CANCELLABLE**：`buffs.lua:242 [88] = true` 對齊 Java `L1SkillMode.java:34 isNotCancelable`。
+  - **counterMagicExempt**：`skill_buff.go:403 88: true` 對齊 Java `L1SkillUse.java:147 EXCEPT_COUNTER_MAGIC` 含 88。
+  - **damage 套用 helper**：`skill_buff.go:23-44 applyReductionArmorDamage(target, damage, pvpPhysical)`：
+    ```go
+    if !target.HasBuff(88) return damage
+    lvl := max(target.Level, 50)
+    reduction := (lvl-50)/5 + 1
+    if pvpPhysical { reduction = (lvl-50)/5 + 10 }
+    damage -= reduction
+    if damage < 0 { damage = 0 }
+    ```
+  - **4 處插入點對齊 Java 4 路徑**：
+    - `npc_ai.go:502/629/792/881` NPC→PC（melee/ranged/skill_atk/leverage）以 `pvpPhysical=false` 對齊 Java NPC→PC 系列 +1 base。
+    - `pvp.go:101/303` PC→PC（melee/ranged）以 `pvpPhysical=true` 對齊 Java L1AttackPc:1617 +10 base。
+    - `skill_damage.go:173 applySkillDamageToPlayer` PC magic→PC 以 `pvpPhysical=false` 對齊 Java L1MagicPc 系列 +1 base。
+  - **無 REPEATEDSKILLS 互斥**：Java 10 個 REPEATEDSKILLS 群組均不含 88，Go buffs.lua [88] 不設 exclusions 正確對齊。
+- **broader gap（不改）**：
+  - **yaml buff_duration drift**：Go yaml `skill_list.yaml:2708 buff_duration: 32` vs Java SQL `db_split/skills.sql:88 buff_duration='192'` 差 6 倍。屬廣域 yaml/SQL 資料源同步缺口（與 mp_consume `5 vs 7`、其他多技能 yaml drift 同源）。需 skill_list.yaml 全面以義維版 SQL 重新生成或建立 reconciliation 流程，本步維持單一技能 audit 範圍不修。
+  - **NPC magic→PC 缺口問題核對**：Java `L1MagicNpc.java:357-360` NPC magic 攻擊 PC 時也檢查 `hasSkillEffect(88)`，Go 目前在 `applySkillDamageToPlayer`（PC→PC magic）涵蓋，但 NPC→PC magic 是否有同一路徑需待 NPC magic system 完整審計時驗證——本步暫不展開。`npc_ai.go:792` skill attack 路徑（NPC 使用技能對 PC 物理傷害）已套用 reduction，magic 部分需另檢查（Go NPC 是否會施放 magic 傷害技能對 PC？該路徑現況？）。
+- **不寫新測試**：純審計，Go 已對齊主流程；4 攻擊路徑插入點與 Java 4 path 一一對應。依停損標準避免「Go 已對 + 防回歸」測試。
+
 ## 破壞盔甲（ARMOR_BREAK / 112）— 補齊 1.58x 傷害弓/爪武器排除
 
 - 對齊 Java `L1AttackPc.java`：
