@@ -1,5 +1,25 @@
 ## 技能
 
+## 行走加速（MOVING_ACCELERATION / 101）— 純審計無代碼變更
+
+- 純審計 `101 MOVING_ACCELERATION`：Go 完整對齊 Java `L1SkillUse.java:1456-1461 / 2653-2658`、`L1SkillStop.java:594-602`、`L1BuffUtil.java:168-172, 222-226`。
+- **核心行為已對齊**：
+  - **dispatch**：skill_list.yaml `skill_id:101 target:none` → `skill.go:513 executeSelfSkill` → `skill_self.go` default 路徑 → `applyBuffEffect`（無 case 101 特例）。
+  - **buff 屬性**：`buffs.lua [101] = { brave_speed = 4, exclusions = {52, 150, 155, 186, 1000, 1016} }` 對齊 Java `L1SkillUse.java:2656 pc.setBraveSpeed(4)`。
+  - **REPEATEDSKILLS 互斥**：exclusions {52(HOLY_WALK), 150(WIND_WALK), 155(FIRE_BLESS), 186(BLOODLUST), 1000(STATUS_BRAVE), 1016(STATUS_ELFBRAVE)} 完全對齊 Java `L1SkillUse.java:1745-1746 REPEATEDSKILLS[2] = { HOLY_WALK, MOVING_ACCELERATION, WIND_WALK, STATUS_BRAVE, STATUS_ELFBRAVE, BLOODLUST, FIRE_BLESS }`（101 自身不需列入自己的 exclusions）。
+  - **icon 封包**：`skill_buff.go:235-238` `sendBraveToAll(target, byte(eff.BraveSpeed), uint16(skill.BuffDuration))` 對齊 Java `pc.sendPackets(new S_SkillBrave(pc.getId(), 4, _getBuffIconDuration))` 自身 + `pc.broadcastPacketAll(new S_SkillBrave(pc.getId(), 4, 0))` 廣播。
+  - **反咒語豁免**：`counterMagicExempt[101] = true`（`skill_buff.go:404`）對齊 Java `EXCEPT_COUNTER_MAGIC` (`L1SkillUse.java:147 / L1SkillUse2.java:149`) 含 101——魔法屏障無法抵擋自身增益。
+  - **不可解除狀態**：`NON_CANCELLABLE[101]` 不存在（`buffs.lua:218-274` 未列入）對齊 Java `L1SkillMode.isNotCancelable()`（line 31-37）不含 MOVING_ACCELERATION——可被 CANCELLATION 移除。
+  - **暴風疾走互斥**：`skill_self.go:152 case 172 STORM_WALK` 對 101 執行 `removeBuffAndRevert` 對齊 Java 互斥群組行為。
+  - **buff 到期/cancelAllBuffs/死亡清空**：`skill_buff.go:660, 754` + `skill.go:114, 157` 全部執行 `sendBraveToAll(target, 0, 0)` 對齊 Java `L1SkillStop.java:600 pc.sendPacketsAll(new S_SkillBrave(pc.getId(), 0, 0))` + `cha.setBraveSpeed(0)` 與 `L1BuffUtil.java:168-172` 死亡清空路徑。
+  - **既有測試覆蓋**：`skill_buff_test.go:132-148` 已鎖定 BraveSpeed=4 + buff 註冊行為。
+- **不動處**：
+  - `skill_self.go:151 case 172 STORM_WALK` 列出 `42, // HOLY_WALK` 但 Java `L1SkillId.HOLY_WALK = 52`（非 42）；這是 skill 52/172 範疇 bug 不在 skill 101 scope，依「不可偷換範圍」記錄不修，待 skill 52/172 自身審計時處理。
+- **broader gap（不改）**：
+  - **L1BuffUtil 死亡清空目前依賴通用路徑**：Java `L1BuffUtil.braveStart()` 是顯式列舉 HOLY_WALK/MOVING_ACCELERATION/WIND_WALK 等做 killSkillEffectTimer + setBraveSpeed(0)；Go `ClearAllBuffsOnDeath` 透過 `buff.SetBraveSpeed > 0` 通用旗標走相同行為，路徑等價但實現方式不同。
+  - **yaml mp_consume/buff_duration/reuse_delay drift**：與廣域同源 broader gap。
+- 驗證：無代碼變更，既有 `skill_buff_test.go` 已覆蓋 101 buff 設定路徑。
+
 ## 提煉魔石（BRING_STONE / 100）— 純審計無代碼變更
 
 - 純審計 `100 BRING_STONE`：Go 已完整對齊 Java `L1SkillUse.java:2346-2389` 的四級魔石升級鏈，原註解「Go 簡化：完整升級邏輯待後續實作」實際已實作（comment 為過期描述）。
