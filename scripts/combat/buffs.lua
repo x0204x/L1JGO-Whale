@@ -28,7 +28,7 @@ BUFF_DEFS = {
     [14] = {},                                                                -- Extra Weight (flag only)
     [20] = {},                                                                -- Curse Blind (debuff flag)
 
-    [26] = { dex = 5 },                                                      -- Physical Enchant DEX
+    [26] = { dex = 5, exclusions = {110} },                                  -- Physical Enchant DEX（Java REPEATEDSKILLS[4]={26,110} 與 DRESS_DEXTERITY 互斥）
 
     [29] = { move_speed = 2, exclusions = {43, 54} },                        -- Slow
 
@@ -93,7 +93,7 @@ BUFF_DEFS = {
     [91]  = { ac = -2 },                                                      -- Counter Barrier（反擊屏障）— AC-2 + 近戰反彈
 
     [109] = { str = 3, exclusions = {42} },                                  -- Dress Mighty（Java REPEATEDSKILLS[5]={42,109} 與 PHYSICAL_ENCHANT_STR 互斥）
-    [110] = { dex = 3 },                                                      -- Dress Dexterity
+    [110] = { dex = 3, exclusions = {26} },                                  -- Dress Dexterity（Java REPEATEDSKILLS[4]={26,110} 與 PHYSICAL_ENCHANT_DEX 互斥）
     [111] = { dodge = 18 },                                                   -- Dress Evasion（Java: ER +18）
     [113] = {},                                                               -- True Target（精準目標，傷害加成在 Go PvP/戰鬥路徑處理）
 

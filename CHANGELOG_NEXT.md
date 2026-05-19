@@ -1,5 +1,24 @@
 ## 技能
 
+## 敏捷提升（DRESS_DEXTERITY / 110）— 補齊 REPEATEDSKILLS[4] 26↔110 互斥
+
+- 對齊 Java `L1SkillUse.java:1750` `REPEATEDSKILLS[4] = { PHYSICAL_ENCHANT_DEX, DRESS_DEXTERITY }`。與 109 audit 同源 Java mutex pattern：原 buffs.lua `[26]`/`[110]` 均無 exclusions，導致 PHYSICAL_ENCHANT_DEX(26)+DRESS_DEXTERITY(110) 同時生效 → DEX 加成 +5+3=+8（Java 上限 +5 二擇一）。
+- 修正：buffs.lua bilateral exclusion：
+  ```lua
+  [26]  = { dex = 5, exclusions = {110} },
+  [110] = { dex = 3, exclusions = {26} },
+  ```
+  與 109 audit 同樣掛載到既有 `engine.go:431-437` exclusions parser + `skill_buff.go:144-146 removeBuffAndRevert` 通用路徑，無需新代碼。
+- 其餘對齊（無修改）：
+  - **DeltaDex 套用**：`applyBuffEffect:151 buff.DeltaDex = int16(eff.Dex)` + `revertBuffStats` 反向 `target.Dex -= DeltaDex` 對齊 Java `pc.addDex((byte)3)` / `addDex(-3)`。
+  - **Cast icon**：`buff_icon_map.yaml [110] type=dexup param=2` 對齊 Java `L1SkillUse.java:2449 new S_Dexup(pc, 2, duration)`（comment `原本3修改2 琮善`）。
+  - **Cancel icon**：`skill_buff.go:107-109 durationSec==0 && skillID==110 → iconParam=3` 對齊 Java `L1SkillStop.java:433 new S_Dexup(pc, 3, 0)`。
+  - **NON_CANCELLABLE**：`buffs.lua:254 [110] = true` 對齊 Java `L1SkillMode.java:37`。
+  - **counterMagicExempt**：`skill_buff.go:405 110: true` 對齊 Java `EXCEPT_COUNTER_MAGIC` 含 110。
+- **broader gap（不改，與 109 同樣記錄但更新覆蓋率）**：Java REPEATEDSKILLS 10 個群組 Go 目前覆蓋：[0]={148,149,156,163,166} ✅、[1]={151,168} ✅、[2]={52,101,150,155,186,1000,1016} ✅、[4]={26,110} ✅（本步補）、[5]={42,109} ✅（109 step 補）、[7]={185,190,195} ✅（dragon awakening 專屬守衛）。仍缺：[3]={8,19,54}（HASTE 系）、[6]={80,106}（MIRROR_IMAGE/UNCANNY_DODGE）、[8]={14,213}、[9]={213,218}。
+- **DEX→AC 連動廣域缺口（不改，與 110 既有 2026-05-18 audit 同源）**：Java `resetBaseAc()` 在 cast 與 stop 兩端都呼叫，依 DEX-tier-based 公式（0-9:10-L/8、10-12:10-L/7、13-15:10-L/6、16-17:10-L/5、18+:10-L/4）重算 base AC。Go 用固定 `Config.Gameplay.BaseAC`，無 DEX→AC 連動，影響升級/重置/裝備事件等多個系統，非單一技能可修。依「不可偷換範圍」維持 out-of-scope。
+- **不寫新測試**：bilateral exclusion 是 data-only fix，掛載到既有通用路徑（與 109/151/168/148-群同源），既有 `TestSkillElementalBuffIronSkinExcludesEarthSkin` 已鎖定機制。依停損標準避免重複測試。
+
 ## 力量提升（DRESS_MIGHTY / 109）— 補齊 REPEATEDSKILLS[5] 42↔109 互斥
 
 - 對齊 Java `L1SkillUse.java:1752` `REPEATEDSKILLS[5] = { PHYSICAL_ENCHANT_STR, DRESS_MIGHTY }`。Java `deleteRepeatedSkills` (line 1769-1777) 每次施法時掃描所有 REPEATEDSKILLS 群組，若 cast skill ID 在群內，移除群內其餘技能。原 Go buffs.lua `[42]`/`[109]` 均無 exclusions，導致 42 + 109 可同時生效 → STR 加成 +5+3=+8（Java 上限 +5 或 +3 二擇一）。
