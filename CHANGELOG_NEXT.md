@@ -1,5 +1,44 @@
 ## 技能
 
+## 封印禁地（AREA_OF_SILENCE / 161）— 純審計確認核心 silence + 白名單 + 全頻廣播阻擋完整對齊 Java
+
+- **Java 對照**：
+  - `L1SkillId.java:542 AREA_OF_SILENCE = 161`，無對應 skillmode（走 generic apply 路徑）。
+  - `C_UseSkill.java:189-193` cast-time silence 阻擋：`if (pc.hasSkillEffect(AREA_OF_SILENCE) && !isError) { if (!isSilenceUsableSkill(skillId)) isError = true; }`。
+  - `C_UseSkill.java:87-88 _cast_with_silence` 白名單：`{SHOCK_STUN, REDUCTION_ARMOR, BOUNCE_ATTACK, SOLID_CARRIAGE, COUNTER_BARRIER, FOE_SLAYER}` = `{87, 88, 89, 90, 91, 187}` 6 項物理 buff 可在沉默下施放。
+  - `C_ChatGlobal.java:77-80`：`if (pc.hasSkillEffect(AREA_OF_SILENCE) && !pc.isGm()) → isStop = true`——非 GM 玩家持 161 buff 時禁全頻廣播。
+  - `L1MagicPc.java:491-505` cast probability：`ConfigElfSkill.AREA_OF_SILENCE_1/2/3`（5/10/15）三段 lvldiff + INT*INT - MR*MR 微調。
+  - `L1MagicNpc.java` 含 AREA_OF_SILENCE 抗性檢查（NPC 目標路徑）。
+  - yiwei `db_split/skills.sql:160`：`('161', '封印禁地', '21', '0', '40', '0', '40319', '8', '9000', '16', 'none', '3', '0', '0', '0', '33', '50', '0', '1', '0', '0', '3', '1', '1', '', '19', '10708', '0', '0', '0', '0')` — mp=40、item=40319×8、reuse_delay=9000、buff_duration=16、target=none、target_to=3、prob_value=33、prob_dice=**50**、attr=0、type=1（TYPE_PROBABILITY）、ranged=0、area=**3**（3-tile chebyshev radius）、through=1、id=1、action_id=19、cast_gfx=**10708**、sys_msg_happen=**0**。
+
+- **Go 對照**：
+  - `skill_self.go:129-132 case 161`：`BroadcastToPlayers(nearby, BuildActionGfx(player.CharID, byte(skill.ActionID)))` + `applyAreaOfSilence(player, skill, nearby)` + return。
+  - `skill_elemental.go:111-145 applyAreaOfSilence`：
+    - duration = `skill.BuffDuration` (16s) 或 default 16。
+    - loop `nearby`：跳過 caster/dead；`playerDebuffSkills[161] && !checkPlayerMRResist → continue`（MR 閘）；移除舊 161 buff + revert；新建 `ActiveBuff{SkillID=161, SetSilenced=true}` + `target.Silenced = true` + AddBuff；`sendBuffIcon(target, 161, duration)`；cast_gfx 廣播；sys_msg_happen 個別發送。
+  - `skill.go:288 player.Silenced && !isCastableWhileSilenced(skillID) → 阻擋`：對齊 Java cast-time silence 檢查。
+  - `skill.go:572-579 isCastableWhileSilenced`：`{87, 88, 89, 90, 91, 187}` 6 項白名單**完全對齊** Java `_cast_with_silence` 列表。
+  - `handler/chat.go:83`：全頻廣播阻擋對齊 Java `C_ChatGlobal.java:77-80`（SILENCE/AREA_OF_SILENCE/STATUS_POISON_SILENCE 三類沉默都阻擋，GM 不受限）。
+  - `skill_status.go:831 playerDebuffSkills[161] = true`：MR 抗性閘。
+  - `buffs.lua:130 [161] = {}` 空 buff（flag-only，無屬性 delta，由 SetSilenced 處理）。
+  - yaml `skill_list.yaml:4931-4961`：mp=40、item=40319×8、reuse_delay=9000、buff_duration=16、target=none、target_to=3、prob_value=33、prob_dice=**30**、attr=0、type=1、ranged=0、area=**-1**（screen-wide）、through=1、id=1、action_id=19、cast_gfx=**2241**、sys_msg_happen=**715**——**4 項漂移**（prob_dice、area、cast_gfx、sys_msg_happen Go 跟 cat-fei）。
+
+- **既有測試覆蓋**：
+  - `skill_clan_shock_stun_test.go` 涉及 SHOCK_STUN 在 silence 下白名單放行的測試。
+  - 無針對 161 套用範圍/cast 阻擋的單元測試。
+
+- **發現的 Java 真實差異**：**無**（核心 silence 套用 + 白名單 + 全頻阻擋 + MR 閘 + sys_msg 完整對齊；先前 audit 已建立 isCastableWhileSilenced 白名單與 6 項精確匹配）。
+
+- **broader gap（不改）**：
+  - **A) yaml `area=-1` vs `3`**：Go 採 cat-fei「screen-wide」設計（area=-1 在 Go `data/skill.go:33` 定義為 "screen"），applyAreaOfSilence 直接 loop nearby AOI 玩家（AOI 範圍 ~15 tiles），不 enforce 3-tile chebyshev 半徑——yiwei 為 3-tile radius，Go 為 screen-wide。**內部一致**（code 配合 yaml `-1=screen` semantic），但與 yiwei 設計不同——屬廣域 yiwei/cat-fei SQL 同步議題（Go 跟 cat-fei）。
+  - **B) yaml 其餘 3 項漂移**：prob_dice=30 vs 50、cast_gfx=2241 vs 10708、sys_msg_happen=715 vs 0（Go 跟 cat-fei）——同樣屬廣域 SQL 同步議題。
+  - **C) `ConfigElfSkill.AREA_OF_SILENCE_1/2/3` 三段公式**：Java 5/10/15 + INT/MR 微調；Go 用 generic `checkPlayerMRResist` 簡化版——屬廣域 ConfigElfSkill probability 表議題（同 173/174 同源）。
+  - **D) NPC cast 路徑**：`L1MagicNpc` 含 161 抗性檢查；Go NPC 目標路徑 audit 已在 EARTH_BIND/SHOCK_STUN 系列中建立框架，161 未在 NPC cast 路徑顯式 case（NPC 通常不對玩家 cast 161）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - 無針對 161 的新測試需執行（既有 SHOCK_STUN/silence 路徑測試已間接覆蓋）。
+
 ## 水之防護（AQUA_PROTECTER / 160）— 移除 Go 多送的 SendDodgeIcon 對齊 Java skillmode 無 packet 行為
 
 - **Java 對照**：
