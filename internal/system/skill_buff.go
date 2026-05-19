@@ -1233,6 +1233,15 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		handler.SendUpdateER(target.Session, 0)
 	}
 
+	// 158 NATURES_TOUCH（生命之泉）：Java `L1SkillUse.java:2113-2118` 在恢復系技能清單
+	// (HEAL/EXTRA_HEAL/GREATER_HEAL/FULL_HEAL/HEAL_ALL/NATURES_TOUCH/NATURES_BLESSING)
+	// cast 後 `cha.removeSkillEffect(WATER_LIFE)`。其他 HEAL 類 1/19/35/49/57/164 yaml type=16
+	// 走 `applyElfWaterHealingModifiers` 已處理；158 yaml type=2（buff，HPR aura），無 heal 計算
+	// 路徑，需顯式在 buff cast 後移除 WATER_LIFE。
+	if skill.SkillID == 158 && target.HasBuff(170) {
+		s.removeBuffAndRevert(target, 170)
+	}
+
 	// 效果 GFX
 	if skill.CastGfx > 0 {
 		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))

@@ -1,5 +1,34 @@
 ## 技能
 
+## 生命之泉（NATURES_TOUCH / 158）— 補齊 cast 後移除 WATER_LIFE 對齊 Java 恢復系技能清單
+
+- **Java 對照**：
+  - `L1SkillId.java:530 NATURES_TOUCH = 158`，無對應 skillmode 類別（走 generic `cha.setSkillEffect(_skillId, _getBuffDuration)` apply 路徑）。
+  - `HprExecutor.java:55`：`_skill.put(NATURES_TOUCH, 15)`——持有 158 buff 期間 HP regen +15 per tick。
+  - `L1SkillUse.java:2113-2118`：cast 屬於恢復系技能清單 `(HEAL || EXTRA_HEAL || GREATER_HEAL || FULL_HEAL || HEAL_ALL || NATURES_TOUCH || NATURES_BLESSING)` 之一時，`cha.removeSkillEffect(WATER_LIFE)`——對 cast 目標移除 WATER_LIFE buff（避免雙倍治療 buff 與 HPR aura 同時消耗）。
+  - 無 icon send（不像 147/148/149 等武器 buff 走 `S_PacketBoxIconAura` 路徑）。
+  - yiwei `db_split/skills.sql:157`：`('158', '生命之泉', '20', '5', '20', '0', '0', '0', '0', '320', 'buff', '1', '0', '0', '0', '0', '0', '4', '2', '0', '-1', '0', '0', '32', '', '19', '2243', '0', '0', '0', '280')` — mp=20、buff_duration=320、target=buff、target_to=1、attr=4、type=2、ranged=-1、id=32、action_id=19、cast_gfx=2243、sys_msg_fail=280。
+
+- **Go 對照**（修正前 vs 修正後）：
+  - 修正前：`buffs.lua:126 [158] = { hpr = 15 }` 已對齊 Java HprExecutor 158→15 HPR delta（每 tick 由 `target.HPR += 15` 計算 `equip_hpr` 加到 regen bonus）；158 在 cancellable 清單 (`skill_buff.go:411`)；cast 走 `executeBuffSkill`（yaml target='buff' target_to=1=self），透過 `applyBuffEffect` 套用 buff。**但 cast 158 後不移除 WATER_LIFE**——因為 Go `applyElfWaterHealingModifiers` (`skill_elemental.go:97-109`) 只在 heal 計算路徑觸發（skill_buff.go:1202/1214 TYPE_HEAL=16 + skill_self.go:220/247/258），158 yaml type=2（buff，HPR aura）無 heal 計算，繞過 WATER_LIFE 移除 hook。先前 170 WATER_LIFE audit 誤判「Java 同樣不移除」，實際 Java 在 `L1SkillUse:2113-2118` 確實移除——criterion (a) 真實 Java diff。
+  - 修正後 `skill_buff.go:1242-1249`：在 `applyBuffEffect` + cast_gfx 廣播之間加 `if skill.SkillID == 158 && target.HasBuff(170) → s.removeBuffAndRevert(target, 170)`。對齊 Java 恢復系技能清單對 WATER_LIFE 的移除行為。其他 HEAL 類 1/19/35/49/57/164 yaml type=16 已由 `applyElfWaterHealingModifiers` 處理對齊。
+  - yaml `skill_list.yaml:4838-4868`：mp=20、buff_duration=320、target=buff、target_to=1、attr=4、type=2、ranged=-1、id=32、action_id=19、cast_gfx=2243、sys_msg_fail=280——**31 欄位完全對齊 yiwei `skills.sql:157`**（零漂移）。
+
+- **既有測試覆蓋**：
+  - 無針對 158 NATURES_TOUCH 的單元測試。HPR delta apply/revert 由通用 buff 系統覆蓋。
+  - 170 WATER_LIFE 雙倍治療測試覆蓋 TYPE_HEAL 路徑的 WATER_LIFE 移除，但**不覆蓋 158 此非 TYPE_HEAL 路徑**。
+
+- **本次修正範圍**（criterion (a) Java 核心行為差異 + 修正先前 audit 誤判）：
+  - cast 158 NATURES_TOUCH 後顯式移除 target's WATER_LIFE buff，補齊 Java 恢復系技能清單行為。
+
+- **broader gap（不改）**：
+  - **`L1SkillUse:2113-2118` 對 cast target 移除 WATER_LIFE 的「恢復系技能」清單完整性**：本次只補 158，其他 HEAL 類 1/19/35/49/57/164 透過 yaml type=16 + `applyElfWaterHealingModifiers` 已正確處理；無遺漏。
+  - **NATURES_BLESSING (164) audit**：未來 audit 164 時需確認 yaml type=16 + heal 計算路徑觸發 `applyElfWaterHealingModifiers`，移除 WATER_LIFE 對齊 Java（預期已對齊但待 164 audit 確認）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -timeout 60s` PASS（27.357s 全綠）。
+
 ## 大地屏障（EARTH_BIND / 157）— 純審計確認核心 1-12s 凍結 + PC/NPC 雙路徑 + 廣域 immunity 整合完整對齊 Java
 
 - **Java 對照**：
