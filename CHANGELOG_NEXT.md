@@ -1,5 +1,16 @@
 ## 技能
 
+## 鋼鐵士氣（SHINING_AURA / 115）— 修正 yaml `cast_gfx` 對齊 cat-fei 視覺特效
+
+- **驗證**：技能 ID 對照表既有註記「資料驅動，需驗證隊伍/血盟範圍」。本次比對 cat-fei `貓飛版_lineage381.sql` skills 表：`(115,'鋼鐵士氣',15,2,40,0,0,0,0,640,'none',12,0,0,0,0,0,0,2,0,0,-1,0,4,'$1977',19,2943,...)`。Go yaml 整體（名稱/mp=40/duration=640/target_to=12/name_id=$1977）皆與貓飛對齊，唯獨 `cast_gfx: 3941` 與貓飛 `2943` 不符（115 cast_gfx 3941 與 117 cast_gfx 3942 僅差 1，疑似當初編寫時 copy 117 後改錯數字）。
+- **發現的 Java 真實差異**：`cast_gfx` 控制 `skill_self.go:140 BroadcastToPlayers(BuildSkillEffect(player.CharID, skill.CastGfx))` 廣播給 AOI 內所有玩家的視覺施法特效。錯誤 ID 導致玩家看到的施法動畫與真實 Lineage R 客戶端不一致——屬玩家可見的協議資料差異。
+- **修正**：`skill_list.yaml:3531` skill 115 `cast_gfx: 3941 → 2943`。
+- **架構合規**：純資料層 yaml 修正，無 Go 程式碼路徑變更。`SendIconAura(byte(115-1)=114)` 已對齊 Java `S_PacketBoxIconAura(114, ...)`、`buffs.lua [115].ac = -8` 已對齊 Java `addAc(-8)`、`target_to: 12` 已對齊 cat-fei `TARGET_TO_PARTY|TARGET_TO_CLAN` 與 yiwei `L1SkillUse.java:871-880` 同範圍掃描邏輯——既有 `TestSkillClanAuraShiningAuraAppliesToClanMembers` 已鎖定 clan+party 範圍與 AC -8。
+- **broader gap（不改）**：
+  - **buff 持久化 whitelist 缺口**：Java `CharBuffTable.java:64` 把 `SHINING_AURA` 註解掉（不持久化到 DB），登出後鋼鐵士氣會消失。Go `BuffRepo` 與 `PersistenceSystem` 無 whitelist filter——所有 active buff 都持久化，登入後仍保留 115 buff。屬廣域 buff 持久化白名單系統缺口（不只 115，需通用 whitelist 機制），與既有 `BraveAvatar` 不寫 DB 等特例同源，需架構級補齊。
+  - **buffs.lua 三向 exclusions Java 無對應**：`[114]/[115]/[117]` 互斥在 Java REPEATEDSKILLS/skillmode 端均無依據（三光環可疊加）。單獨改 [115].exclusions 而 [114]/[117] 仍含 115 會造成順序敏感不對稱。三向互斥屬聯動修正，留待 117 audit 同步處理三條 exclusions。
+  - yiwei vs cat-fei SQL 廣域資料漂移屬 yaml/SQL 同步缺口，非個別技能審計範圍。
+
 ## 激勵士氣（GLOWING_AURA / 114）— 修正 yaml `target_to` 對齊現代 Lineage R 範圍
 
 - **驗證**：技能 ID 對照表既有註記「資料驅動，需驗證隊伍/血盟範圍」。本次比對兩份 Java 參考：

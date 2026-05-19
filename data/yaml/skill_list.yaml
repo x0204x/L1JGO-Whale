@@ -3559,7 +3559,7 @@ skills:
     id: 4
     name_id: '$1977'
     action_id: 19
-    cast_gfx: 3941
+    cast_gfx: 2943
     cast_gfx2: 0
     sys_msg_happen: 0
     sys_msg_stop: 0
