@@ -1,5 +1,42 @@
 ## 技能
 
+## 風之神射（WIND_SHOT / 149）— 純審計確認核心 BowHit ±6 + icon + 互斥完整對齊 Java
+
+- **Java 對照**：
+  - `L1SkillId.java:494 WIND_SHOT = 149`（風之神射）。無對應 skillmode 類別（純 buff 路徑）。
+  - `L1SkillUse.java:1414-1416` + `L1SkillUse2.java:1431-1433` icon cast：`pc.sendPackets(new S_PacketBoxIconAura(148, _getBuffIconDuration))`（icon_id = skill_id - 1 = 148）。
+  - `L1SkillUse.java:2601-2604` + `L1SkillUse2.java:2553-2556` apply：`pc.addBowHitup(6) + pc.sendPackets(new S_PacketBoxIconAura(148, _getBuffIconDuration))`。
+  - `L1SkillStop.java:554-560` stop：`cha.addBowHitup(-6) + (if PC) pc.sendPackets(new S_PacketBoxIconAura(148, 0))`。
+  - `REPEATEDSKILLS[0]`：`{148, 149, 156, 163, 166}` 5 項武器類 buff 互斥（同 148 audit）。
+  - 表格成員：`isNotCancelable` 不含 149（cancellable）；`EXCEPT_COUNTER_MAGIC` 含 149（不受 counter magic 阻擋）；`REPEATEDSKILLS[0]` 5 項武器互斥。
+  - yiwei `db_split/skills.sql:148`：`('149', '風之神射', '19', '4', '15', '0', '0', '0', '0', '960', 'buff', '1', '0', '0', '0', '0', '0', '8', '2', '0', '-1', '0', '0', '16', '', '19', '11729', '0', '0', '724', '280')` — mp=15、buff_duration=960、target=**buff**、target_to=1、attr=8、type=2、ranged=-1、id=16、action_id=19、cast_gfx=**11729**、sys_msg_stop=724、sys_msg_fail=280。
+
+- **Go 對照**：
+  - `buffs.lua:117 [149] = { bow_hit = 6, exclusions = {148, 156, 163, 166} }`：BowHit +6 + 4 項 mutex 對齊 Java `REPEATEDSKILLS[0]` 排除自身後 4 項。
+  - `skill_buff.go:170 buff.DeltaBowHit = int16(eff.BowHit)` apply 套入 ActiveBuff。
+  - `skill_buff.go:201 target.BowHitMod += buff.DeltaBowHit` apply +6。
+  - `skill_buff.go:307 sendBuffIcon` 透過 `buff_icon_map.yaml:60-61 skill_id: 149 type:aura` 送 `S_PacketBoxIconAura(148, duration)`（icon_id 由 Go 計算 skill_id - 1 = 148）。
+  - `skill_buff.go:513 target.BowHitMod -= buff.DeltaBowHit` revert -6 + 對應 stop icon。
+  - `executeBuffSkill` 路徑：`:983 BuildActionGfx` 廣播 S_DoActionGFX + `:1229 applyBuffEffect` 套 buff + `:1240-1242 BuildSkillEffect(cast_gfx=2246)` 廣播 S_SkillSound。
+  - yaml `skill_list.yaml:4559-4589 skill_id=149`：mp=15、buff_duration=960、target=**buff**、target_to=1、attr=8、type=2、ranged=-1、id=16、action_id=19、cast_gfx=**2246**、sys_msg_stop=724、sys_msg_fail=280。
+  - **僅 cast_gfx 一項漂移**（Go=2246 vs yiwei=11729），其餘 30 欄位完全對齊 yiwei——對比 148（4 項漂移），149 yaml 對齊度顯著更高（yiwei 自身對 149 已更新到 target='buff'）。
+
+- **既有測試覆蓋**：
+  - `skill_elemental_buff_test.go:44-89 TestSkillElementalBuffElfWeaponAndBowBuffsUseJavaValues`：
+    - 套用 149（在 148/163 已套後）→ BowHitMod=9（起始 3 + 6）、BowDmgMod=4（不變）✓ 鎖死 149 只給弓命中。
+    - 套用 166 STORM_SHOT（同 mutex 群）→ 149 移除 + 166 套用 BowHitMod=2（9-6-1）、BowDmgMod=9（4+5）✓ 鎖死 REPEATEDSKILLS[0] 互斥行為與 166 弓傷害 +5/弓命中 -1 mechanic。
+
+- **發現的 Java 真實差異**：**無**（核心 BowHit ±6 + S_PacketBoxIconAura(148) icon + REPEATEDSKILLS[0] mutex 完整對齊）。
+
+- **broader gap（不改）**：
+  - **yaml cast_gfx 漂移**：Go=2246 vs yiwei=11729，Go 用 cat-fei 較舊 GFX ID（同 148 漂移模式但僅 1 項，因 yiwei 對 149 已更新 target='buff' 等其他欄位到 cat-fei 一致值）。client 視覺差異但對遊戲機制無影響。屬廣域 yiwei/cat-fei SQL 同步議題。
+  - **156/163 反向 mutex 擴充**：buffs.lua 已對 149 補完 exclusions = {148, 156, 163, 166}，但 156/163 是否也補 149 mutex 待各自審計（148 已補完、166 待 audit）。
+  - **`L1SkillUse.sendGrfx` 末尾 1686-1694 _targetList 通用 status refresh**：對 buff 類無 stat 變化時的 `S_SPMR + S_OwnCharStatus + S_PacketBox(UPDATE_ER)` 通用 status refresh 屬廣域 buff cast 後置缺口（同 130/146/148 audit 同源）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkillElementalBuffElfWeapon -timeout 60s` PASS（cached）。
+
 ## 火焰武器（FIRE_WEAPON / 148）— 純審計確認核心對齊 Java，yaml 多項漂移屬廣域 SQL 議題
 
 - **Java 對照**：
