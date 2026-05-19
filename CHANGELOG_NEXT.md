@@ -1,5 +1,31 @@
 ## 技能
 
+## 隱身破壞者（ARM_BREAKER / 213）— 純審計無代碼變更
+
+- 純審計 `213 ARM_BREAKER`，發現 Go 與 Java yiwei 為**根本不同的技能**，差異過大不在單一子項範圍：
+  - **Java 行為**（yiwei）：
+    - 無 `skillmode/ARM_BREAKER.java` 檔案——純資料驅動，走 L1SkillUse default 路徑 `setSkillEffect(213, _getBuffDuration)`。
+    - SQL `('213', '隱身破壞者', ..., 'none', '3', '0', '0', '0', '0', '0', '0', '2', '0', '0', '-1', '0', '16', ...)`：mp=10、target='none'、type=2 (CHANGE)、damage_value=0、area=-1、ranged=0。**self-cast、不造傷害**。
+    - L1SkillUse.java:2859-2862 `if (skillId == ARM_BREAKER) detection(player)`：cast 完成後對**施法者周圍**執行 AoE 隱身揭露——`pc.delInvis() + beginInvisTimer()`、`for tgt in World.getVisiblePlayer(pc): tgt.delInvis()`、`WorldTrap.onDetection(pc)`（顯示陷阱）。
+    - L1SkillUse.java:822-829：可指定 HIDDEN_STATUS_SINK 隱藏 NPC（沉沒墳墓等）作為目標來允許施法。
+    - 列入 `EXCEPT_COUNTER_MAGIC`（不可被反擊屏障/counter magic 反射）。
+  - **Go 行為**（現狀）：
+    - yaml `name='武器破壞者'`、`target='attack'`、`type=64 (ATTACK)`、`damage_value=15`、`ranged=3`、`area=0`、`mp=25`、`buff_duration=12`。**目標式攻擊技能、造 15 傷害**。
+    - `applyIllusionistStatusAttackEffect skillArmBreaker`：對**目標**呼叫 `revealInvisibleTarget`——清除 target 自己的 60/97 隱身 buff、`Invisible=false`、`SendInvisible + SendPutObject` 廣播。
+- **divergence 分析**：
+  - 「Java 是 self-cast AoE detection」vs「Go 是 targeted damage + target reveal」屬完全不同技能設計。
+  - 完整對齊 Java 需大規模改寫：
+    1. yaml 改名 `武器破壞者→隱身破壞者`、target `attack→none`、type `64→2`、damage_value `15→0`、area `0→-1`、ranged `3→0`、mp `25→10`
+    2. 新增 self-cast dispatch 路徑（與 attack 路徑互斥）
+    3. 實作 caster `delInvis() + beginInvisTimer()`（Go 無 invis-spam timer 機制）
+    4. 實作 `getVisiblePlayer(caster)` 對所有可視玩家 AoE 揭露
+    5. 實作 `WorldTrap.onDetection(caster)` 陷阱顯示（Go 陷阱系統路徑未驗證）
+    6. 移除既有 `revealInvisibleTarget(target)` 攻擊路徑
+  - 是否 yiwei 版為 3.80C 客戶端 canonical 行為尚待確認；fly 版可能有不同的 ARM_BREAKER 實作；Go 現狀（damage + target reveal）也可能是 server admin 設計選擇。
+  - 改動範圍涵蓋 yaml/dispatch/world/invis timer 多系統，**超出單一子項對齊深度停損標準**。
+- **本步無代碼變更**——保留 Go 現狀。記為待使用者決定的 major divergence；類似 PATIENCE(211) 處理模式。
+- 驗證：`go build ./...` 通過（無代碼變更）。
+
 ## 幻想（PHANTASM / 212）
 
 - 修正 `212 PHANTASM` 三項 Java `skillmode/PHANTASM.java` 對齊缺失：
