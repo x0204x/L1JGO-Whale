@@ -1,5 +1,16 @@
 ## 技能
 
+## 暴風神射（STORM_SHOT / 166）— 純審計重新確認核心 BowDmg ±5 + BowHit ±(-1) + REPEATEDSKILLS[0] 5 項武器 buff 互斥完整對齊 Java
+
+- **Java 對照**：`L1SkillUse.java:2611-2615 addBowDmgup(5) + addBowHitup(-1) + S_PacketBoxIconAura(165, duration)`、`L1SkillStop.java:569 addBowDmgup(-5) + addBowHitup(1) + S_PacketBoxIconAura(165, 0)`；REPEATEDSKILLS[0]={148,149,156,163,166}。
+- **Go 對照**（無代碼變更）：
+  - `scripts/combat/buffs.lua:133 [166] = { bow_dmg = 5, bow_hit = -1, exclusions = {148, 149, 156, 163} }` 對齊 Java。
+  - 標準 buff apply/revert 對稱（+5/-5、-1/+1）對齊 Java `L1SkillStop`。
+  - `buff_icon_map.yaml:68-69 skill_id: 166 type: aura`（無 param → iconID = 165）對齊 Java `S_PacketBoxIconAura(165, ...)`。
+  - yaml `skill_list.yaml:5086` 31 欄位中 30 項對齊 yiwei `skills.sql:165`，僅 cast_gfx=2248 vs 11732 一項漂移（Go 跟 cat-fei）。
+- **broader gap（不改）**：(A) cast_gfx 漂移屬廣域 yiwei/cat-fei SQL 同步議題；(B) sendGrfx 末尾 1686-1694 通用 status refresh 屬廣域 buff cast 後置缺口。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 生命呼喚（CALL_OF_NATURE / 165）— 純審計重新確認三路徑復活（PC YN/Pet/NPC）完整對齊 Java，yaml 31 欄位零漂移
 
 - **Java 對照**：yiwei `skills.sql:164` 31 欄位（mp=50/item=40319×1/target=buff/target_to=3/attr=4/type=32/ranged=10/area=0/id=16/action_id=19/cast_gfx=2245/sys_msg_fail=280）；Java `CALL_OF_NATURE.skillmode` 對 PC 走 `setTempID + S_Message_YN(322)` 不直接復活，對 Pet/NPC 走滿血復活並含 witness check（IsPlayerAt → 拒絕）+ NPC `L1Tower || CantResurrect` 雙拒絕。
