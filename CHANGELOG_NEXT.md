@@ -1,5 +1,16 @@
 ## 技能
 
+## 水之元氣（WATER_LIFE / 170）— 純審計重新確認核心 heal 雙倍 + WATER_LIFE cancel packet + 完整 heal-list 移除路徑對齊 Java
+
+- **Java 對照**：`L1SkillUse2:1996-2000` heal 計算前 `if (target.hasSkillEffect(WATER_LIFE)) _heal <<= 1`；`L1SkillUse2:2112-2117` heal-list `(HEAL/EXTRA_HEAL/GREATER_HEAL/FULL_HEAL/HEAL_ALL/NATURES_TOUCH/NATURES_BLESSING)` cast → `removeSkillEffect(WATER_LIFE)`；`L1SkillStop case 170 S_PacketBoxWaterLife`。
+- **Go 對照**（無代碼變更）：
+  - `handler/broadcast.go:1075-1085 SendWaterLifeCancel` 送 `S_OPCODE_PACKETBOX (250) + byte 59 + H(0)` 對齊 Java。
+  - `skill_buff.go:466-468 removeBuffAndRevert(170)` 觸發 cancel packet + `:820 tickPlayerBuffs` 到期路徑亦觸發。
+  - `skill_elemental.go:97-109 applyElfWaterHealingModifiers`：`HasBuff(170) → heal <<= 1 + removeBuffAndRevert(170)` 雙倍 + 一體移除。
+  - yaml `skill_list.yaml:5210` 31 欄位中 30 項對齊 yiwei sql:169，僅 reuse_delay=0 vs 100 一項漂移（Go 跟 cat-fei）。
+- **broader gap（不改）**：(A) reuse_delay 漂移屬廣域 SQL 同步議題；(B) 158 NATURES_TOUCH yaml type=2 顯式 hook（非 heal 路徑）已在 158 audit 補完。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 體能激發（EXOTIC_VITALIZE / 169）— 純審計重新確認核心負重 HP/MP 回復旗標完整對齊 Java（無屬性加成）
 
 - **Java 對照**：`L1PcInstance.isRegenHp/isRegenMp` 行 775/831 對 EXOTIC_VITALIZE 純為旗標（無屬性加成、無 skillmode、無 L1SkillUse/L1SkillStop 條目）。yiwei `skills.sql:168` 31 欄位。
