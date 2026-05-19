@@ -1,5 +1,69 @@
 ## 技能
 
+## 風之疾走（WIND_WALK / 150）— 純審計確認 BraveSpeed=4 + S_SkillBrave 雙路徑 + REPEATEDSKILLS[2] 7 項互斥完整對齊 Java
+
+- **Java 對照**：
+  - `L1SkillId.java:498 WIND_WALK = 150`（風之疾走）。無對應 skillmode 類別（純 buff 路徑）。
+  - `L1SkillUse.java:1458-1460` + `L1SkillUse2.java:1475-1477` icon cast：與 HOLY_WALK/MOVING_ACCELERATION/WIND_WALK 同組，送 `pc.sendPackets(new S_SkillBrave(pc.id, 4, _getBuffIconDuration))` icon。
+  - `L1SkillUse.java:2653-2658` + `L1SkillUse2.java:2606-2611` apply（同組）：
+    ```java
+    pc.setBraveSpeed(4);
+    pc.sendPackets(new S_SkillBrave(pc.getId(), 4, _getBuffIconDuration));
+    pc.broadcastPacketAll(new S_SkillBrave(pc.getId(), 4, 0));
+    ```
+    **雙 packet 路徑**：自己收 type=4+duration、附近所有人收 type=4+duration=0。
+  - `L1SkillStop.java:594-602` stop（同組）：
+    ```java
+    cha.setBraveSpeed(0);
+    if (cha instanceof L1PcInstance) pc.sendPacketsAll(new S_SkillBrave(pc.id, 0, 0));
+    ```
+    用 `sendPacketsAll`（含自己 + 附近）統一送 type=0 撤銷。
+  - `REPEATEDSKILLS[2]`：`{HOLY_WALK=42, MOVING_ACCELERATION=101, WIND_WALK=150, STATUS_BRAVE=1000, STATUS_ELFBRAVE=1016, BLOODLUST=186, FIRE_BLESS=155}` 7 項勇氣速度類 buff 互斥（注意：包含 STATUS_BRAVE/STATUS_ELFBRAVE 兩個 potion buff ID）。
+  - `L1BuffUtil.java:173-174 + :228-229`：`if (pc.hasSkillEffect(WIND_WALK)) pc.killSkillEffectTimer(WIND_WALK)`——其他系統可主動取消 WIND_WALK。
+  - 表格成員：`isNotCancelable` 不含 150（cancellable）；`EXCEPT_COUNTER_MAGIC` 含 150（不受 counter magic 阻擋）；`REPEATEDSKILLS[2]` 7 項互斥。
+  - yiwei `db_split/skills.sql:149`：`('150', '風之疾走', '19', '5', '15', '0', '0', '0', '0', '960', 'none', '0', '0', '0', '0', '0', '0', '8', '2', '0', '0', '0', '0', '32', '', '19', '11730', '0', '0', '0', '0')` — mp=15、buff_duration=960、target=none、target_to=0、attr=8、type=2、ranged=0、id=32、action_id=19、cast_gfx=**11730**、所有 sys_msg=0。
+
+- **Go 對照**：
+  - `buffs.lua:118 [150] = { brave_speed = 4, exclusions = {52, 101, 155, 186, 1000, 1016} }`：BraveSpeed=4 + 6 項 mutex 對齊 Java `REPEATEDSKILLS[2]` 排除自身後 6 項（**注意：Java HOLY_WALK=42，Go 用 52** — 已在 130/132/133/134 audit 同源廣域 SQL 漂移議題列項，與 cat-fei `52 HOLY_WALK` 對齊；其餘 6 項對齊 Java）。
+  - `skill_buff.go:235-239` apply：
+    ```go
+    if eff.BraveSpeed > 0 {
+        buff.SetBraveSpeed = byte(eff.BraveSpeed)
+        target.BraveSpeed = byte(eff.BraveSpeed)
+        s.sendBraveToAll(target, byte(eff.BraveSpeed), uint16(skill.BuffDuration))
+    }
+    ```
+  - `skill_buff.go:625-632 sendBraveToAll`：
+    ```go
+    sendBravePacket(target.Session, target.CharID, braveType, duration)      // 自己: S_SkillBrave(target, type, duration)
+    nearby := s.deps.World.GetNearbyPlayers(target.X, target.Y, target.MapID, target.SessionID)
+    for _, other := range nearby {
+        sendBravePacket(other.Session, target.CharID, braveType, 0)         // 附近: S_SkillBrave(target, type, 0)
+    }
+    ```
+    **完美對齊 Java 雙 packet 路徑**：自己 duration、附近 0。
+  - `skill_buff.go:665-667` revert：`target.BraveSpeed = 0 + sendBraveToAll(target, 0, 0)` 對齊 Java stop `setBraveSpeed(0) + sendPacketsAll(S_SkillBrave(0, 0))`。
+  - `executeBuffSkill` 路徑：因 target='none' 走 `executeSelfSkill` 而非 `executeBuffSkill`，但 `skill_self.go` default 分支會呼叫 `applyBuffEffect` 處理 BraveSpeed delta。
+  - yaml `skill_list.yaml:4590-4620 skill_id=150`：mp=15、buff_duration=960、target=none、target_to=0、attr=8、type=2、ranged=0、id=32、action_id=19、cast_gfx=**2247**、所有 sys_msg=0。
+  - **僅 cast_gfx 一項漂移**（Go=2247 vs yiwei=11730），其餘 30 欄位完全對齊 yiwei（同 149 模式）。
+
+- **既有測試覆蓋**：
+  - 無針對 150 的單元測試（既有 `TestSkillElementalBuff*` 系列覆蓋 148/149/155 等同組 elf buff，未專門測 150）。
+  - 相近的 `case 172 STORM_WALK`（`skill_self.go:156-177`）有相同 BraveSpeed=4 廣播邏輯但走顯式 case 而非 lua（針對與 STATUS_BRAVE/STATUS_ELFBRAVE 等 6 項互斥 + 顯式 storm walk speed=4 setup）。
+
+- **發現的 Java 真實差異**：**無**（核心 BraveSpeed=4 + S_SkillBrave 雙 packet 路徑 + REPEATEDSKILLS[2] 7 項互斥完整對齊）。
+
+- **broader gap（不改）**：
+  - **yaml cast_gfx 漂移**：Go=2247 vs yiwei=11730，Go 用 cat-fei 較舊 GFX ID（同 149 模式但僅 1 項）。屬廣域 yiwei/cat-fei SQL 同步議題。
+  - **HOLY_WALK ID 漂移**：Java=42、Go=52（cat-fei）。整個 elf brave speed 群組以 cat-fei 52 為基準，未跟 Java 42。屬廣域 SQL ID 漂移議題（影響整個 REPEATEDSKILLS[2] 群組互斥定義）。
+  - **反向 mutex（potion buff 路徑）**：`item_use.go applyBrave` 對 STATUS_BRAVE(1000)/STATUS_ELFBRAVE(1016) 兩個 potion buff 的 mutex 處理待 STATUS_BRAVE 專門 audit 時補（與 buffs.lua [150].exclusions 中已含 1000/1016 對應，但反向 potion 觸發路徑可能未補 150 互斥）。
+  - **`L1BuffUtil.killSkillEffectTimer` 主動取消路徑**：Java 多處（PVP、castle 進出等）會主動取消 WIND_WALK timer，Go 無對等廣域 hook 機制。屬廣域 buff lifecycle 管理議題。
+  - **`L1SkillUse.sendGrfx` 末尾 1686-1694 _targetList 通用 status refresh**：屬廣域 buff cast 後置缺口（同 130/146/148/149 audit 同源）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - 無針對 150 的測試需執行。
+
 ## 風之神射（WIND_SHOT / 149）— 純審計確認核心 BowHit ±6 + icon + 互斥完整對齊 Java
 
 - **Java 對照**：
