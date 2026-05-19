@@ -1,5 +1,37 @@
 ## 技能
 
+## 大地的祝福（EARTH_BLESS / 159）— 純審計重新確認核心 icon-only buff（無 AC 修正、不在任何 REPEATEDSKILLS）完整對齊 Java
+
+- **Java 對照**：
+  - `L1SkillId.java:534 EARTH_BLESS = 159`，無對應 skillmode 類別（走 generic `cha.setSkillEffect(_skillId, _getBuffDuration)` apply 路徑）。
+  - `L1SkillUse.java:1422-1424` + `L1SkillUse2.java:1439-1441` icon cast：`sendPackets(S_SkillIconShield(7, _getBuffIconDuration))` icon param=7。
+  - `L1SkillUse.java:2523-2526` + `L1SkillUse2.java:2475-2478` apply：`// pc.addAc(-7);` **註解掉** + `sendPackets(S_SkillIconShield(7, duration))` — **icon-only，無 AC 修正**。
+  - `L1SkillStop.java:445-451` stop：`//cha.addAc(7);` **註解掉** + `(if PC) sendPackets(S_SkillIconShield(7, 0))` — icon clear，無 AC 還原。
+  - 不在任何 `REPEATEDSKILLS[0..9]` 群組（per 151 EARTH_SKIN audit 已驗證——`REPEATEDSKILLS[1]={EARTH_SKIN=151, IRON_SKIN=168}` 不含 159）。
+  - 表格成員：`isNotCancelable` 不含；`EXCEPT_COUNTER_MAGIC` 含（不受 counter magic 阻擋）。
+  - yiwei `db_split/skills.sql:158`：`('159', '大地的護衛', '20', '6', '30', '10', '0', '0', '0', '600', 'none', '0', '0', '0', '0', '0', '0', '1', '2', '0', '0', '0', '0', '64', '', '19', '2287', '0', '0', '725', '0')` — mp=**30**、hp_consume=**10**、buff_duration=**600**、target=none、target_to=**0**、attr=1、type=2、ranged=0、id=64、action_id=19、cast_gfx=2287、sys_msg_stop=725。
+
+- **Go 對照**：
+  - `buffs.lua:128 [159] = {}` 空 buff——無 AC delta、無 exclusions、無 mutex（先前 2026-05-18 audit 已從 `{151, 168}` 收緊為 `{}` 對齊 Java 不在 REPEATEDSKILLS）。
+  - `buff_icon_map.yaml:23-25 skill_id: 159 type: shield param: 7` → `handler/skill.go:209 sendIconShield(sess, durationSec, 7)` 送 `S_SkillIconShield(7, duration)` 對齊 Java cast icon。
+  - `skill_buff.go:307 sendBuffIcon` apply path + `:126 sendBuffIcon(target, skillID, 0)` revert path——對齊 Java cast/stop icon 雙向。
+  - 執行路徑：yaml target='none' → `executeSelfSkill` default → `applyBuffEffect`（lua [159]={} 無 stat delta） + `sendBuffIcon(159, duration)` + cast_gfx 廣播。
+  - yaml `skill_list.yaml:4869-4899`：mp=**40**、hp_consume=**0**、buff_duration=**960**、target=none、target_to=**8**、attr=1、type=2、ranged=0、id=64、action_id=19、cast_gfx=**2287**、sys_msg_stop=725——**4 項漂移**（mp=40 vs 30、hp_consume=0 vs 10、buff_duration=960 vs 600、target_to=8 vs 0；Go 跟 cat-fei），**cast_gfx=2287 對齊 yiwei 無漂移**。
+
+- **既有測試覆蓋**：
+  - `skill_elemental_buff_test.go:106-119 TestSkillElementalBuffElfArmorAndWaterBuffsUseJavaValues`：覆蓋「159 EARTH_BLESS（不互斥）cast → 151 EARTH_SKIN 保留 + AC 不變」場景——驗證 159 不改 AC、不互斥 151。
+
+- **發現的 Java 真實差異**：**無**（核心 icon-only buff 完整對齊：無 AC 修正、不在 REPEATEDSKILLS、icon param=7 雙向 cast/stop；先前 audit 已將 exclusions 收緊為 `{}` 對齊 Java）。
+
+- **broader gap（不改）**：
+  - **yaml 4 項漂移**：mp=40 vs 30、hp_consume=0 vs 10、buff_duration=960 vs 600、target_to=8 vs 0（Go 跟 cat-fei）——屬廣域 yiwei/cat-fei SQL 同步議題。
+  - **cast_gfx=2287 對齊 yiwei** 無漂移（罕見，同 151 EARTH_SKIN 模式）。
+  - **`L1SkillUse.sendGrfx` 末尾 1686-1694 _targetList 通用 status refresh**：屬廣域 buff cast 後置缺口（同 130/146/148/149/150/151/152/155/156 audit 同源）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `skill_elemental_buff_test.go` 既有覆蓋 159 非互斥場景，無新測試需執行。
+
 ## 生命之泉（NATURES_TOUCH / 158）— 補齊 cast 後移除 WATER_LIFE 對齊 Java 恢復系技能清單
 
 - **Java 對照**：
