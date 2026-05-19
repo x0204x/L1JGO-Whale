@@ -1,5 +1,44 @@
 ## 技能
 
+## 反擊屏障（COUNTER_BARRIER / 91）— 修正觸發機率公式（+ROM + lvlDiff）
+
+- 對齊 Java `L1MagicPc.java:670-674 calcProbabilityMagic(COUNTER_BARRIER)`：
+  ```java
+  case COUNTER_BARRIER:
+      probability = l1skills.getProbabilityValue() + attackLevel - defenseLevel;
+      probability += ConfigSkill.COUNTER_BARRIER_ROM;
+      break;
+  ```
+  即 `probability = probabilityValue (SQL=25) + (target.Level - attacker.Level) + COUNTER_BARRIER_ROM (yiwei 預設=33)` = 58 + lvlDiff。
+- **發現的 Java 真實差異**：原 Go `pvp.go:116` + `npc_ai.go:511` 對 COUNTER_BARRIER 觸發機率硬編碼 `25`（漏掉 +ROM 33 與 lvlDiff），導致實際觸發率約為 Java 一半（25% vs 58%+ for 等級對等戰鬥）。
+- **修正**：兩條路徑同步補齊機率公式：
+  - `pvp.go:116-120` PvP melee：`prob := 25 + int(target.Level) - int(attacker.Level) + 33`
+  - `npc_ai.go:511-517` NPC→PC melee：`prob := 25 + int(target.Level) - int(npc.Level) + 33`
+- **其餘對齊（無修改）**：
+  - **reflect damage 公式**：`pvp.go:597-615 calcCounterBarrierDmg`：
+    ```go
+    dmg := int32((info.DmgLarge + int(wpn.EnchantLvl) + info.DmgMod) << 1)
+    dmg = dmg * 3 / 2  // ConfigSkill.COUNTER_BARRIER_DMG = 1.5
+    ```
+    對齊 Java `L1AttackMode.calcCounterBarrierDamage` 第 333-336 行非戰士分支 `damage = weapon.DmgLarge + EnchantLevel + DmgModifier << 1` + line 342 `damage *= COUNTER_BARRIER_DMG`。
+  - **NPC reflect 公式**：`npc_ai.go:513 cbDmg := int32((int(npc.STR) + int(npc.Level)) << 1)` 對齊 Java line 340 `damage = STR + Level << 1` × 1.5。
+  - **IMMUNE_TO_HARM 攻擊者減半**：`pvp.go:120 applyImmuneToHarmDamage(attacker, cbDmg)` 對齊 Java `L1AttackPc.commitCounterBarrier:3339-3341 if (_pc.hasSkillEffect(68)) damage /= 2`。
+  - **GFX 10710 廣播**：`pvp.go:126` + `npc_ai.go:523` `BuildSkillEffect(target.CharID, 10710)` 對齊 Java `S_SkillSound(targetID, 10710)`。
+  - **原始傷害歸零**：`pvp.go:128 damage = 0` + `npc_ai.go:525` 對齊 Java `return 0`。
+  - **buff -2 AC**：`scripts/combat/buffs.lua:93 [91] = { ac = -2 }`——Java 雖無明確 add_ac(-2)，這是 Go 對 COUNTER_BARRIER 防護加成的選擇實作。
+  - **NON_CANCELLABLE**：`buffs.lua:245 [91] = true` 對齊 Java `L1SkillMode.java:35`。
+  - **counterMagicExempt**：`skill_buff.go:403 91: true` 對齊 Java `EXCEPT_COUNTER_MAGIC` 含 91。
+  - **無 REPEATEDSKILLS**：Java 10 個群組均不含 91。
+  - **無 recast guard**：Java 無 skillmode，cast 走 default。
+  - **cast 時 GFX 全域廣播**：Java `L1SkillUse.java:1645-1651 _player.sendPacketsXR(S_SkillSound, -1) + broadcastPacketAll(S_SkillSound)`——Go cast GFX 廣播由 default cast handler 處理。
+- **broader gap（不改）**：
+  - **PC→NPC 對 NPC 持有 COUNTER_BARRIER 路徑缺失**：Java `L1AttackPc.java:1886-1896` PC 攻擊 NPC 時若 NPC `hasSkillEffect(COUNTER_BARRIER)` 也觸發反擊。Go combat.go 無 `npc.HasDebuff(91)` 檢查。NPC 一般不持有 91（玩家專屬技能），但 boss 變體（如 SQL skill 11060 BOSS-吉爾塔斯-反擊屏障）與 GM 賦予場景會缺失反擊。屬 boss/GM 邊緣場景缺口，依「不可偷換範圍」維持。
+  - **戰士主/副手武器分支 + 50% 機率**：Java `L1AttackMode.calcCounterBarrierDamage:303-328` 對戰士 PC target 額外處理副武器（`secondweapon != null` 時 `_random.nextBoolean()` 50% 用副手）。Go 簡化為單一武器路徑——屬 secondary weapon system 缺口。
+  - **炫色 / 極品裝備 attr_DmgLarge / attr_DmgModifier**：Java 戰士分支讀 `_weapon.get_ItemAttrName().get_attr_id()` 加上 `attr.get_dmg_large()` + `attr.get_dmgmodifier()`。Go 無 ItemSpecialAttribute 系統，屬廣域 item 特殊屬性架構缺口。
+  - **weaponType2 != 17（奇古獸）排除**：Java 三條 commitCounterBarrier 觸發路徑都檢查 `_weaponType2 != 17`。Go 未檢查，奇古獸 weaponType2 為特殊 item attr 之一，屬上述 item 屬性系統缺口。
+  - **probability_value 用硬編碼 25 而非從 skill.yaml 讀**：本步為最小修補，未引入 `s.deps.Skills.Get(91).ProbabilityValue` lookup。若未來 yiwei 端調整該 SQL 值，Go 不會同步——應於 broader skill data driven refactor 時統一改為從 skill data 取值。
+- **不寫新測試**：兩處同源 1 行公式擴展（從 fixed 25 改為 `25 + lvlDiff + 33`），掛載既有 RandInt+HasBuff 路徑（觸發路徑邏輯不變），無新邏輯分支。依停損標準避免「Go 已對 + 防回歸」測試重複測同一機制。
+
 ## 堅固防護（SOLID_CARRIAGE / 90）— 修正 dodge 變化通知 packet（SendDodgeIcon → SendUpdateER）
 
 - 對齊 Java `skillmode/SOLID_CARRIAGE.java:18, 47`：cast 與 stop 兩端都送 `S_PacketBox(UPDATE_ER, pc.getEr())`（迴避率更新封包）。原 Go `applyBuffEffect`/`revertBuffStats` 對 `DeltaDodge > 0` 條件預設走 `SendDodgeIcon`（= `S_PacketBoxIcon1` 0x58 dodge icon packet），與 Java SOLID_CARRIAGE 期望的 UPDATE_ER packet 不同。原 Go 只對 skill 111 DRESS_EVASION 走 UPDATE_ER 分支，90 SOLID_CARRIAGE 缺失。

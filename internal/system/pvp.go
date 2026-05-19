@@ -112,8 +112,13 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 	}
 
 	// 反擊屏障（skill 91）：PvP 近戰機率反彈（Java: L1AttackPc.calcCounterBarrierDamage）
+	// Java probability 公式（L1MagicPc.java:670-674 case COUNTER_BARRIER）：
+	//   probability = l1skills.probabilityValue (SQL=25) + (target.Level - attacker.Level) + COUNTER_BARRIER_ROM (33)
+	// 即 58 + lvlDiff。yiwei 預設 `各職業技能相關設置.properties:13 COUNTER_BARRIER_ROM = 33`，
+	// skill 91 SQL probability_value=25。
 	if damage > 0 && target.HasBuff(91) {
-		if world.RandInt(100)+1 <= 25 {
+		prob := 25 + int(target.Level) - int(attacker.Level) + 33
+		if world.RandInt(100)+1 <= prob {
 			cbDmg := s.calcCounterBarrierDmg(target)
 			// Java `L1AttackPc.commitCounterBarrier()` 第 3339-3341 行：若攻擊者持有 IMMUNE_TO_HARM(68)
 			// 反彈傷害減半。Go 套用同一濾鏡（applyImmuneToHarmDamage 以接受傷害者為對象）。

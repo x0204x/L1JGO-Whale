@@ -505,9 +505,12 @@ func (s *NpcAISystem) npcMeleeAttack(npc *world.NpcInfo, target *world.PlayerInf
 
 	// 反擊屏障（skill 91）：近戰攻擊時機率觸發反彈
 	// Java 參考: L1AttackNpc.calcDamage() — 檢查 target.hasSkillEffect(COUNTER_BARRIER)
+	// Java probability 公式（L1MagicPc.java:670-674 case COUNTER_BARRIER）：
+	//   probability = l1skills.probabilityValue (SQL=25) + (target.Level - npc.Level) + COUNTER_BARRIER_ROM (33)
+	// 即 58 + lvlDiff。yiwei 預設 `各職業技能相關設置.properties:13 COUNTER_BARRIER_ROM = 33`，
+	// skill 91 SQL probability_value=25。
 	if damage > 0 && target.HasBuff(91) {
-		// 機率判定：probability = probabilityValue(25) ，與 random(1~100) 比較
-		prob := 25 // 基礎觸發率
+		prob := 25 + int(target.Level) - int(npc.Level) + 33
 		if world.RandInt(100)+1 <= prob {
 			// 計算反彈傷害（Java: calcCounterBarrierDamage — NPC 版本：(STR + Level) << 1）
 			cbDmg := int32((int(npc.STR) + int(npc.Level)) << 1)
