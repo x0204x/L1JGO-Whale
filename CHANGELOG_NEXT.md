@@ -1,5 +1,25 @@
 ## 技能
 
+## 暗黑盲咒（DARK_BLIND / 103）— 純審計無代碼變更
+
+- 純審計 `103 DARK_BLIND`：Go 完整對齊 Java `skillmode/DARK_BLIND.java`。
+- **核心行為已對齊**：
+  - **PC 目標 dispatch**：`skill_buff.go:1084-1088 case 103` → 將 SkillID 改為 66 後呼叫 `applyBuffEffect(target, sleepSkill)` → `buffs.lua [66]={sleeped=true}` → `SetSleeped=true + target.Sleeped=true + SendParalysis(SleepApply=0x0A)`。對齊 Java `pc.setSkillEffect(66, integer*1000) + pc.sendPackets(new S_Paralysis(3, true))`（`S_Paralysis(3, true)` wire 為 `0x0A` 對應 `SleepApply`）。
+  - **NPC 目標 dispatch**：`skill_status.go:532-546 case 103` → `checkNpcMRResist` + `npc.Sleeped=true + npc.AddDebuff(66, dur*5)` + 廣播 CastGfx。對齊 Java `tgnpc.setSkillEffect(66, integer*1000) + tgnpc.setSleeped(true)`。
+  - **PC→PC MR gating**：`playerDebuffSkills[103]=true`（`skill_status.go:827`）對齊 Java `L1MagicPc.calcProbabilityMagic` 對 PC debuff 走 MR 抗性檢查。
+  - **counterMagicExempt 不含 103**：對齊 Java `EXCEPT_COUNTER_MAGIC` 顯式列出 `102, 104` 跳過 103——DARK_BLIND **可** 被反魔法盾(COUNTER_MAGIC/31)抵擋。
+  - **NON_CANCELLABLE 不含 103**：對齊 Java `L1SkillMode.isNotCancelable()` 不含 DARK_BLIND——可被 CANCELLATION 相消（buff key 66 跟著被清）。
+  - **PC 到期**：`skill_buff.go:775-777` 在 buff 66 SetSleeped 到期時送 `SendParalysis(SleepRemove=0x0B)` 對齊 Java `S_Paralysis(3, false)`。
+  - **NPC 到期**：`npc_ai.go:1494 case 66` 清 `npc.Sleeped=false`（實際 debuff key 是 66）對齊 Java `tgnpc.setSleeped(false)`。
+  - **睡眠中斷路徑（防禦性清除）**：`combat.go:897-898`、`pvp.go:558-559`、`npc_ai.go:481/608/900`、`skill_damage.go:273-274`、`skill_status.go:165-166/187-188` 同時 `RemoveBuff/RemoveDebuff(66)` 與 `(103)`——對外部來源或舊資料可能殘留 103 buff 的防禦性設計。
+  - **既有測試覆蓋**：`skill_darkelf_buff_test.go:90-119 TestSkillDarkElfBuffDarkBlindUsesSleepEffect66` 已透過 `s.executeBuffSkill(... SkillID:103 ...)` 鎖定 `target.Sleeped && HasBuff(66) && !HasBuff(103)` 三層條件。
+- **不動處（dead code 但無害）**：
+  - `npc_ai.go:1496 case 103` 為 NPC debuff expiry handler 中的 case 分支，但 Go NPC dispatch 從未把 debuff key 設為 103（只設 66），因此該 case 永不觸發。其他路徑（如 `RemoveDebuff(103)`）為防禦性清除無害。屬無害的歷史 dead code，依停損標準避免無關 surgical 修改。
+- **broader gap（不改）**：
+  - **NPC MR 公式**：`checkNpcMRResist` 使用 generic MR 公式，Java `L1MagicPc.calcProbabilityMagic` 對不同技能有 case-by-case 機率公式。屬廣域 MR 公式對齊缺口。
+  - **yaml mp_consume/buff_duration/reuse_delay drift**：與廣域同源 broader gap。
+- 驗證：無代碼變更，既有 `TestSkillDarkElfBuffDarkBlindUsesSleepEffect66` 覆蓋 PC 目標睡眠效果。
+
 ## 燃燒鬥志（BURNING_SPIRIT / 102）— 補齊遠程攻擊觸發
 
 - 補齊 `102 BURNING_SPIRIT` 遠程觸發路徑：Java `L1AttackPc.BuffDmgUp(dmg)` 在 `calcPcDamage:1702` 與 `calcNpcDamage:2027` 都會無條件呼叫，涵蓋近戰與遠程攻擊；BURNING_SPIRIT 自身條件僅 `_pc.hasSkillEffect(BURNING_SPIRIT) && random <= 15`（無 weaponType 排除）。Go 原本只在 `combat.go:212 processMeleeAttack` 與 `pvp.go:95 HandlePvPAttack` 呼叫 `darkElfPhysicalDamage`，弓矢遠程攻擊（PvE + PvP）完全沒套用 15% 機率 1.5x 增傷。本步在 `combat.go processRangedAttack` 與 `pvp.go HandlePvPFarAttack` 補上 `darkElfPhysicalDamage(player/attacker, damage, "bow")` 對齊 Java。
