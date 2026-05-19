@@ -1,5 +1,45 @@
 ## 技能
 
+## 屬性防禦（RESIST_ELEMENTAL / 138）— 純審計確認四屬 +10 + S_OwnCharAttrDef 完整對齊 Java，零 Java vs Go 差異
+
+- **Java 對照**：
+  - `L1SkillId.java:474 RESIST_ELEMENTAL = 138`（屬性防禦）。無對應 skillmode 類別（純 buff 路徑）。
+  - `L1SkillUse.java:2538-2545` + `L1SkillUse2.java:2490-2497` cast：`pc.addWind(10) + pc.addWater(10) + pc.addFire(10) + pc.addEarth(10) + pc.sendPackets(new S_OwnCharAttrDef(pc))`。
+  - `L1SkillStop.java:466-475` stop：`cha.addWind(-10) + cha.addWater(-10) + cha.addFire(-10) + cha.addEarth(-10) + (if PC) pc.sendPackets(new S_OwnCharAttrDef(pc))`。
+  - 表格成員：`isNotCancelable` 不含 138（cancellable）；`EXCEPT_COUNTER_MAGIC` 含 138（不受 counter magic 阻擋）；`REPEATEDSKILLS` 不含 138（無互斥）。
+  - yiwei `db_split/skills.sql:137`：`('138', '屬性防禦', '18', '1', '10', '0', '40319', '1', '0', '1200', 'none', '0', '0', '0', '0', '0', '0', '0', '2', '0', '0', '0', '0', '2', '', '19', '2184', '0', '0', '721', '0')` — mp=10、item=40319×1、reuse_delay=0、buff_duration=1200、target=none、type=2、id=2、action_id=19、cast_gfx=2184、sys_msg_stop=721。
+
+- **Go 對照**：
+  - `buffs.lua:113 [138] = { fire_res = 10, water_res = 10, wind_res = 10, earth_res = 10 }`：四屬 +10 完整對應 Java `addFire/Water/Wind/Earth(10)`。
+  - `engine.go` 讀取 lua 回傳寫入 `BuffEffect.FireRes/WaterRes/WindRes/EarthRes`。
+  - `skill_buff.go:177-180` apply：`buff.DeltaFireRes/WaterRes/WindRes/EarthRes = int16(eff.X)` 套入 ActiveBuff。
+  - `skill_buff.go:211-214` apply：`target.FireRes += buff.DeltaFireRes` 四屬實際 +10。
+  - `skill_buff.go:300-305` apply 端：四屬 Delta 非零時 `SendAbilityScores(target.Session, target)` = `S_OwnCharAttrDef` 對齊 Java cast `pc.sendPackets(new S_OwnCharAttrDef(pc))`。
+  - `skill_buff.go:515-518` revert：`target.FireRes -= buff.DeltaFireRes` 四屬實際 -10。
+  - `skill_buff.go:565-570` revert 端：四屬 Delta 非零時 `SendAbilityScores(target.Session, target)` = `S_OwnCharAttrDef` 對齊 Java stop `pc.sendPackets(new S_OwnCharAttrDef(pc))`。
+  - `counterMagicExempt[138]`：應為 true（受豁免，Java `EXCEPT_COUNTER_MAGIC` 含 138）——已對齊。
+  - `NON_CANCELLABLE` 不含 138 對齊 Java `isNotCancelable` 不含 138。
+  - yaml `skill_list.yaml:4218-4248 skill_id=138`：mp=10、item=40319×1、reuse_delay=0、buff_duration=1200、target=none、type=2、id=2、action_id=19、cast_gfx=2184、sys_msg_stop=721。**31 欄位與 yiwei skills.sql:137 完全對齊零漂移**（與 137 同為罕見完美對齊範例）。
+
+- **既有測試覆蓋**：
+  - `skill_elemental_buff_test.go:10-42 TestSkillElementalBuffElfElementalDefenseBuffsUseJavaValues`：player 起始 FireRes=1/WaterRes=2/WindRes=3/EarthRes=4，套用 138 + 147（ElfAttr=2 fire）→ 預期 FireRes=61（+10+50）/WaterRes=12（+10）/WindRes=13（+10）/EarthRes=14（+10），明確驗證 138 四屬 +10 對稱對齊。
+  - 同測試 assertion 「屬性防禦應四屬 +10、單屬性防禦應依 ElfAttr 只加火抗 +50」——文件記錄 138 與 147 各自 mechanic。
+
+- **發現的 Java 真實差異**：**無**（四屬 +10 對稱套用、apply/stop 雙端 S_OwnCharAttrDef 廣播、yaml 31 欄位、counterMagicExempt、NON_CANCELLABLE 表格成員全部對齊）。
+
+- **broader gap（不改）**：
+  - **`getFire()/getWater()/getWind()/getEarth()` 動態 vs 靜態**：Java getter 在 receive 端動態彙整 base + 裝備 + buff + 寶物加成；Go 在 cast 時將 buff delta 累加到 `target.FireRes` 等靜態欄位。Client UI 與最終魔法傷害計算結果等價，屬廣域 stat 架構議題（同 110/111/137 同源 precedent）。
+  - **`L1Refundable` 表退費機制**：Java 部分技能（如裝備強化品）有 refund 機制對映 elemental res，Go 無對應實作。屬廣域 refund 系統缺口，不在 138 單體範圍。
+
+- **不修原因**（per 對齊深度停損標準）：
+  - 零 Java vs Go 差異，**criterion (a) (b) (c) 三項都不滿足**——沒有 Java 行為差異、Go 沒有錯、無客戶端二進位約束問題。
+  - 既有測試已完整鎖死四屬 +10 + S_OwnCharAttrDef 機制，零新測試需求。
+  - 本次 audit 純文件化現況與 Java 對照，無代碼變更。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkillElementalBuffElfElementalDefense -timeout 60s` PASS（cached）。
+
 ## 淨化精神（CLEAR_MIND / 137）— 純審計確認 +3 Wis 對稱對齊 Java，Wis→MR 衍生計算為廣域屬性架構缺口
 
 - **Java 對照**：
