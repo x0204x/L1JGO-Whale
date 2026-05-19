@@ -1,5 +1,35 @@
 ## 技能
 
+## 毒性抵抗（VENOM_RESIST / 104）— 純審計無代碼變更
+
+- 純審計 `104 VENOM_RESIST`：Go 完整對齊 Java `L1Poison.isValidTarget()` 對 VENOM_RESIST 與 DRAGON5 兩種 buff 的阻擋。
+- **核心行為已對齊**：
+  - **施法路徑**：`skill_list.yaml skill_id:104 target:none` → `executeSelfSkill` default 路徑 → `applyBuffEffect` → `buffs.lua [104] = {}` 空效果表（純旗標 buff，無 stat 加成，對齊 Java 無 skillmode 類別走 L1SkillUse default `setSkillEffect(_skillId, _getBuffDuration)`）。
+  - **施毒攔截**：`poison.go:289-291 hasPoisonResistance(target)` 回傳 `target.HasBuff(104) || target.HasBuff(6687)` 對齊 Java `L1Poison.isValidTarget`：
+    ```java
+    if (player.hasSkillEffect(L1SkillId.VENOM_RESIST)) return false;  // VENOM_RESIST = 104
+    if (player.hasSkillEffect(L1SkillId.DRAGON5)) return false;       // 生命魔眼 = Go buff 6687
+    ```
+  - **進入點全覆蓋**：所有玩家施毒路徑都走 `canApplyPoisonToPlayer` 或其包裝：
+    - `ApplyNpcPoisonAttackWithRoll`（怪物攻擊施毒）→ 第 195 行 `canApplyPoisonToPlayer` 阻擋。
+    - `applyDamagePoisonToPlayer`（傷害毒）→ 第 256 行內部 `canApplyPoisonToPlayer` 阻擋。
+    - `applyEnchantVenomPoisonToPlayerWithRoll`（玩家附加劇毒對玩家）→ 委派 `applyDamagePoisonToPlayer` 內部阻擋。
+    - `GMApplyPoison`（GM 指令）→ 第 314 行 `canApplyPoisonToPlayer` 阻擋。
+    - `applySilencePoisonToPlayer`/`applyParalysisPoisonToPlayer`（沉默毒、麻痺毒）僅從 dispatcher `ApplyNpcPoisonAttackWithRoll` + `GMApplyPoison` 呼叫，已由 caller 阻擋。
+  - **counterMagicExempt**：`counterMagicExempt[104] = true`（`skill_buff.go:404`）對齊 Java `EXCEPT_COUNTER_MAGIC` (`L1SkillUse.java:148`) 含 104——VENOM_RESIST 自我增益不被反魔法盾抵擋。
+  - **NON_CANCELLABLE 不含 104**：對齊 Java `L1SkillMode.isNotCancelable()`（line 31-37）不含 VENOM_RESIST——可被 CANCELLATION 解除。
+  - **buff_icon_map 無 104**：對齊 Java VENOM_RESIST 無 skillmode 類別且 L1SkillUse default 路徑不發 S_PacketBox 圖示——本系統純後台旗標 buff。
+  - **既有測試覆蓋**：
+    - `skill_poison_venom_test.go:10-30 TestSkillPoisonVenomVenomResistBlocksNpcPoison` 鎖定 104 阻擋怪物施毒。
+    - `:32-52 TestSkillPoisonVenomDragonLifeEyeBlocksPoison` 鎖定 6687（DRAGON5）阻擋怪物施毒。
+    - `:54-84 TestSkillPoisonVenomCursePoisonRespectsPlayerPoisonResistance` 鎖定 104 阻擋玩家對玩家毒咒（skill 11）。
+    - `:120-157 TestSkillPoisonVenomEnchantVenomPoisonsPlayerAndRespectsResistance` 鎖定 104 阻擋玩家附加劇毒（skill 98）proc。
+- **broader gap（不改）**：
+  - **item-equipment based `_venom_resist > 0`**：Java `L1Poison.isValidTarget` 第 35-37 行檢查 `player.get_venom_resist() > 0`，源自 `Venom_Resist.java` 與 `ElitePlateMail_Antharas.java` 等護甲 item executor 在裝備/卸下時 `set_venom_resist(±1)`。Go 目前**沒有** 此 counter 系統（player 結構無 `VenomResist int` 欄位）。此屬廣域 armor item executor 缺口（與 skill 104 本身對齊無關），玩家若裝備毒性抵抗護甲（如解毒甲冑、安塔瑞斯精製鎧甲）將不被擋毒。不在 skill 104 scope，依「不可偷換範圍」記錄不修。
+  - **NPC 不檢查 buff 104**：Java `L1Poison.isValidTarget` 第 29-31 行對非 PC 直接 return true 不查 buff——Go `canApplyPoisonToPlayer` 僅針對 PlayerInfo，NPC 路徑由 `canApplyPoisonToNpc` 處理（已對齊 Java 行為）。
+  - **yaml mp_consume/buff_duration/reuse_delay drift**：與廣域同源 broader gap。
+- 驗證：無代碼變更，既有 4 個 venom resist 相關測試覆蓋核心路徑。
+
 ## 暗黑盲咒（DARK_BLIND / 103）— 純審計無代碼變更
 
 - 純審計 `103 DARK_BLIND`：Go 完整對齊 Java `skillmode/DARK_BLIND.java`。
