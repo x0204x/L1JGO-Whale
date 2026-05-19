@@ -170,7 +170,7 @@ BUFF_DEFS = {
     [211] = { hpr = 5 },                                                      -- Patience
     [212] = { sleeped = true },                                                -- Phantasm
 
-    [214] = { ac = -20, exclusions = {204, 209, 219} },                      -- Illusion Diamond Golem
+    [214] = { ac = -8 },                                                      -- 幻覺：鑽石高崙 ILLUSION_DIA_GOLEM（Java L1SkillUse:2665-2668 only pc.addAc(-8)；無 REPEATEDSKILLS 互斥群——Java 允許四個 illusion buff 並存）
 
     [216] = { str = 1, con = 1, dex = 1, wis = 1, intel = 1 },              -- Insight
     [217] = { str = -1, con = -1, dex = -1, wis = -1, intel = -1 },         -- Panic (debuff)

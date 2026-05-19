@@ -1,5 +1,19 @@
 ## 技能
 
+## 幻覺：鑽石高崙（ILLUSION_DIA_GOLEM / 214）
+
+- 修正 `buffs.lua [214]` 兩項 Java 對齊缺失：
+  1. **AC `-20` → `-8`**：對齊 Java `L1SkillUse.java:2665-2668` `pc.addAc(-8)`。Go 原本給 -20 AC 是 Java 的 2.5x，玩家防禦過強。
+  2. **移除 `exclusions = {204, 209, 219}`**：對齊 Java skillmode/L1SkillUse 對 ILLUSION_DIA_GOLEM 無 REPEATEDSKILLS 互斥檢查——Java 允許四個 illusion buff（204/209/214/219）並存。同 204/209 修正模式。
+- 配套說明：
+  - 至此 204/209/214 三個 illusion buff 已全部移除 exclusions，sibling mutex 殘餘僅剩 219 仍引用 {204, 209, 214}，待 219 子項處理。
+  - 既有 `applyBuffEffect` 已正確處理 `eff.AC` 變動並送 `S_AbilityScores`，AC 數值修正即生效。
+- **broader gap（不改）**：
+  - **yaml `buff_duration 32→128`**：Java SQL=128 秒，Go=32（4x diff），同 209 broader gap。
+  - **yaml `mp_consume 25→40`、`reuse_delay 0→2000`、`ranged 3→5`、`type 4→2 (CURSE→CHANGE)`、`probability_value/dice 100→0`**：屬 yaml tuning，與 207-212 同源。
+  - **sibling mutex 殘餘**：219 的 exclusions 仍引用 214，待 219 子項處理。
+- 驗證：`go build ./...` 通過、`go test ./internal/system/ -count=1` 全綠（無 214 相關測試）。
+
 ## 隱身破壞者（ARM_BREAKER / 213）— 純審計無代碼變更
 
 - 純審計 `213 ARM_BREAKER`，發現 Go 與 Java yiwei 為**根本不同的技能**，差異過大不在單一子項範圍：
