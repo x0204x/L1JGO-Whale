@@ -1,5 +1,42 @@
 ## 技能
 
+## 召喚屬性精靈（LESSER_ELEMENTAL / 154）— 純審計重新確認核心 5 項機制完整對齊 Java，兩項召喚家族共通缺口維持延後
+
+- **Java 對照**：
+  - `L1SkillId.java LESSER_ELEMENTAL = 154`，`skillmode/LESSER_ELEMENTAL.java:23-67` 完整流程：
+    1. `attr = pc.getElfAttr()` 必須 != 0（無屬性玩家不能召喚精靈）。
+    2. `if (!pc.getMap().isRecallPets()) → sendPackets(S_ServerMessage(353)) + return`（地圖禁召喚 → 訊息 353「在這附近無法召喚怪物」）。
+    3. 迭代 `pc.getPetList().values()` 累計 `petcost`，若 `petcost != 0` → 已有寵物，靜默 return。
+    4. Switch on `attr`：1→45306（土）、2→45303（火）、4→45304（水）、8→45305（風）。
+    5. `new L1SummonInstance(npcTemp, pc) + summon.setPetcost(pc.getCha() + 7)`。
+  - `skillmode/GREATER_ELEMENTAL.java` 為 162 強化版（不同 NPC ID 但同 mechanic）。
+  - yiwei `db_split/skills.sql:153`：mp=20、item=40319×2、buff_duration=0、target=none、type=128、attr=0、action_id=19、cast_gfx=2510、所有 sys_msg=0。
+
+- **Go 對照**：
+  - `skill.go:409-410` + `skill_magic_scroll.go:54-55` route → `s.deps.Summon.ExecuteElementalSummon(sess, player, skill)`。
+  - `skill_summon.go:282-363 ExecuteElementalSummon`：
+    1. `:286-288 if player.ElfAttr == 0 → return` 對齊 Java attr != 0 gate。
+    2. `:289-295 RecallPets` 檢查 + `SendServerMessage(msgCannotSummonHere)` 對齊 Java msg 353。
+    3. `:296-298 calcUsedPetCost(CharID) != 0 → return` 對齊 Java petcost != 0 靜默 return。
+    4. `:300-309 lesserElementalByAttr[player.ElfAttr]` map（同 Java：1→45306、2→45303、4→45304、8→45305）。
+    5. `:317-319 petCost := Cha + 7` 對齊 Java `pc.getCha() + 7`（`<=0` clamp 為 Go 防禦邏輯，Java 無但實際 Cha+7 永遠 >= 7）。
+  - `:321 ConsumeSkillResources` — MP 消耗（Java 路徑由 L1SkillUse 外圍 cast 流程處理，Go 在召喚成功 gates 通過後消耗——與 131 precedent 一致，user-friendly 防止失敗扣 MP）。
+  - `:355-362 AddSummon + SendSummonPack(viewer + self) + SendSummonMenu` 對應 Java L1SummonInstance constructor 內部送 packet。
+  - yaml `skill_list.yaml:4714-4744`：mp=20、buff_duration=0、target=none、type=128、attr=0、action_id=19、cast_gfx=2510、所有 sys_msg=0——31 欄位**完全對齊 yiwei**（罕見零漂移）。
+
+- **既有測試覆蓋**：
+  - `skill_summon` 系列測試覆蓋 ExecuteElementalSummon 核心路徑（ElfAttr 0 gate、RecallPets gate、petCost 占用 gate、4 屬性 NPC ID 映射）。
+
+- **發現的 Java 真實差異**：**無**（核心 5 項機制完整對齊；兩項家族級差異維持先前審計結論）。
+
+- **broader gap（不改）**：
+  - **A) 施法動畫 + cast_gfx 廣播缺失**：Java L1SkillUse.sendGrfx 外圍流程對所有 cast 流程送 action_id=19 + cast_gfx=2510 廣播；Go ExecuteElementalSummon 入口前無對應 broadcast。屬召喚技能 (51/36/41/145/154/162) **共通缺口**，應在召喚技能統一 audit 時集中補上 cast 動畫廣播 helper。
+  - **B) MP 消耗時機字面順序**：Java `L1SkillUse._user.useMP/SP` 在 `runSkill` 入口處先消耗，Go 在所有 gates 通過後才 `ConsumeSkillResources`——Go 採 user-friendly pattern（失敗不扣 MP），與 131 TELEPORT_TO_MATHER precedent 一致，**不修**。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - 無針對 154 的測試需執行。
+
 ## 魔法消除（ERASE_MAGIC / 153）— 移除錯誤 cancelAllBuffs 並補 PvP MR 閘，broader gap MR/=4 + consume hook 仍延後
 
 - **Java 對照**：
