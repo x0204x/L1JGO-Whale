@@ -1,5 +1,16 @@
 ## 技能
 
+## 火焰之魂（SOUL_OF_FLAME / 175）— 純審計重新確認核心 1.5x 近戰增傷 + 弓/格鬥排除完整對齊 Java
+
+- **Java 對照**：`L1AttackPc.java:1455-1457/1945-1947` 對 SOUL_OF_FLAME 近戰非弓非格鬥 `_weaponDamage = weaponMaxDamage * SOUL_OF_FLAME_DAMAGE`（yiwei 1.5）。
+- **Go 對照**（無代碼變更）：
+  - `skill_elemental.go:181-186 elfMeleeDamageWithRoll`：`HasBuff(175) → damage * 3 / 2`。
+  - `isRangedWeaponType` 早返回排除 bow/gauntlet。
+  - 既有 dynamic test 鎖死 `SOUL_OF_FLAME(1.5) × ELEMENTAL_FIRE(1.5) = 2.25x` 場景（100→225）。
+  - PvP 與 PvE 兩路皆掛接。
+- **broader gap（不改）**：(A) Java「`weaponMaxDamage * 1.5` 取代武器傷害骰值」屬武器傷害管線結構改造（同 163 BURNING_WEAPON 同源）；(B) `SOUL_OF_FLAME_ALLDAMAGE` 默認 1.0 停用、`L1AttackPc.java:749-751` 全傷倍率路徑亦同 audit。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 精準射擊（STRIKER_GALE / 174）— 純審計重新確認核心 1.1x 遠程增傷 + UPDATE_ER UI 通知 + MR 抗性閘完整對齊 Java
 
 - **Java 對照**：`L1PcInstance.getEr()` 持有 STRIKER_GALE 時 `return 0` UI 顯示；`L1SkillStop case STRIKER_GALE` 還原通知；`STRIKER_DMG2=1.1` 遠程增傷。
