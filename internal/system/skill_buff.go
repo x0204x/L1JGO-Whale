@@ -242,9 +242,15 @@ func (s *SkillSystem) applyBuffEffect(target *world.PlayerInfo, skill *data.Skil
 		//   - UNCANNY_DODGE(106)/MIRROR_IMAGE/DRAGONEYE_* skillmode 送 `S_PacketBoxIcon1(true, get_dodge())`（dodge icon）
 		// 兩條 packet opcode 不同（UPDATE_ER vs 0x58 dodge icon），不可混用。
 		if buff.DeltaDodge > 0 {
-			if skill.SkillID == 90 || skill.SkillID == 111 {
+			switch skill.SkillID {
+			case 90, 111:
 				handler.SendUpdateER(target.Session, target.Dodge)
-			} else {
+			case 160:
+				// 160 AQUA_PROTECTER：Java `skillmode/AQUA_PROTECTER.start()` 只 `setSkillEffect(160, ...)`，
+				// 不送任何 packet；ER +5 透過 `L1PcInstance.getEr():3399-3401` getter override 即時計算。
+				// Go 採加法 DeltaDodge 路徑（功能等價），但不送 dodge icon 對齊 Java。
+				// UPDATE_ER 屬 sendGrfx _targetList 通用 status refresh 廣域 gap，由其他系統處理。
+			default:
 				handler.SendDodgeIcon(target.Session, target.Dodge, true)
 			}
 		}
@@ -523,9 +529,13 @@ func (s *SkillSystem) revertBuffStats(target *world.PlayerInfo, buff *world.Acti
 	if buff.DeltaDodge > 0 && target.Session != nil {
 		// 與 applyBuffEffect 對稱：90/111 走 UPDATE_ER 路徑；其餘 dodge buff（106/MIRROR/DRAGONEYE）走 dodge icon。
 		// Java SOLID_CARRIAGE.stop() line 47 與 DRESS_EVASION.stop() line 31 都送 S_PacketBox(UPDATE_ER, getEr())。
-		if buff.SkillID == 90 || buff.SkillID == 111 {
+		switch buff.SkillID {
+		case 90, 111:
 			handler.SendUpdateER(target.Session, target.Dodge)
-		} else {
+		case 160:
+			// 160 AQUA_PROTECTER：Java `skillmode/AQUA_PROTECTER.stop()` empty 不送任何 packet。
+			// Go 不送 dodge icon/UPDATE_ER 對齊 Java（同 apply 路徑）。
+		default:
 			handler.SendDodgeIcon(target.Session, target.Dodge, true)
 		}
 	}

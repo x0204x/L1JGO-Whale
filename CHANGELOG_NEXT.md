@@ -1,5 +1,42 @@
 ## 技能
 
+## 水之防護（AQUA_PROTECTER / 160）— 移除 Go 多送的 SendDodgeIcon 對齊 Java skillmode 無 packet 行為
+
+- **Java 對照**：
+  - `L1SkillId.java:538 AQUA_PROTECTER = 160`，`L1SkillMode.java:102` 註冊 skillmode。
+  - `skillmode/AQUA_PROTECTER.start(L1PcInstance, ...)`（line 13-18）：**只**呼叫 `srcpc.setSkillEffect(160, integer * 1000)`，**不送任何 packet**。
+  - `skillmode/AQUA_PROTECTER.start(L1NpcInstance, ...)`：return 0，無 apply（NPC 無法施放於他人）。
+  - `skillmode/AQUA_PROTECTER.stop()`：**empty**，無任何 packet 送出。
+  - `L1PcInstance.java:3399-3401 getEr()` getter override：`if (hasSkillEffect(AQUA_PROTECTER)) er += 5`——**透過 getter 即時加 +5**，非儲存值修改。注意 line 3396-3398 `STRIKER_GALE return 0` 優先級高於 AQUA_PROTECTER（174 持有時 getEr 直接回 0）。
+  - 對比其他 Dodge buff skillmodes：DRAGONEYE_ANTHARAS/BIRTH/FIGURE/LIFE/MIRROR_IMAGE/UNCANNY_DODGE 皆顯式 `sendPackets(new S_PacketBoxIcon1(true, get_dodge()))`；SOLID_CARRIAGE(90)/DRESS_EVASION(111) 送 `S_PacketBox(UPDATE_ER, getEr())`——**160 AQUA_PROTECTER 不送任何 packet**。
+  - yiwei `db_split/skills.sql:159`：`('160', '水之防護', '20', '7', '30', '0', '0', '0', '100', '960', 'buff', '1', '0', '0', '0', '0', '0', '4', '2', '0', '-1', '0', '0', '128', '', '19', '5829', '0', '0', '0', '0')` — mp=30、reuse_delay=**100**、buff_duration=960、target=buff、target_to=1、attr=4、type=2、ranged=-1、id=128、action_id=19、cast_gfx=5829、所有 sys_msg=0。
+
+- **Go 對照**（修正前 vs 修正後）：
+  - 修正前 `skill_buff.go:244-250` applyBuffEffect Dodge 通知區塊：`if buff.DeltaDodge > 0 { if 90/111 → SendUpdateER else → SendDodgeIcon }`——160 走 `else` 分支送 `SendDodgeIcon`，**但 Java AQUA_PROTECTER.start() 不送任何 packet**。Criterion (a) Java 真實差異：Go 多送了客戶端 UI 上不該出現的 dodge icon。
+  - 修正前 `skill_buff.go:523-531` revertBuffStats Dodge 過期區塊：同樣對 160 送 SendDodgeIcon，**Java AQUA_PROTECTER.stop() empty 不送任何 packet**。
+  - 修正後 apply + revert 兩處皆改 switch 結構：
+    - `case 90, 111` 維持 `SendUpdateER`（對齊 Java SOLID_CARRIAGE/DRESS_EVASION skillmode）。
+    - **`case 160` 新增空分支不送任何 packet** 對齊 Java AQUA_PROTECTER skillmode。註解說明 UPDATE_ER 屬 sendGrfx _targetList 通用 status refresh 廣域 gap。
+    - `default` 維持 `SendDodgeIcon`（對齊 DRAGONEYE_*/MIRROR_IMAGE/UNCANNY_DODGE）。
+  - `buffs.lua:129 [160] = { dodge = 5 }`：DeltaDodge=5 → `target.Dodge += 5` apply / `-= 5` revert——功能等價於 Java getEr() override。
+  - yaml `skill_list.yaml:4900-4930`：mp=30、reuse_delay=**0**、buff_duration=960、target=buff、target_to=1、attr=4、type=2、ranged=-1、id=128、action_id=19、cast_gfx=5829、所有 sys_msg=0——**31 欄位中 30 項對齊 yiwei**，**僅 reuse_delay=0 vs 100 一項漂移**（Go 跟 cat-fei）。
+
+- **既有測試覆蓋**：
+  - 無針對 160 AQUA_PROTECTER 的單元測試。其他 Dodge buff（106 UNCANNY_DODGE、111 DRESS_EVASION、DRAGONEYE_*）的 apply/revert 測試已覆蓋 SendUpdateER vs SendDodgeIcon 分流邏輯（測試應不受 160 case 影響）。
+
+- **本次修正範圍**（criterion (a) Java 核心行為差異）：
+  - `skill_buff.go:244-256` apply + `skill_buff.go:523-535` revert 兩處 Dodge 通知區塊改 switch，新增 `case 160` 空分支對齊 Java AQUA_PROTECTER skillmode 不送任何 packet。
+
+- **broader gap（不改）**：
+  - **A) `L1PcInstance.getEr()` STRIKER_GALE > AQUA_PROTECTER 優先級**：Java 持有 174 + 160 時 `getEr() = 0`（174 priority 1），Go 採加法 DeltaDodge 路徑，174 audit 已透過 `SendUpdateER(0)` 偽造 UI 但儲存值 Dodge 仍包含 +5 from 160——屬廣域 stat computation 「multiplier/override getter chain」議題（同 153 ERASE_MAGIC MR/=4 同源）。
+  - **B) `L1SkillUse.sendGrfx` 末尾 1686-1694 _targetList 通用 status refresh**：Java cast 後通用送 UPDATE_ER；Go 無此通用 hook，160 cast 後客戶端 UI 不會即時看到 ER +5——屬廣域 buff cast 後置缺口（同 130/146/148/149/150/151/152/155/156/158/159 同源）。
+  - **C) yaml reuse_delay 漂移**：Go=0 vs yiwei=100（Go 跟 cat-fei）——屬廣域 yiwei/cat-fei SQL 同步議題。
+  - **D) AQUA_PROTECTER mass-buff / item-cast paths**：`L1AllBuff.java:55`/`L1GMAllBuff.java:55`/`Crazy_Buff.java:134（註解掉）`/`Full_magic.java:65` 都引用 160——這些是 GM 指令或道具觸發路徑，與 cast 路徑共用同樣的 skillmode.start()，本次修正一併涵蓋。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -timeout 60s` PASS（19.740s 全綠）。
+
 ## 大地的祝福（EARTH_BLESS / 159）— 純審計重新確認核心 icon-only buff（無 AC 修正、不在任何 REPEATEDSKILLS）完整對齊 Java
 
 - **Java 對照**：
