@@ -1,5 +1,49 @@
 ## 技能
 
+## 烈炎氣息（FIRE_BLESS / 155）— 補齊 C_UseSkill 武器類型 gate，unequip cleanup hook 延後
+
+- **Java 對照**：
+  - `L1SkillId.java:518 FIRE_BLESS = 155`。
+  - `skillmode/FIRE_BLESS.start()`：
+    1. `L1BuffUtil.braveStart(srcpc)` clean conflicting brave buffs。
+    2. `setSkillEffect(FIRE_BLESS, integer * 1000)` apply。
+    3. **`setBraveSpeed(1)`**（**非 4**，與 150 WIND_WALK 不同 tier）。
+    4. `sendPackets(S_SkillBrave(id, 1, integer))` self icon。
+    5. `broadcastPacketAll(S_SkillBrave(id, 1, 0))` broadcast。
+    6. `sendPackets(S_PacketBoxIconAura(154, integer))` icon param=154（skill_id-1）。
+  - `skillmode/FIRE_BLESS.stop()`：`setBraveSpeed(0) + (if PC) sendPacketsAll(S_SkillBrave(0, 0)) + sendPackets(S_PacketBoxIconAura(154, 0))`。
+  - `C_UseSkill.java:154-169` **武器類型 gate**：要求 `weapon.getType()` ∈ {1, 2, 3, 5, 6, 7}（sword/dagger/tohandsword/spear/blunt/staff），不符合或無武器 → `sendPackets(S_ServerMessage(3435))` + return。
+  - `L1EquipmentSlot.java:282-284` **unequip 武器 → 移除 FIRE_BLESS hook**：`if (hasSkillEffect(FIRE_BLESS)) removeSkillEffect(FIRE_BLESS)`。
+  - `L1PcInstance.java:4416 isBrave()`：`hasSkillEffect(STATUS_BRAVE || FIRE_BLESS || BLOODLUST)` → 戰鬥相關計算（如 buff dmgup）的 brave flag。
+  - `L1BuffUtil.java:258-259`：多處可主動 `killSkillEffectTimer(FIRE_BLESS)`。
+  - `L1SkillUse.java:1745-1746 REPEATEDSKILLS[2]`：`{HOLY_WALK, MOVING_ACCELERATION, WIND_WALK, STATUS_BRAVE, STATUS_ELFBRAVE, BLOODLUST, FIRE_BLESS}` 7 項勇氣速度類 buff 互斥。
+  - yiwei `db_split/skills.sql:154`：mp=**40**、buff_duration=960、target=none、target_to=**8**、attr=2、type=2、cast_gfx=**2286**、sys_msg_stop=**723**。
+
+- **Go 對照**（修正前 vs 修正後）：
+  - 修正前：155 走 `executeSelfSkill` default 路徑 → `applyBuffEffect` 套用 `buffs.lua [155] = { brave_speed = 1, exclusions = {52, 101, 150, 186, 1000, 1016} }`，BraveSpeed=1 與 S_SkillBrave/icon 已對齊 Java，但**完全無武器類型 gate**——任何武器或無武器都能施放。
+  - 修正後 `skill.go:432-438`：在 `consumeSkillResources` **前**新增 `if skillID == 155 && !fireBlessWeaponAllowed(player, s.deps.Items) → SendServerMessage(sess, 3435) + return`——對齊 Java `C_UseSkill.java:154-169` cast 入口拒絕。
+  - 修正後 `skill_self.go:15-34 fireBlessWeaponAllowed`：helper 函式，檢查 `player.Equip.Weapon()` 與 `s.deps.Items.Get(wpn.ItemID).Type ∈ {"sword","dagger","tohandsword","spear","blunt","staff"}` 對齊 Java type 1/2/3/5/6/7 允許列表。
+  - icon 路徑：`buff_icon_map.yaml:62 skill_id: 155 type: aura`（無 param），`handler/skill.go:222-227` aura default `iconID = skill_id - 1 = 154` → 對齊 Java `S_PacketBoxIconAura(154, ...)`。
+  - BraveSpeed apply/revert + S_SkillBrave self+broadcast 由 `applyBuffEffect` 統一路徑處理對齊 Java（同 150 WIND_WALK precedent）。
+  - REPEATEDSKILLS[2] mutex：`buffs.lua [155].exclusions = {52, 101, 150, 186, 1000, 1016}` 6 項排除自身——**Java HOLY_WALK=42、Go=52 屬廣域 SQL ID 漂移**（同 150 同源）。
+  - yaml `skill_list.yaml:4745-4775`：mp=**40**、buff_duration=960、target=none、target_to=**8**、attr=2、type=2、cast_gfx=**2286**、sys_msg_stop=**723**——**31 欄位完全對齊 yiwei**（零漂移）。
+
+- **既有測試覆蓋**：
+  - 無針對 155 weapon gate 的單元測試。BraveSpeed=1 apply/revert 路徑由 150 WIND_WALK 同族測試間接覆蓋。
+
+- **本次修正範圍**（criterion (a) Java 核心行為差異）：
+  - **武器類型 gate**：cast 入口檢查 `player.Equip.Weapon()` + Type ∈ 允許列表，不符合送 msg 3435 + return（不消耗 MP）。
+
+- **broader gap（不改）**：
+  - **A) Unequip 武器 → 移除 FIRE_BLESS hook**：Java `L1EquipmentSlot.java:282-284` 在卸下武器時 `removeSkillEffect(FIRE_BLESS)`。Go `equip.go UnequipSlot` 無對應 hook；補修需 EquipSystem ↔ SkillSystem 跨系統依賴注入或 Event Bus 介面，超出單一技能範圍，屬廣域裝備變更與 buff lifecycle 整合議題。
+  - **B) `L1BuffUtil.killSkillEffectTimer(FIRE_BLESS)` 主動取消路徑**：Java 多處（PVP、castle 進出等）可主動取消 FIRE_BLESS timer，Go 無對等廣域 hook 機制（同 150 同源）。
+  - **C) `L1PcInstance.isBrave()` 加 FIRE_BLESS 檢查**：Java `isBrave()` 用於戰鬥 buff dmgup 等計算的彙整 flag；Go 無對應彙整 helper（各戰鬥路徑分散 `HasBuff(155/186/1000)` 檢查），屬廣域 brave flag helper 議題。
+  - **D) HOLY_WALK ID 漂移**：Java=42、Go=52（cat-fei）。整個 REPEATEDSKILLS[2] 群組以 cat-fei 52 為基準——廣域 SQL ID 漂移議題（同 130/150 同源）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -timeout 60s` PASS（19.287s 全綠）。
+
 ## 召喚屬性精靈（LESSER_ELEMENTAL / 154）— 純審計重新確認核心 5 項機制完整對齊 Java，兩項召喚家族共通缺口維持延後
 
 - **Java 對照**：

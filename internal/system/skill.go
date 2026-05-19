@@ -429,6 +429,14 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 		return
 	}
 
+	// --- 技能專屬前置驗證（Java C_UseSkill 行為，需在資源消耗前執行）---
+	// Java `C_UseSkill.java:154-169` FIRE_BLESS 須裝備劍類武器（type 1/2/3/5/6/7 = sword/dagger/tohandsword/spear/blunt/staff），
+	// 不符合 → 送 msg 3435「使用魔法: 失敗(未成功), 需要裝備劍武器」+ return（不消耗 MP）。
+	if skillID == 155 && !fireBlessWeaponAllowed(player, s.deps.Items) {
+		handler.SendServerMessage(sess, 3435)
+		return
+	}
+
 	// --- 消耗資源（MP、HP、材料）---
 	if isGroundTargetSkill(skillID) {
 		if isCubeSkill(skillID) && s.hasNearbySameCube(player, skillID) {

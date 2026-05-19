@@ -12,6 +12,27 @@ import (
 // ========================================================================
 
 // executeSelfSkill 處理自身目標技能（護盾、光明、冥想等）。
+// fireBlessWeaponAllowed 對齊 Java `C_UseSkill.java:154-169`——155 FIRE_BLESS（烈炎氣息）要求
+// 裝備 type 1/2/3/5/6/7 之一（劍/匕首/雙手劍/長矛/棍棒/法杖），其他武器類型或無武器一律拒絕。
+func fireBlessWeaponAllowed(player *world.PlayerInfo, items *data.ItemTable) bool {
+	if player == nil || items == nil {
+		return false
+	}
+	wpn := player.Equip.Weapon()
+	if wpn == nil {
+		return false
+	}
+	info := items.Get(wpn.ItemID)
+	if info == nil {
+		return false
+	}
+	switch info.Type {
+	case "sword", "dagger", "tohandsword", "spear", "blunt", "staff":
+		return true
+	}
+	return false
+}
+
 func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo) {
 	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 
