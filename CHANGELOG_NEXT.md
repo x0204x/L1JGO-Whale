@@ -1,5 +1,48 @@
 ## 技能
 
+## 援護盟友（RUN_CLAN / 118）— 修正失敗路徑也消耗 MP 對齊 Java
+
+- **Java 對照**：
+  - `skillmode/RUN_CLAN.java:19-42 start()`：取得 clanPc by integer ID，若非 null 進入條件鏈：
+    1. `pc.getMap().isEscapable() || pc.isGm()` — caster's map 必須可順移 OR caster 為 GM。
+    2. 若 true：檢查 `L1CastleLocation.checkInAllWarArea(clanPc.X, clanPc.Y, clanPc.mapId)`（目標在攻城戰旗幟內）+ `clanPc.mapId ∈ {0, 4, 304}`（大陸地圖）。
+       - 通過 → `L1Teleport.teleport(pc, clanPc.X, clanPc.Y, clanPc.mapId, 5, true)` 傳送。
+       - 失敗 → `pc.sendPackets(new S_ServerMessage(1192)) + S_Paralysis(7, false)`。
+    3. 若 false（caster's map 不可順移且非 GM）→ `pc.sendPackets(new S_ServerMessage(647)) + S_Paralysis(7, false)`。
+  - `L1SkillUse.java:478-487` TYPE_NORMAL 流程：`runSkill() → useConsume() → sendGrfx → sendFailMessageHandle → setDelay`。`runSkill()` 內部呼叫 skillmode.start，**即使 skillmode 內部送拒絕訊息與 Paralysis 仍然正常返回**，`useConsume()` 接著執行——**MP 消耗在 RUN_CLAN 失敗路徑（送 647/1192）後依然發生**。
+  - **yiwei SQL**：無 skill 118 entry（不在 db_split/skills.sql 內，可能屬於 yiwei 端後補的技能資料）。
+  - **cat-fei SQL**：`(118,'援護盟友',15,5,30,0,0,0,0,0,'buff',0,...,'',19,0,...,280,0)` → mp=30、target='buff'、target_to=0、id=32、sys_msg_fail=280。Go yaml 完全對齊。
+- **發現的 Java 真實差異**：原 Go `skill_clan.go executeClanTargetSkill case 118`：
+  ```go
+  if !s.canRunClanTeleport(player, target) {
+      handler.SendServerMessage(...) + handler.SendParalysis(...)
+      return  // ← 失敗路徑提前 return，MP 未消耗
+  }
+  if consume { s.consumeSkillResources(...) }  // ← 只在通過 check 後消耗
+  ```
+  失敗路徑（送 647/1192）**不消耗 MP**——玩家可向不可順移地圖的盟員無限重試呼喚而不付 MP 代價，與 Java 「即使失敗也消耗 MP」設計不符。屬玩家可見的資源管理差異。
+- **修正**：將 `consumeSkillResources` 提到 `canRunClanTeleport` 檢查**之前**，並補 Java 對照註解：
+  ```go
+  case 118:
+      // Java L1SkillUse.java:481-482 TYPE_NORMAL: runSkill() → useConsume()
+      if consume { s.consumeSkillResources(...) }
+      if !s.canRunClanTeleport(...) { ...send 647/1192 + Paralysis... return }
+      ...teleport...
+  ```
+  失敗路徑現在也消耗 MP，與 Java useConsume 一致。
+- **新測試**：`TestSkillClanRunClanConsumesMpEvenOnRejectionLikeJava` — caster MP=50/MaxMP=100、caster+member 都在 mapID=100（非 {0,4,304}），直接呼叫 `executeClanTargetSkill(..., consume=true)`，斷言 `caster.MP == 20`（50-30 消耗）且 caster 位置未變（傳送被拒絕）。驗證 Java 失敗路徑 MP 消耗行為。
+- **架構合規**：純語句順序調整。`consumeSkillResources` 既有實作不動，`canRunClanTeleport` 與 `runClanRejectMessage` 邏輯不動。
+- **原已對齊（純審計）**：
+  - `canRunClanTeleport` = `isEscapableForRunClan(player) && isRunClanAllowedTargetMap(target) && !isInAnyCastleWarArea(target)` ✓ 對齊 Java 三條件鏈。
+  - `runClanRejectMessage` 優先序：caster's map 不可順移 → 647；其他失敗 → 1192 ✓ 對齊 Java 兩條訊息分支。
+  - `SendParalysis(TeleportUnlock=7)` ✓ 對齊 Java `S_Paralysis(7, false)`。
+  - `TeleportPlayer(sess, player, target.X, target.Y, target.MapID, 5, deps)` ✓ 對齊 Java `L1Teleport.teleport(pc, clanPc.X, clanPc.Y, clanPc.mapId, 5, true)`。
+  - `isEscapableForRunClan`: `AccessLevel >= 200` GM bypass + `MapData.GetInfo(player.MapID).Escapable` ✓ 對齊 Java `pc.getMap().isEscapable() || pc.isGm()`。
+- **broader gap（不改）**：
+  - **Go 額外的「同血盟檢查」（skill_clan.go:204）**：`if target.CharID == player.CharID || player.ClanID == 0 || player.ClanID != target.ClanID → 414`，Java skillmode RUN_CLAN.start 端不檢查 clan，假設由 client UI 限制目標選擇——Go 是 over-strict 防護而非 Java 偏離，不需移除。
+  - **dual dispatch path**：skill.go:425-429 主派發走 `executeClanTargetSkill(consume=true)`；skill_buff.go:876-878 buff 派發走 `consume=false`。兩條路徑 consume 語義不同，目前生產走 skill.go 主派發路徑，buff 路徑只在測試使用。屬廣域 dispatch 重構議題，不在 118 audit 範圍。
+  - 部分 Go skill 仍維持「validate → execute → consume on success」模式（與 Java 「runSkill → useConsume always」不同），需個別 audit 評估——本步只修 118，不擴及其他 skill。
+
 ## 衝擊士氣（BRAVE_AURA / 117）— 補齊血盟範圍 + 移除三向不對稱互斥
 
 - **Java 對照**：

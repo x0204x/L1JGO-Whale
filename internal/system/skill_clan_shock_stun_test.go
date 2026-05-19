@@ -4804,6 +4804,50 @@ func TestSkillClanShockStunRunClanRejectsDisallowedTargetMap(t *testing.T) {
 	}
 }
 
+// TestSkillClanRunClanConsumesMpEvenOnRejectionLikeJava — Java `L1SkillUse.java:481-482` TYPE_NORMAL
+// 流程 `runSkill() → useConsume()`，runSkill 進入 skillmode.RUN_CLAN.start 後即使送 647/1192 拒絕仍正常返回，
+// useConsume 依然執行。Go 將 consume 提到 canRunClanTeleport 檢查之前對齊 Java——失敗路徑也消耗 MP。
+func TestSkillClanRunClanConsumesMpEvenOnRejectionLikeJava(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "leader",
+		X:         100,
+		Y:         100,
+		MapID:     100, // 非 {0, 4, 304}，會被 canRunClanTeleport 拒絕（其實是 caster's map 對應 escapable check）
+		ClanID:    7,
+		MP:        50,
+		MaxMP:     100,
+	})
+	member := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "member",
+		X:         101,
+		Y:         100,
+		MapID:     100, // 非 {0, 4, 304} → canRunClanTeleport 失敗
+		ClanID:    7,
+	})
+	s := newSkillTestSystem(t, ws)
+
+	s.executeClanTargetSkill(caster.Session, caster, &data.SkillInfo{
+		SkillID:   118,
+		MpConsume: 30,
+		Target:    "buff",
+		ActionID:  19,
+	}, member.CharID, "", true)
+
+	if caster.MP != 20 {
+		t.Fatalf("Java useConsume 在 RUN_CLAN 失敗路徑仍消耗 MP，預期 50-30=20，got=%d", caster.MP)
+	}
+	if caster.X != 100 || caster.Y != 100 || caster.MapID != 100 {
+		t.Fatalf("RUN_CLAN 失敗時不應傳送，但 caster 位置變更=(%d,%d,%d)", caster.X, caster.Y, caster.MapID)
+	}
+}
+
 func TestSkillClanShockStunShockStunRequiresTwoHandSwordForNpcTarget(t *testing.T) {
 	rand.Seed(1)
 	ws := world.NewState()

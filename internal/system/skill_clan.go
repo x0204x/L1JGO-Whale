@@ -218,13 +218,17 @@ func (s *SkillSystem) executeClanTargetSkill(sess *net.Session, player *world.Pl
 		handler.SendYesNoDialog(target.Session, 729)
 
 	case 118:
+		// Java `L1SkillUse.java:481-482` TYPE_NORMAL 流程：`runSkill() → useConsume()`。
+		// `runSkill()` 進入 skillmode.start，若條件失敗（送 647/1192 + S_Paralysis）仍正常返回，
+		// 因此 `useConsume()` 一定執行——MP 在 RUN_CLAN 失敗時也會消耗。Go 將 consume 提到 canRunClanTeleport
+		// 檢查之前，與 Java 一致。
+		if consume {
+			s.consumeSkillResources(sess, player, skill)
+		}
 		if !s.canRunClanTeleport(player, target) {
 			handler.SendServerMessage(sess, s.runClanRejectMessage(player, target))
 			handler.SendParalysis(sess, handler.TeleportUnlock)
 			return
-		}
-		if consume {
-			s.consumeSkillResources(sess, player, skill)
 		}
 		nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
