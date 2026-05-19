@@ -242,9 +242,11 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 	}
 
 	// 套用 buff 效果
-	// UNCANNY_DODGE (106) 守衛：Java skillmode/UNCANNY_DODGE.java:17 `if (!srcpc.hasSkillEffect(106))`
-	// 跳過 stat 加成、timer 刷新、S_PacketBoxIcon1 通知三項——重施時保留外層 cast GFX 廣播但 buff 內容不變。
-	if !(skill.SkillID == 106 && player.HasBuff(106)) {
+	// 重施守衛清單（Java skillmode 有 `if (!hasSkillEffect(X))` 包住 stat add + timer set 的技能）：
+	//   - UNCANNY_DODGE (106)：`skillmode/UNCANNY_DODGE.java:17` 跳過 add_dodge(5)+timer+S_PacketBoxIcon1。
+	//   - BOUNCE_ATTACK (89)：`skillmode/BOUNCE_ATTACK.java:13` 跳過 addHitup(6)+timer。
+	// 重施時保留外層 cast GFX 廣播 + MP 消耗（與 Java handleCommands 一致），但 buff 內容不變。
+	if !((skill.SkillID == 106 || skill.SkillID == 89) && player.HasBuff(skill.SkillID)) {
 		s.applyBuffEffect(player, skill)
 	}
 

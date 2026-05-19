@@ -1,5 +1,39 @@
 ## 技能
 
+## 尖刺盔甲（BOUNCE_ATTACK / 89）— 補齊重施守衛
+
+- 對齊 Java `skillmode/BOUNCE_ATTACK.java:13` `if (!srcpc.hasSkillEffect(89)) { setSkillEffect(89, integer*1000); addHitup(6); }`——重施時跳過 addHitup(6)+timer。原 Go `executeSelfSkill` default 路徑會在重施時透過 `applyBuffEffect → AddBuff 替換 + revertBuffStats(-6) → applyBuffStats(+6)` 形成中間瞬時 -6/+6 cycling + timer 刷新延長 buff，違反 Java「重施不刷新」語義。
+- **修正**：`skill_self.go:244-250` 既有 106 UNCANNY_DODGE 重施守衛擴展為清單形式：
+  ```go
+  // 重施守衛清單（Java skillmode 有 `if (!hasSkillEffect(X))` 包住 stat add + timer set 的技能）：
+  //   - UNCANNY_DODGE (106)：跳過 add_dodge(5)+timer+S_PacketBoxIcon1
+  //   - BOUNCE_ATTACK (89)：跳過 addHitup(6)+timer
+  if !((skill.SkillID == 106 || skill.SkillID == 89) && player.HasBuff(skill.SkillID)) {
+      s.applyBuffEffect(player, skill)
+  }
+  ```
+  重施時保留外層 cast GFX 廣播 + MP 消耗（與 Java `handleCommands` 一致），buff 內容不變。
+- **其餘對齊（無修改）**：
+  - **HIT+6 buff**：`buffs.lua:91 [89] = { hit_mod = 6 }` 對齊 Java skillmode `addHitup(6)` + stop `addHitup(-6)`。
+  - **PvP 武器破壞 10% 機率**：`pvp.go:170-172`：
+    ```go
+    if target.HasBuff(89) && world.RandInt(100) < 10 {
+        damagePlayerWeaponDurability(attacker, s.deps)
+    }
+    ```
+    對齊 Java `L1AttackPc.damagePcWeaponDurability:3420 _random.nextInt(100)+1 <= 10`。
+  - **武器類型排除**：`combat.go:933-935` `if pvp && (itemInfo.Type == "bow" || itemInfo.Type == "claw") return`——對齊 Java line 3400-3410 `_weaponType == 0/20/62 return`（0 赤手 Go 由 weapon==nil/category!=weapon 自然排除）。
+  - **STRIKER_GALE 攻擊者豁免**：`combat.go:937 if player.HasBuff(175) return` 對齊 Java line 3416 `_pc.hasSkillEffect(175) return`。
+  - **訊息 + 音效**：`combat.go:954,958` `SendServerMessageArgs(268, weaponName)` + `BroadcastToPlayers(BuildSkillEffect(10712))` 對齊 Java `S_ServerMessage(268, _weapon.getLogName())` + `sendPacketsX8(S_SkillSound(10712))`。
+  - **PvE 排除**：Java `_calcType != PC_PC return`（line 3396）只在 PvP 觸發；Go pvp.go:170 為 PvP-only 路徑，PvE combat.go 不檢查 89，自然對齊。
+  - **NON_CANCELLABLE**：`buffs.lua:243 [89] = true`（與 88 同列）對齊 Java `L1SkillMode.java:34`。
+  - **counterMagicExempt**：`skill_buff.go:403 89: true` 對齊 Java `EXCEPT_COUNTER_MAGIC` 含 89。
+  - **無 REPEATEDSKILLS 互斥**：Java 10 個群組均不含 89。
+- **broader gap（不改）**：
+  - **重施守衛廣域 pattern**：已從 106 audit 既知 Java >30 個 skillmodes 有同類守衛（ADVANCE_SPIRIT/AWAKEN_*/SHADOW_*/DRESS_*/ILLUSION_* 等）。Go 目前僅 dragon awakening（185/190/195）與本步 106/89 顯式守衛，其餘大多仍走 generic applyBuffEffect 可能允許 timer 刷新。應後續設計通用 `ActiveBuff.NoRefreshOnRecast` flag 或 lua `[X] = { no_refresh_on_recast = true }` 屬性系統化處理。本步維持單一技能 audit 範圍。
+  - **yaml drift**：skill_list.yaml `buff_duration=64`/`mp_consume=5`/`hp_consume=120`/`reuse_delay=5000` 待與 Java SQL 對照（另 audit 處理）。
+- **不寫新測試**：擴展現有 106 守衛清單為 (106, 89) 兩元素，與既有 dragon awakening 守衛（185/190/195）pattern 等價。依停損標準避免「Go 已對 + 防回歸」測試重複測同一機制（106 audit 已建立 pattern）。
+
 ## 增幅防禦（REDUCTION_ARMOR / 88）— 純審計無代碼變更
 
 - 純審計 `88 REDUCTION_ARMOR`：Go 完整對齊 Java 「無 skillmode + 4 攻擊路徑 flat 傷害減免」設計，公式 `dmg -= (max(targetLvl, 50) - 50) / 5 + (pvpPhysical ? 10 : 1)`。
