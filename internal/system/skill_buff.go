@@ -237,9 +237,12 @@ func (s *SkillSystem) applyBuffEffect(target *world.PlayerInfo, skill *data.Skil
 			target.BraveSpeed = byte(eff.BraveSpeed)
 			s.sendBraveToAll(target, byte(eff.BraveSpeed), uint16(skill.BuffDuration))
 		}
-		// Dodge 變化通知（龍之眼等）
+		// Dodge 變化通知。Java 區分兩條 packet 路徑：
+		//   - SOLID_CARRIAGE(90)/DRESS_EVASION(111) skillmode 送 `S_PacketBox(UPDATE_ER, getEr())`（迴避率更新）
+		//   - UNCANNY_DODGE(106)/MIRROR_IMAGE/DRAGONEYE_* skillmode 送 `S_PacketBoxIcon1(true, get_dodge())`（dodge icon）
+		// 兩條 packet opcode 不同（UPDATE_ER vs 0x58 dodge icon），不可混用。
 		if buff.DeltaDodge > 0 {
-			if skill.SkillID == 111 {
+			if skill.SkillID == 90 || skill.SkillID == 111 {
 				handler.SendUpdateER(target.Session, target.Dodge)
 			} else {
 				handler.SendDodgeIcon(target.Session, target.Dodge, true)
@@ -518,7 +521,9 @@ func (s *SkillSystem) revertBuffStats(target *world.PlayerInfo, buff *world.Acti
 	// 一律送 `S_PacketBoxIcon1(true, get_dodge())` = 0x58 + 當前 dodge 總值。
 	// 0x65（_dodge_down）是另一個 dodge_down 計數器（RESIST_FEAR 專用），不可混用。
 	if buff.DeltaDodge > 0 && target.Session != nil {
-		if buff.SkillID == 111 {
+		// 與 applyBuffEffect 對稱：90/111 走 UPDATE_ER 路徑；其餘 dodge buff（106/MIRROR/DRAGONEYE）走 dodge icon。
+		// Java SOLID_CARRIAGE.stop() line 47 與 DRESS_EVASION.stop() line 31 都送 S_PacketBox(UPDATE_ER, getEr())。
+		if buff.SkillID == 90 || buff.SkillID == 111 {
 			handler.SendUpdateER(target.Session, target.Dodge)
 		} else {
 			handler.SendDodgeIcon(target.Session, target.Dodge, true)

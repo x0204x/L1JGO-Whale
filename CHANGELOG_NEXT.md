@@ -1,5 +1,34 @@
 ## 技能
 
+## 堅固防護（SOLID_CARRIAGE / 90）— 修正 dodge 變化通知 packet（SendDodgeIcon → SendUpdateER）
+
+- 對齊 Java `skillmode/SOLID_CARRIAGE.java:18, 47`：cast 與 stop 兩端都送 `S_PacketBox(UPDATE_ER, pc.getEr())`（迴避率更新封包）。原 Go `applyBuffEffect`/`revertBuffStats` 對 `DeltaDodge > 0` 條件預設走 `SendDodgeIcon`（= `S_PacketBoxIcon1` 0x58 dodge icon packet），與 Java SOLID_CARRIAGE 期望的 UPDATE_ER packet 不同。原 Go 只對 skill 111 DRESS_EVASION 走 UPDATE_ER 分支，90 SOLID_CARRIAGE 缺失。
+- **修正**：`skill_buff.go:240-249` apply 路徑 + `:521-528` revert 路徑兩處同步擴展為 `if skill.SkillID == 90 || skill.SkillID == 111`：
+  ```go
+  // Dodge 變化通知。Java 區分兩條 packet 路徑：
+  //   - SOLID_CARRIAGE(90)/DRESS_EVASION(111) skillmode 送 S_PacketBox(UPDATE_ER, getEr())
+  //   - UNCANNY_DODGE(106)/MIRROR_IMAGE/DRAGONEYE_* skillmode 送 S_PacketBoxIcon1(true, get_dodge())
+  if skill.SkillID == 90 || skill.SkillID == 111 {
+      handler.SendUpdateER(target.Session, target.Dodge)
+  } else {
+      handler.SendDodgeIcon(target.Session, target.Dodge, true)
+  }
+  ```
+  兩條 packet opcode 不同（UPDATE_ER 0x84 vs dodge icon 0x58 byte 1），客戶端 UI 渲染位置/欄位不同，不可混用。
+- **其餘對齊（無修改）**：
+  - **盾牌/臂甲檢查**：`skill_self.go:113-118 case 90` `validateSolidCarriage(player) = shield != nil || guarder != nil` 對齊 Java `ConfigSkill.SOLID_CARRIAGE_MODE == 1` 路徑（yiwei 預設值 `各職業技能相關設置.properties:21 SOLID_CARRIAGE_MODE = 1`）：`getTypeEquipped(2,7) >= 1 || getTypeEquipped(2,13) >= 1`（type=2 為盾，slot 7 盾牌、slot 13 臂甲）。
+  - **盾牌缺失訊息**：`SendNormalChat(sess, 0, "你並未裝備盾牌")` 對齊 Java `S_ServerMessage("你並未裝備盾牌")`——chat.go:206 註解 `S_ServerMessage(String) 相同格式的 normal chat 文字`，packet 結構相同。
+  - **dodge=15 buff**：`buffs.lua:92 [90] = { dodge = 15 }` 對齊 Java `L1PcInstance.java:3389-3391 getEr() if hasSkillEffect(SOLID_CARRIAGE) er += 15`。
+  - **NON_CANCELLABLE**：`buffs.lua:244 [90] = true` 對齊 Java `L1SkillMode.java:34`。
+  - **counterMagicExempt**：`skill_buff.go:403 90: true` 對齊 Java `EXCEPT_COUNTER_MAGIC` 含 90。
+  - **無 REPEATEDSKILLS 互斥**：Java 10 個群組均不含 90。
+  - **無 recast guard**：Java skillmode 無 `if (!hasSkillEffect(90))` 守衛，重施允許刷新 timer——Go default 路徑亦如此，正確對齊（與 89/106 有守衛者不同）。
+- **broader gap（不改）**：
+  - **動態 getEr() vs 靜態 target.Dodge**（與 111 audit 同源）：Java `S_PacketBox(UPDATE_ER, getEr())` 送的是「總 ER 動態值」（含職業/等級/DEX/originalEr + 90 dodge=15 + 其他 buff）；Go `SendUpdateER(target.Dodge)` 送的是「累加 buff 值」。Knight L50 DEX12 持 SOLID_CARRIAGE 時 Java 送 ER=31（12+6+0+15），Go 送 15。屬廣域 ER 系統架構缺口。
+  - **STRIKER_GALE 短路反向**（與 111 audit 同源）：Java getEr() 對持 174 玩家 return 0；Go 90 cast 若 174 已啟動仍送 Dodge。屬上述廣域缺口子症狀。
+  - **yaml drift**：與多技能同源廣域缺口。
+- **不寫新測試**：擴展現有 `skill 111` 分支為 `skill 90 || skill 111`，與 111 既有 UPDATE_ER 邏輯等價（111 已被 elemental_buff_test 等覆蓋 lua dodge 加成路徑）。依停損標準避免「Go 已對 + 防回歸」測試重複測同一 packet 分支。
+
 ## 尖刺盔甲（BOUNCE_ATTACK / 89）— 補齊重施守衛
 
 - 對齊 Java `skillmode/BOUNCE_ATTACK.java:13` `if (!srcpc.hasSkillEffect(89)) { setSkillEffect(89, integer*1000); addHitup(6); }`——重施時跳過 addHitup(6)+timer。原 Go `executeSelfSkill` default 路徑會在重施時透過 `applyBuffEffect → AddBuff 替換 + revertBuffStats(-6) → applyBuffStats(+6)` 形成中間瞬時 -6/+6 cycling + timer 刷新延長 buff，違反 Java「重施不刷新」語義。
