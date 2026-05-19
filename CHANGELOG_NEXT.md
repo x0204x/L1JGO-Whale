@@ -1,5 +1,14 @@
 ## 技能
 
+## 第 6 批 龍騎士（181-184）批次純審計重新確認完整對齊 Java
+
+- **181 DRAGON_SKIN（龍之護鎧）**：`buffs.lua:147 [181] = { ac = -5 }` 對齊 Java DRAGON_SKIN.skillmode `addAc(-5)`；無特殊 case，純 generic buff apply 路徑。yaml `skill_list.yaml:5551` 31 欄位中 28 項對齊 yiwei `skills.sql:180`，3 項漂移（hp_consume=15 vs 12、buff_duration=1200 vs 1800、reuse_delay=0 vs 10）Go 跟 cat-fei。
+- **182 BURNING_SLASH（爆裂斬擊）**：一次性 +10 加傷 + 消耗 buff + 視覺特效實作完整對齊 Java BURNING_SLASH.skillmode 套用後立即消耗。
+- **183 GUARD_BRAKE（破壞護甲）**：AC+10 cast / AC-10 stop + MR 抗性閘對齊 Java skillmode；既有 `executeNpcDebuffSkill` 路徑。
+- **184 MAGMA_BREATH（岩漿吐息）**：純 yaml-driven attack，無特殊邏輯，由 calc_magic_damage 統一處理。
+- **broader gap（不改）**：yaml 多項漂移屬廣域 yiwei/cat-fei SQL 同步議題（同 130/132/146/148/149/150 同源）。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計批次）。
+
 ## 能量激發（ADDITIONAL_FIRE / 176）— 純審計重新確認核心負重 HP/MP 回復旗標完整對齊 Java（無屬性加成）
 
 - **Java 對照**：`L1PcInstance.isRegenHp/isRegenMp` 行 775/831 對 ADDITIONAL_FIRE 純為旗標（同 169 EXOTIC_VITALIZE 相同設計）。
