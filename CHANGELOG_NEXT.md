@@ -1,5 +1,13 @@
 ## 技能
 
+## 幻象（AVATA / 120）— 純佔位技能，兩端皆無實作（純審計）
+
+- **Java 對照**：grep `AVATA` 在全 yiwei src 只命中 `L1SkillId.java:441 public static final int AVATA = 120;` 一處（其餘 `AVATA*` 匹配為 `BRAVE_AVATAR`/`ILLUSION_AVATAR` 等不同技能）。**無 `skillmode/AVATA.java`、無 `L1SkillUse` case、無 `L1SkillStop` case、無 timer、無攻擊路徑引用**——skill 120 純常數定義，未實作任何行為。
+- **Go 對照**：grep `AVATA|skill.*120|case 120` 在全 `server/internal/` 無任何命中——無 `buffs.lua` entry、無 handler 邏輯、無 system 程式碼路徑。
+- **yaml**：cat-fei `(120,'none',15,7,0,0,0,0,0,0,'none',0,0,0,0,0,0,0,0,0,0,0,0,128,'',19,2280,0,0,0,0,0)` ＝ name='none'、mp=0、hp=0、buff_duration=0、target='none'、target_to=0、type=0、id=128、name_id=''、action_id=19、cast_gfx=2280、其餘皆 0。Go yaml `skill 120` 完全對齊（同 name='none'、同 cast_gfx=2280、同 id=128）。yiwei `db_split/skills.sql` 無 120 entry（與貓飛差異）。
+- **結論：純佔位技能，兩端都刻意無實作，零 Java-vs-Go 差異**。yaml entry 存在是為了 data loader 完整性（避免空缺造成 lookup 失敗），但 skill 120 不會被 cast、不會掛 buff、不會觸發任何行為。
+- **無修正**、**無測試**：技能 ID 對照表既有註記「Java 僅有常數與資料列，未看到 skillmode / timer / stop 行為；Go 目前不需新增狀態效果」已正確描述狀態。本次審計純粹確認此狀態仍然成立並標記 ✅。
+
 ## 神聖犧牲（DIVINE_SACRIFICE / 119）— 純審計，無 Java 差異需修
 
 - **Java 對照**：
