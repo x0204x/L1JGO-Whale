@@ -1,5 +1,19 @@
 ## 技能
 
+## 化身（ILLUSION_AVATAR / 219）
+
+- 清除 `buffs.lua [219]` 的 `exclusions = {204, 209, 214}` stale 互斥群，對齊 Java `skillmode/ILLUSION_AVATAR.java` 沒有 REPEATEDSKILLS 互斥，與 Java `L1SkillMode.java:38-39 isNotCancelable` 將四個 illusion buff 同列「不可被相消移除」一致——意即四個 illusion buff 可並存。
+  - 與先前 204 ILLUSION_OGRE / 209 ILLUSION_LICH / 214 ILLUSION_DIA_GOLEM 同樣的 exclusions 已分別於先前 commit 移除，本步補完 219 的清理。
+- **不動處**：
+  - `buffs.lua [219] = { dmg_mod = 10, bow_dmg = 10 }` 對齊 Java `pc.addDmgup(10) + pc.addBowDmgup(10)`。
+  - `weapon_skill.go:327 if player.HasBuff(219) { dmg += 10 }` 屬武器附加技能加成路徑，與 buff 的 dmg_mod 共存（Java 武器技能傷害有獨立流程）。
+  - `counterMagicExempt[219] = true` (`skill_buff.go:411`) 對齊 Java `EXCEPT_COUNTER_MAGIC` 含 ILLUSION_AVATAR。
+  - `NON_CANCELLABLE[219] = true` (`buffs.lua:273`) 對齊 Java `L1SkillMode.isNotCancelable`。
+- **broader gap（不改）**：
+  - **`pc.setAvatar(ILLUSION_AVATAR_DAMAGE)` 機制**：Java `L1AttackPc.java:1600-1602` 與 `L1AttackNpc.java:382-384` 的 `dmg -= dmg * (getAvatar() / 100)` 因 `ILLUSION_AVATAR_DAMAGE` default=1、整數除 `1/100=0` 整個運算式恆為 0，等同 dead-code（必須 admin 將 `ILLUSION_AVATAR_DAMAGE>=100` 才生效，但會變成全免疫不合理）。Go 不實作 Avatar 欄位與對應傷害減免，行為等同 Java 預設配置。若未來伺服器明確需要該機制，需先建立 PlayerInfo.Avatar 欄位 + 雙路徑 dmg 減免 consumer。
+  - **yaml mp/reuse/buff_duration/target/type/ranged drift**：與 207-218 同源 broader gap。
+- 驗證：`go build ./...` 通過；`go test ./internal/system/ -count=1` 全綠（17.690s）。
+
 ## 疼痛的歡愉（JOY_OF_PAIN / 218）
 
 - 補齊 Java `L1PcInstance.receiveDamage:2737-2773` 對所有 PC→PC 傷害源觸發 backlash 的對齊缺口：

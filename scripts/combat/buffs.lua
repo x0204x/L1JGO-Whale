@@ -175,7 +175,7 @@ BUFF_DEFS = {
     [216] = { str = 1, con = 1, dex = 1, wis = 1, intel = 1 },              -- Insight
     [217] = { str = -1, con = -1, dex = -1, wis = -1, intel = -1 },         -- Panic (debuff)
 
-    [219] = { dmg_mod = 10, bow_dmg = 10, exclusions = {204, 209, 214} },   -- Illusion Avatar
+    [219] = { dmg_mod = 10, bow_dmg = 10 },                                  -- Illusion Avatar（Java skillmode/ILLUSION_AVATAR.java:28-31 only addDmgup(+10)+addBowDmgup(+10)+setAvatar；無 REPEATEDSKILLS 互斥群——Java 允許四個 illusion buff 並存。setAvatar 用於 dmg-=(dmg*Avatar/100) 但 Java default ILLUSION_AVATAR_DAMAGE=1 → 整數除 1/100=0 等同 dead-code，Go 不實作）
 
     -- ==================== Dragon Eye 龍之眼 (6683-6689) ====================
 
