@@ -136,7 +136,7 @@ function calc_physical_skill(ctx)
         -- Skill-specific bonuses
         -- 注：三重矢（132）已改走 combat.go 的 ExecuteRangedAttackOnNpc × 3
         -- + pvp.go 的 HandlePvPFarAttack × 3 完整弓箭路徑（含 DEX_DMG / 箭矢 / 武器 buff），
-        -- 倍率由 player.TripleArrowActive 旗標在 processRangedAttack/HandlePvPFarAttack 內套用，不再走本函式。
+        -- 不再走本函式；亦不套用 Java ConfigSkill.TRIPLE_ARROW_DMG=5 倍率（Go 設計刻意捨棄該倍率）。
         if sid == 108 then      -- Critical Strike: guaranteed extra damage
             damage = damage + level + math.floor(str / 3)
         elseif sid == 208 then  -- Bone Break/Skull Destruction

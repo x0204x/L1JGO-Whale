@@ -121,7 +121,6 @@ type PlayerInfo struct {
 	Sleeped          bool  // true when under sleep effect
 	Silenced         bool  // 沉默狀態（沉默毒 / silence 技能）— 禁止施法
 	AbsoluteBarrier  bool  // 絕對屏障（skill 78）— 免疫所有傷害，攻擊/施法/使用道具時解除
-	TripleArrowActive bool  // 三重矢（skill 132）正在發射 3 連射時為 true，遠程傷害套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率（Java: L1PcInstance._isTRIPLE_ARROW + L1AttackPc.java:1512/2002）
 	AttackView       bool  // 浮動傷害數字開關（Java: is_attack_view，預設 true，聊天輸入 dmg 切換）
 	WaterOff         bool  // GM 切換：true 時即使在 underwater 地圖也不送水的旗標給客戶端
 

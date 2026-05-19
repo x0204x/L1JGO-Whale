@@ -492,12 +492,6 @@ func (s *CombatSystem) processRangedAttackForPlayer(player *world.PlayerInfo, ta
 		damage += processDollSkillProc(player, npc, nearby, s.deps)
 	}
 
-	// 三重矢（skill 132）正在發射時，每發弓矢套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率。
-	// 對齊 Java `L1AttackPc.java:2002-2004 if (_pc.getIsTRIPLE_ARROW()) dmg *= ConfigSkill.TRIPLE_ARROW_DMG`。
-	if damage > 0 && player.TripleArrowActive {
-		damage *= tripleArrowDmgMultiplier
-	}
-
 	// 廣播遠程攻擊動畫（含箭矢投射物）
 	handler.SendArrowAttackPacket(player.Session, player.CharID, npc.ID, damage, player.Heading,
 		player.X, player.Y, npc.X, npc.Y)

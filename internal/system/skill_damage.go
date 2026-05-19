@@ -14,10 +14,6 @@ const (
 	skillFinalBurn   = int32(108)
 )
 
-// tripleArrowDmgMultiplier 對齊 yiwei `各職業技能相關設置.properties: Triple_Arrow_Dmg = 5.0`
-// （Java `ConfigSkill.TRIPLE_ARROW_DMG`，套用於 `L1AttackPc.java:1512/2002`）。
-const tripleArrowDmgMultiplier = 5
-
 func (s *SkillSystem) canSkillReachTarget(caster *world.PlayerInfo, skill *data.SkillInfo, mapID int16, x, y int32) bool {
 	if caster == nil || skill == nil {
 		return false
@@ -66,17 +62,15 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 	}
 
 	// 三重矢（132）PvP：對齊 Java `TRIPLE_ARROW.start()` for-loop 3 次 `cha.onAction(srcpc)`，
-	// 走完整 L1AttackPc PvP 弓箭流程：每發獨立命中骰、武器/箭矢/DEX_DMG/buff 加成、扣箭矢、
-	// 傷害套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率（由 HandlePvPFarAttack 讀 attacker.TripleArrowActive）。
+	// 走完整 L1AttackPc PvP 弓箭流程：每發獨立命中骰、武器/箭矢/DEX_DMG/buff 加成、扣箭矢。
+	// 不套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率（Go 設計刻意捨棄該倍率以維持遊戲平衡）。
 	if skill.SkillID == 132 && s.deps.PvP != nil {
-		player.TripleArrowActive = true
 		for i := 0; i < 3; i++ {
 			s.deps.PvP.HandlePvPFarAttack(player, target)
 			if target.Dead || target.HP <= 0 {
 				break
 			}
 		}
-		player.TripleArrowActive = false
 		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
 		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))
@@ -429,18 +423,16 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 	}
 
 	// 三重矢（132）：對齊 Java `TRIPLE_ARROW.start()` for-loop 3 次 `cha.onAction(srcpc)`，
-	// 走完整 L1AttackPc 弓箭流程：每發獨立命中骰、武器/箭矢/DEX_DMG/buff 加成、扣箭矢、
-	// 傷害套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率（由 processRangedAttack 讀 player.TripleArrowActive）。
+	// 走完整 L1AttackPc 弓箭流程：每發獨立命中骰、武器/箭矢/DEX_DMG/buff 加成、扣箭矢。
+	// 不套用 ConfigSkill.TRIPLE_ARROW_DMG=5 倍率（Go 設計刻意捨棄該倍率以維持遊戲平衡）。
 	// 廣播 4394（加速封包）+ 11764（特效動畫）對應 Java skillmode 第 45-46 行收尾。
 	if skill.SkillID == 132 && s.deps.Combat != nil {
-		player.TripleArrowActive = true
 		for i := 0; i < 3; i++ {
 			s.deps.Combat.ExecuteRangedAttackOnNpc(player, npc.ID)
 			if npc.Dead {
 				break
 			}
 		}
-		player.TripleArrowActive = false
 		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
 		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
 		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))

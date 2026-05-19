@@ -181,3 +181,85 @@ func TestRangedAttackSkipsPlayerBehindWall(t *testing.T) {
 		t.Fatalf("隔牆遠攻 PvP 不應該委派傷害，calls=%d", pvp.farCalls)
 	}
 }
+
+// TestTripleArrowDirectInvocationDamage 直接呼叫 ExecuteRangedAttackOnNpc 3 次模擬 skill 132 主迴圈，
+// 量測每次擊中的傷害值與總 HP 損失，確認每次 call 套用一發完整 bow 攻擊（不帶 ×5 倍率，
+// Go 設計刻意捨棄 Java ConfigSkill.TRIPLE_ARROW_DMG=5 倍率以維持遊戲平衡）。
+func TestTripleArrowDirectInvocationDamage(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:     1,
+		Session:       newSkillTestSession(t, 1),
+		CharID:        1001,
+		Name:          "archer",
+		X:             100,
+		Y:             100,
+		MapID:         900,
+		Level:         70,
+		Str:           30,
+		Dex:           30,
+		BowHitMod:     50,
+		BowDmgMod:     0,
+		CurrentWeapon: 20,
+	})
+	player.Equip.Set(world.SlotWeapon, &world.InvItem{ItemID: 190, ObjectID: 5001, Equipped: true}) // 沙哈之弓（無箭可發魔法箭）
+
+	// NPC 放 x=101 避開測試地圖 x=102 的箭矢牆（tile=3）。
+	npc := &world.NpcInfo{
+		ID:    2001,
+		Impl:  "L1Monster",
+		Name:  "dummy",
+		X:     101,
+		Y:     100,
+		MapID: 900,
+		HP:    100000,
+		MaxHP: 100000,
+		AC:    0,
+		Size:  "small",
+		Level: 1,
+	}
+	ws.AddNpc(npc)
+	s := newCombatLOSTestSystem(t, ws, &fakePvPManager{})
+
+	// 先量測「單次普通遠程攻擊」基底傷害取樣（30 次取最大值）作為上限參考
+	baseStartHP := npc.HP
+	maxSingleHit := int32(0)
+	for i := 0; i < 30; i++ {
+		hpBefore := npc.HP
+		s.processRangedAttackForPlayer(player, npc.ID)
+		hit := hpBefore - npc.HP
+		if hit > maxSingleHit {
+			maxSingleHit = hit
+		}
+	}
+	t.Logf("單次普通遠程攻擊取樣最大傷害 = %d（30 次取樣）", maxSingleHit)
+	npc.HP = baseStartHP // 回復測量基準
+
+	// 模擬 skill 132 主迴圈：3× ExecuteRangedAttackOnNpc。
+	hpBefore := npc.HP
+	perHitDamages := make([]int32, 0, 3)
+	for i := 0; i < 3; i++ {
+		before := npc.HP
+		s.ExecuteRangedAttackOnNpc(player, npc.ID)
+		perHitDamages = append(perHitDamages, before-npc.HP)
+	}
+	totalLoss := hpBefore - npc.HP
+
+	t.Logf("三重矢 3 次擊中傷害分布 = %v，總 HP 損失 = %d", perHitDamages, totalLoss)
+
+	// 上限檢查：每次擊中應與單次普通遠程攻擊同範圍（不套 ×5 倍率），
+	// 給 1.5 倍 buffer 涵蓋取樣未覆蓋的高骰結果。
+	upper := maxSingleHit * 3 / 2
+	for i, d := range perHitDamages {
+		if d > upper {
+			t.Fatalf("第 %d 次擊中傷害 %d 超過合理上限 %d（單次普通 × 1.5 buffer），疑似套用 ×5 倍率或重複計算",
+				i+1, d, upper)
+		}
+	}
+
+	// 總損失上限：3 × 單次普通 × 1.5 buffer。
+	totalUpper := maxSingleHit * 3 * 3 / 2
+	if totalLoss > totalUpper {
+		t.Fatalf("總 HP 損失 %d 超過合理上限 %d，疑似套用 ×5 倍率", totalLoss, totalUpper)
+	}
+}

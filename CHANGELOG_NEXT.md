@@ -1,6 +1,6 @@
 ## 技能
 
-## 三重矢（TRIPLE_ARROW / 132）— 完整 B 路徑重構：3 次獨立 L1AttackPc 弓箭流程 + DEX_DMG / 箭矢加傷 / 武器 buff 鏈 + ×5 倍率對齊 Java（修使用者回報「傷害怪怪」）
+## 三重矢（TRIPLE_ARROW / 132）— 完整 B 路徑重構：3 次獨立 L1AttackPc 弓箭流程 + DEX_DMG / 箭矢加傷 / 武器 buff 鏈（刻意捨棄 Java ×5 倍率以維持遊戲平衡）
 
 - **問題回報**：使用者觀察到三重矢傷害異常。Phase 1 根因調查發現 4 項真實差異：
   - **a) 3 發傷害數字完全相同**：Java 為 3 次獨立 `cha.onAction(srcpc)` 完整擲骰，Go 算 1 次傷害後 loop 3 次套用相同 dmg。
@@ -11,32 +11,30 @@
 - **Java 對照**：
   - `TRIPLE_ARROW.skillmode start():13-48`：弓裝備檢查（`getCurrentWeapon() != 20 → return 0`）→ `setIsTRIPLE_ARROW(true)` → `for (int i=0; i<3; i++) cha.onAction(srcpc)` → `setIsTRIPLE_ARROW(false)` → `sendPacketsAll(S_SkillSound(4394) + S_SkillSound(11764))`。
   - 每次 `cha.onAction(srcpc)` 走完整 L1AttackPc 弓箭流程：箭矢消耗、命中骰、武器擲骰、STR_DMG/DEX_DMG/arrow_dmg/weapon enchant、武器 buff 鏈、reduction armor 等。
-  - `L1AttackPc.java:1512/2002 if (_pc.getIsTRIPLE_ARROW()) dmg *= ConfigSkill.TRIPLE_ARROW_DMG`，yiwei `各職業技能相關設置.properties: Triple_Arrow_Dmg=5.0`。
+  - `L1AttackPc.java:1512/2002 if (_pc.getIsTRIPLE_ARROW()) dmg *= ConfigSkill.TRIPLE_ARROW_DMG=5.0`——**Go 刻意不對齊此倍率**。Java 另有 `妖精_技能設定表.properties: Triple_Arrow_Dmg = 1.0` 載入 ConfigElfSkill 但 L1AttackPc 未引用，Go 行為相當於使用後者 1.0。
 
 - **Go 修改**：
-  - `world/state.go`：`PlayerInfo` 新增 `TripleArrowActive bool` 旗標對齊 Java `_isTRIPLE_ARROW`。
-  - `handler/context.go`：`CombatQueue` 介面新增 `ExecuteRangedAttackOnNpc(player, npcID)` 同步入口。
-  - `system/combat.go`：抽取 `processRangedAttack` 主體為 `processRangedAttackForPlayer`，新增 `ExecuteRangedAttackOnNpc` 公開方法；在 damage 修飾鏈末尾、HP 扣除前套用 `if damage > 0 && player.TripleArrowActive { damage *= tripleArrowDmgMultiplier }`（常數 = 5）。
-  - `system/pvp.go`：`HandlePvPFarAttack` 在 reduction_armor 之後套用相同 `damage *= 5` 路徑。
-  - `system/skill_damage.go`：NPC 路徑 `executeAttackSkill` 對 skillID==132 提早分流：`TripleArrowActive=true → loop 3× ExecuteRangedAttackOnNpc → TripleArrowActive=false → 廣播 4394+11764 → return`；PC 路徑 `executeAttackSkillOnPlayer` 同模式 `HandlePvPFarAttack ×3`。
+  - `handler/context.go`：`CombatQueue` 介面新增 `ExecuteRangedAttackOnNpc(player, npcID)` 同步入口（不經佇列）。
+  - `system/combat.go`：抽取 `processRangedAttack` 主體為 `processRangedAttackForPlayer`，新增 `ExecuteRangedAttackOnNpc` 公開方法。
+  - `system/skill_damage.go`：NPC 路徑 `executeAttackSkill` 對 skillID==132 提早分流：`loop 3× ExecuteRangedAttackOnNpc → 廣播 4394+11764 → return`；PC 路徑 `executeAttackSkillOnPlayer` 同模式 `HandlePvPFarAttack ×3`。**不**設定旗標、**不**套用 ×5 倍率。
   - **移除死碼**：`magic.lua calc_physical_skill` 的 `elseif sid == 132` 整段分支、`skill_damage.go` 手動 1 箭消耗、NPC/PC 兩處 `if skillID==132 && hitCount<3 → 3` 強制三命中、兩處攻擊後的 4394+11764 收尾廣播。
 
-- **效果**：每發走完整 `calc_ranged_attack`（含 `DEX_DMG` 主、`STR_DMG/2`、箭矢加傷、bow_dmg_mod）+ striker_gale + dark_elf_physical + brave_aura + immune_to_harm + reduction_armor + weapon_skill_proc + doll_skill_proc，且每發各別 `FindArrow + RemoveItem(1)` ⇒ 3 箭實際消耗對齊 Java per-onAction。傷害數字每發獨立、命中獨立判定、所有武器 buff 完整生效。
+- **效果**：每發走完整 `calc_ranged_attack`（含 `DEX_DMG` 主、`STR_DMG/2`、箭矢加傷、bow_dmg_mod）+ striker_gale + dark_elf_physical + brave_aura + immune_to_harm + reduction_armor + weapon_skill_proc + doll_skill_proc，且每發各別 `FindArrow + RemoveItem(1)` ⇒ 3 箭實際消耗對齊 Java per-onAction。傷害每發獨立擲骰、命中獨立判定、所有武器 buff 完整生效，**但每發約等同單發普通弓箭**（無 ×5 倍率）。
 
 - **新測試**：
-  - 替換舊 `TestSkillTripleArrowDamagesPlayerTargetThreeTimes`（驗證 S_OPCODE_ATTACK ×3，是錯誤行為）。
-  - 新增 `TestSkillTripleArrowRoutesThroughPvPFarAttackThreeTimes`：以 `tripleArrowPvPSpy` 鎖定 HandlePvPFarAttack 呼叫 3 次、TripleArrowActive 旗標期間為 true 結束還原、收尾廣播包含 4394+11764 兩 S_OPCODE_EFFECT 封包。
+  - 替換舊 `TestSkillTripleArrowDamagesPlayerTargetThreeTimes`（驗證 S_OPCODE_ATTACK ×3 為錯誤行為）。
+  - 新增 `TestSkillTripleArrowRoutesThroughPvPFarAttackThreeTimes`：鎖定 HandlePvPFarAttack 呼叫 3 次 + 收尾廣播 4394+11764。
+  - 新增 `TestTripleArrowDirectInvocationDamage`：實測 ExecuteRangedAttackOnNpc × 3，每次擊中傷害 ≤ 單次普通弓箭 × 1.5 buffer（無 ×5 倍率回歸防護）。實測值：單次普通最大 16，三重矢 3 次 `[13, 15, 13]` 總 41——每發 ~1× 單發普通，3 發合計約 3×。
 
 - **broader gap（不改）**：
   - **A) SprTable.getAttackSpeed(playerGFX, 21)==0 變身動畫檢查**：Go 無 SPR table 系統屬廣域變身動畫缺口。
   - **B) yaml reuse_delay=400 三方漂移**：Go 既不跟貓飛也不跟 yiwei，屬廣域 SQL 漂移議題。
   - **C) Java NPC 端 npc.attackTarget(cha) ×3 倒序循環**：Go NPC 技能路徑由 SkillSystem 處理而非 NpcAi，屬廣域 NPC 技能 system routing 議題。
-  - **D) `dmg *= 5` 套用點位置略差**：Java 在 L1AttackPc 中段，Go 在末尾——數值差異可忽略。
-  - **E) ConfigElfSkill.TRIPLE_ARROW_DMG=1.0 雙路徑遺跡**：Java L1AttackPc 實際讀 ConfigSkill.TRIPLE_ARROW_DMG=5.0，Go 採 5.0 對齊實際生效值。
+  - **D) 刻意不對齊 Java ×5 per-hit 倍率**：使用者實測判定 ×5 倍率（=每發 5×、3 發 15×）破壞遊戲平衡，明示要求移除。Java 兩 config 檔本身衝突（`ConfigSkill=5.0` vs `ConfigElfSkill=1.0`），Go 採後者語意。本決策為使用者明示要求，非疏漏。
 
 - **驗證**：
   - `cd server && go build ./...` 通過。
-  - `go test ./internal/system` 全部通過（21.9s，含新測試）。
+  - `go test ./internal/system + ./internal/handler` 全部通過。
   - 排序佇列原訂下一項為 164 NATURES_BLESSING，本項為使用者插隊請求（非佇列推進）。
 
 ## 烈炎武器（BURNING_WEAPON / 163）— 純審計確認核心 DmgMod ±6 + HitMod ±3 + REPEATEDSKILLS[0] 5 項武器 buff 互斥完整對齊 Java

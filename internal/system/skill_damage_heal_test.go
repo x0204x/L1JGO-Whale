@@ -221,13 +221,12 @@ func TestSkillDamageHealChillTouchLeechesFromPlayerTarget(t *testing.T) {
 	}
 }
 
-// tripleArrowPvPSpy 記錄 HandlePvPFarAttack 被呼叫的次數與當下的 TripleArrowActive 狀態，
+// tripleArrowPvPSpy 記錄 HandlePvPFarAttack 被呼叫的次數，
 // 用來驗證三重矢（skill 132）走完整 PvP 弓箭路徑 × 3 而非舊的單次傷害複製 3 次的退化路徑。
 type tripleArrowPvPSpy struct {
-	farCalled         int
-	flagDuringCallTrue bool
-	attacker          *world.PlayerInfo
-	target            *world.PlayerInfo
+	farCalled int
+	attacker  *world.PlayerInfo
+	target    *world.PlayerInfo
 }
 
 func (s *tripleArrowPvPSpy) HandlePvPAttack(_, _ *world.PlayerInfo) {}
@@ -235,17 +234,13 @@ func (s *tripleArrowPvPSpy) HandlePvPFarAttack(attacker, target *world.PlayerInf
 	s.farCalled++
 	s.attacker = attacker
 	s.target = target
-	if attacker != nil && attacker.TripleArrowActive {
-		s.flagDuringCallTrue = true
-	}
 }
 func (s *tripleArrowPvPSpy) AddLawfulFromNpc(_ *world.PlayerInfo, _ int32) {}
 func (s *tripleArrowPvPSpy) TriggerPinkName(_, _ *world.PlayerInfo)        {}
 
 // TestSkillTripleArrowRoutesThroughPvPFarAttackThreeTimes 驗證三重矢（132）PvP 路徑
 // 對齊 Java `TRIPLE_ARROW.start()` 第 39-41 行 `for (int i = 0; i < 3; i++) cha.onAction(srcpc)`：
-// 走 3 次完整 PvP 弓箭流程（HandlePvPFarAttack），TripleArrowActive 旗標在呼叫期間為 true、
-// 結束時還原為 false。
+// 走 3 次完整 PvP 弓箭流程（HandlePvPFarAttack）。
 func TestSkillTripleArrowRoutesThroughPvPFarAttackThreeTimes(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
@@ -288,12 +283,6 @@ func TestSkillTripleArrowRoutesThroughPvPFarAttackThreeTimes(t *testing.T) {
 
 	if pvp.farCalled != 3 {
 		t.Fatalf("三重矢 PvP 應呼叫 HandlePvPFarAttack 3 次，got=%d", pvp.farCalled)
-	}
-	if !pvp.flagDuringCallTrue {
-		t.Fatalf("三重矢期間 attacker.TripleArrowActive 應為 true（讓 HandlePvPFarAttack 內部套用 ×5 倍率）")
-	}
-	if caster.TripleArrowActive {
-		t.Fatalf("三重矢結束後 attacker.TripleArrowActive 應還原為 false")
 	}
 	if pvp.attacker != caster || pvp.target != target {
 		t.Fatalf("HandlePvPFarAttack 接到的 (attacker, target) 不符 expected=(%p,%p) got=(%p,%p)",
