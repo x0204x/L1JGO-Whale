@@ -1087,6 +1087,14 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		s.applyBuffEffect(target, &sleepSkill)
 		return
 
+	case 212: // 幻想 — Java skillmode/PHANTASM.java:22 對 PC `setSkillEffect(66, integer*1000)`
+		// 使用 FOG_OF_SLEEPING(66) 而非 PHANTASM(212) 作為實際 buff key，讓
+		// `hasSkillEffect(66)` cross-skill 查詢能正確命中（同 case 103 模式）。
+		sleepSkill := *skill
+		sleepSkill.SkillID = 66
+		s.applyBuffEffect(target, &sleepSkill)
+		return
+
 	case 113: // 精準目標 — Owner: skill_clan.go；目標狀態 + S_TrueTarget 給血盟成員
 		s.applyTrueTargetEffect(player, target, skill, text)
 		return

@@ -95,6 +95,8 @@ func TestSkillIllusionistStatusConfusionSilencesPlayerTarget(t *testing.T) {
 }
 
 func TestSkillIllusionistStatusPhantasmSleepsPlayerTarget(t *testing.T) {
+	// PHANTASM 已加入 playerDebuffSkills，需停用 MR 機率以避免測試 flaky。
+	disablePlayerDebuffMRForStatusTest(t, 212)
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 1,
@@ -128,8 +130,10 @@ func TestSkillIllusionistStatusPhantasmSleepsPlayerTarget(t *testing.T) {
 	if !target.Sleeped || target.Paralyzed {
 		t.Fatalf("幻想應造成睡眠而不是一般麻痺，Sleeped=%v Paralyzed=%v", target.Sleeped, target.Paralyzed)
 	}
-	if !target.HasBuff(212) {
-		t.Fatal("幻想應註冊 212 active buff 以便到期解除睡眠")
+	// Java skillmode/PHANTASM.java:22 對 PC `setSkillEffect(66, integer*1000)` ——
+	// 實際 buff key 是 FOG_OF_SLEEPING(66) 而非 PHANTASM(212)，與 case 103 暗黑盲咒同模式。
+	if !target.HasBuff(66) {
+		t.Fatal("幻想應註冊 66 (FOG_OF_SLEEPING) active buff 以便到期解除睡眠（對齊 Java skillmode）")
 	}
 }
 

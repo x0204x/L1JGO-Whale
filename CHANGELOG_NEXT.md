@@ -1,5 +1,22 @@
 ## 技能
 
+## 幻想（PHANTASM / 212）
+
+- 修正 `212 PHANTASM` 三項 Java `skillmode/PHANTASM.java` 對齊缺失：
+  1. **PC→PC 缺 MR 機率檢查**：Go `playerDebuffSkills` 原本不含 212，PC 對 PC 施放 PHANTASM 無 MR 抗性判定 → 100% 命中。Java `L1MagicPc.calcProbabilityMagic case PHANTASM` 使用 ConfigIllusionstSkill 5/10/15 by level diff + RegistSleep penalty。新增 `212: true` 到 map，目前先用 generic `checkPlayerMRResist`（50% base + INT/MR），完整 Java 5/10/15 公式留 broader gap。
+  2. **PC→NPC 完全無 sleep 效果**：Go `skill_status.go` NPC 分派 switch 缺 `case 212`，PHANTASM 對 NPC 落入 default 只播放 cast gfx，**完全不睡 NPC**。新增 `case 212` 鏡像 `case 66` 邏輯：`checkNpcMRResist + npc.Sleeped=true + npc.AddDebuff(66, dur*5)`。
+  3. **PC inflicted buff key 對齊 Java skill 66**：Go 原本 `applyBuffEffect` 走 `[212]={sleeped=true}` 儲存 buff ID 212；Java skillmode `setSkillEffect(66, integer*1000)` 應儲存 FOG_OF_SLEEPING(66)。新增 `case 212` 鏡像 `case 103 暗黑盲咒` 模式，將 `sleepSkill.SkillID = 66` 後 applyBuffEffect。讓 `hasSkillEffect(66)` cross-skill 查詢能正確命中。
+- 配套說明：
+  - PC 路徑使用 `applyBuffEffect` + skill ID 66，套用 buffs.lua 既有 `[66] = { sleeped = true }` 定義；buffs.lua `[212]` entry 保留以維持向後相容（既有 save 可能含 212 buff，cleanup 路徑於 skill_status.go:162,167 仍會處理）。
+  - NPC 路徑使用 `npc.AddDebuff(66, dur*5)`，與 case 66 沉睡之霧的 debuff key 一致。
+  - PHANTASM 觸發 SleepApply (0x0A) 經由 `applyBuffEffect` 的 eff.Sleeped 分支自動處理。
+  - 既有測試 `TestSkillIllusionistStatusPhantasmSleepsPlayerTarget` 改為斷言 `HasBuff(66)`（對齊 Java），並 `disablePlayerDebuffMRForStatusTest(t, 212)` 避免 MR 機率讓測試 flaky。
+- **broader gap（不改）**：
+  - **PC→PC 機率公式個別化**：Go 用 generic `checkPlayerMRResist`，Java 用 ConfigIllusionstSkill 5/10/15 + RegistSleep。與 BONE_BREAK 208 同源 broader gap。
+  - **PC→NPC 機率公式個別化**：Go `checkNpcMRResist` generic，Java 同樣 5/10/15。
+  - **yaml `reuse_delay 0→3000`、`ranged 3→4`、`probability_value/dice 30→0`**：屬 yaml tuning，與 207/208/209/210/211 同源。
+- 驗證：`go build ./...` 通過、`go test ./internal/system/ -count=1` 全綠（含修正的 Phantasm 測試）。
+
 ## 耐力（PATIENCE / 211）— 純審計無代碼變更
 
 - 純審計 `211 PATIENCE`，發現 Java vs Go 行為差異但暫不修改（待使用者決定）：

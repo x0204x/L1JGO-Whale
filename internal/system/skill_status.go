@@ -561,6 +561,26 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 		}
 		s.deps.Log.Info(fmt.Sprintf("沉睡之霧  施法者=%s  NPC=%s  持續=%d秒", player.Name, npc.Name, dur))
 
+	case 212: // 幻想 — Java skillmode/PHANTASM.java:27-28 對 NPC `setSkillEffect(66, integer*1000) + setSleeped(true)`
+		// 使用 FOG_OF_SLEEPING(66) 作為實際 debuff key 對齊 Java 行為（npc.hasSkillEffect(66) 可被
+		// 其他系統正確命中）。NPC MR 機率走 generic `checkNpcMRResist`，與 Java
+		// `L1MagicPc.calcProbabilityMagic case PHANTASM` ConfigIllusionstSkill 5/10/15
+		// 公式有差異，屬 broader gap。
+		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
+			s.sendCastFail(sess)
+			return
+		}
+		dur := skill.BuffDuration
+		if dur <= 0 {
+			dur = 5
+		}
+		npc.Sleeped = true
+		npc.AddDebuff(66, dur*5)
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
+		}
+		s.deps.Log.Info(fmt.Sprintf("幻想  施法者=%s  NPC=%s  持續=%d秒", player.Name, npc.Name, dur))
+
 	case 33: // 木乃伊詛咒（NPC 版）— 階段一：灰色延遲
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
 			s.sendCastFail(sess)
@@ -793,6 +813,7 @@ var playerDebuffSkills = map[int32]bool{
 	183: true, // 護衛毀滅（Java L1MagicNpc.calcProbabilityMagic case GUARD_BRAKE 標準等級差公式；只對 PC 套用 AC+10）
 	188: true, // 恐懼無助（Java L1MagicNpc.calcProbabilityMagic case RESIST_FEAR 與 GUARD_BRAKE 共用標準等級差公式；只對 PC 套用 dodge_down+5）
 	193: true, // 驚悚死神（Java L1MagicNpc.calcProbabilityMagic case HORROR_OF_DEATH 與 GUARD_BRAKE/RESIST_FEAR/THUNDER_GRAB 共用標準等級差公式；對 PC addStr(-3)+addInt(-3)）
+	212: true, // 幻想（Java L1MagicPc.calcProbabilityMagic case PHANTASM 用 ConfigIllusionstSkill 5/10/15 + RegistSleep；Go 用 generic checkPlayerMRResist 屬 broader gap）
 }
 
 // checkPlayerMRResist 對玩家目標的魔法抗性判定（debuff 用）。
