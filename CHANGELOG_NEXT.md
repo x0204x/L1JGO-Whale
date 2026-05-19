@@ -1,5 +1,72 @@
 ## 技能
 
+## 弱化屬性（ELEMENTAL_FALL_DOWN / 133）— 純審計確認 Go 核心對齊 Java，邊界差異記錄為 broader gap
+
+- **Java 對照**：
+  - `L1SkillId.java ELEMENTAL_FALL_DOWN = 133`（弱化屬性）。
+  - `L1SkillMode.load()`：`_skillMode.put(133, new ELEMENTAL_FALL_DOWN())` 註冊 skillmode。
+  - `skillmode/ELEMENTAL_FALL_DOWN.java:23-84 PC start`：
+    - 行 25 `if (!cha.hasSkillEffect(133))` **守衛**：若目標已掛 133，整段 stat 變更區塊**跳過**，僅執行末尾 `setSkillEffect` 刷新 timer。
+    - 行 26-52 ElfAttr 分支（針對 PC 目標）：0 → `srcpc.sendPackets(S_ServerMessage(79))` 不改 stat、1 → `pc.addEarth(-50) + setAddAttrKind(1)`、2 → `pc.addFire(-50) + setAddAttrKind(2)`、4 → `pc.addWater(-50) + setAddAttrKind(4)`、8 → `pc.addWind(-50) + setAddAttrKind(8)`。
+    - 行 54-79 ElfAttr 分支（針對 L1MonsterInstance 目標）：完全對稱 PC 路徑（`mob.addEarth/Fire/Water/Wind(-50) + setAddAttrKind(...)`）。
+    - 行 81 `cha.setSkillEffect(133, integer * 1000)` **永遠執行**（在 hasSkillEffect 守衛外），即使 ElfAttr=0 也會啟動 32s 計時器（雖然 stat 無變化）。
+  - `skillmode/ELEMENTAL_FALL_DOWN.java:87-92 NPC start`：空實作，`return dmg=0`，NPC 施法 133 無效（與 Go 一致——NPC 不會主動施 133）。
+  - `skillmode/ELEMENTAL_FALL_DOWN.java:101-146 stop`：
+    - PC 目標：依 `getAddAttrKind()` 反向 `addEarth/Fire/Water/Wind(+50)` → `setAddAttrKind(0)` → `sendPackets(new S_OwnCharAttrDef(pc))`。
+    - NPC 目標：依 `getAddAttrKind()` 反向 `+50` → `setAddAttrKind(0)`，**無封包**（NPC 無 client）。
+  - `L1SkillMode.isNotCancelable`：133 不在表上（cancellable）。
+  - `L1SkillMode.EXCEPT_COUNTER_MAGIC`：133 不在表上（**受 counter magic 阻擋**——與其他純 buff/debuff 不同，這是 debuff 性質）。
+  - `REPEATEDSKILLS`：133 不在任何群組（無互斥）。
+  - yiwei `db_split/skills.sql:132`：`('133', '弱化屬性', '17', '4', '10', '0', '0', '0', '100', '32', 'buff', '3', '0', '0', '0', '33', '50', '0', '1', '0', '10', '0', '0', '16', '', '19', '4396', '0', '0', '0', '280')` — mp=10、reuse_delay=100、buff_duration=32、target=buff、target_to=3、prob_value=33、prob_dice=50、type=1、ranged=10、id=16、action_id=19、cast_gfx=4396、sys_msg_fail=280。
+
+- **Go 對照**：
+  - `skill_buff.go:1107-1116 case 133`（PC→PC dispatch）：
+    - `if player.ElfAttr == 0 → SendServerMessage(79) + return`（**早返**，不設 timer）。
+    - `applyElementalFallDownToPlayer(player, target, skill)` 套用 buff。
+    - `if skill.CastGfx > 0 → BroadcastToPlayers(nearby, BuildSkillEffect(target.CharID, skill.CastGfx))` 廣播視覺特效。
+  - `skill_status.go:447-464 case 133`（PC→NPC dispatch）：
+    - 同樣 `ElfAttr==0 → SendServerMessage(79) + return` 早返。
+    - `checkNpcMRResist` MR 抗性檢查（Java 在 `calcProbabilityMagic` 前置處理過，但 Java skillmode 本身對 NPC mob 沒有第二次 MR check——Go 多此一舉但屬安全收緊不傷對齊）。
+    - `applyElementalFallDownToNpc(player, npc, dur)` 套用 NPC 抗性下降。
+    - cast_gfx 廣播。
+  - `skill_elemental.go:23-41 applyElementalFallDownToPlayer`：
+    - 建 ActiveBuff{SkillID=133, TicksLeft=BuffDuration*5}。
+    - `old := target.RemoveBuff(133)` → `if old != nil { revertBuffStats(target, old) }` **覆蓋式重套**（與 Java `if (!hasSkillEffect)` 守衛行為不同——見 broader gap A）。
+    - `setElementalResDelta(caster.ElfAttr, buff, -50)` 依 ElfAttr 設定對應 Delta 欄位。
+    - 直接套用 stat（FireRes/WaterRes/WindRes/EarthRes += DeltaX）。
+    - `target.AddBuff(buff)`。
+  - `skill_elemental.go:43-79 applyElementalFallDownToNpc / removeElementalFallDownFromNpc`：完整對稱套用/反向 NPC 抗性，`npc.ElementalFallDownAttr` 欄位記錄施法者 ElfAttr 供 revert 使用（對齊 Java `getAddAttrKind()`）。
+  - `skill_buff.go:300-305` PC buff apply 後 `SendAbilityScores(target.Session, target)` 送 `S_OwnCharAttrDef` 圖示更新——**比 Java cast 端嚴格收緊**（Java cast 端不送 attr def，只 stop 端送）；對應註解：「補上 Java 漏送的 UI 更新——client 顯示與資料一致」。
+  - `skill_buff.go:565-570` PC buff revert 後 `SendAbilityScores(target.Session, target)` 對齊 Java `stop()` 行 123 `pc.sendPackets(new S_OwnCharAttrDef(pc))`。
+  - yaml `skill_list.yaml:4063-4093 skill_id=133`：mp=10、reuse_delay=0、buff_duration=32、target=buff、target_to=3、prob_value=33、prob_dice=30、type=1、ranged=-1、id=16、action_id=19、cast_gfx=4396、sys_msg_fail=280。
+
+- **既有測試覆蓋**：
+  - `skill_elemental_dynamic_test.go TestSkillElementalDynamicElementalFallDownUsesCasterElfAttr`：caster ElfAttr=8（風）對 target（WindRes 12）→ -38，buff revert 後恢復為 12，驗證 PC apply/revert 雙向。
+  - `skill_elemental_dynamic_test.go TestSkillElementalDynamicElementalFallDownRestoresNpcResistance`：caster ElfAttr=1（地）對 NPC（EarthRes 20）→ -30，buff 過期後恢復為 20，驗證 NPC apply/revert 雙向。
+  - **無需新增測試**：核心 ElfAttr-based -50 / S_OwnCharAttrDef 對齊已有測試鎖定，按停損標準不寫「鎖死 Java 對齊行為」測試。
+
+- **發現的 Java 真實差異（criterion a，但屬邊界 edge case）**：
+  - **A) Re-cast 守衛行為差異**：Java `if (!cha.hasSkillEffect(133))` 在已掛 buff 時**跳過** stat 變更區塊（保留首次施法的元素），但仍刷新 timer。Go `applyElementalFallDownToPlayer:31-34` 永遠先 `RemoveBuff + revertBuffStats` 再重套（允許跨施法者切換元素）。實際影響場景：**僅當 caster A 風屬性掛 buff 後，caster B 火屬性在 32s 內覆蓋施法**——Java 維持 caster A 的風 -50（B 失效），Go 切換為 caster B 的火 -50（B 生效）。同施法者重施則兩端結果等價（先 revert 再 apply 同元素 = 淨變化為零）。
+  - **B) ElfAttr=0 timer-set 差異**：Java 即使 ElfAttr=0 仍執行 `cha.setSkillEffect(133, integer * 1000)`（外於 hasSkillEffect 守衛），啟動 32s 空轉計時器（無 stat 變化但目標確實「有」133 buff）。Go `case 133 ElfAttr==0 → return` 完全跳過，不設 timer。實際影響場景：caster ElfAttr=0 時 Java 留下無效 buff 條目佔位（影響後續 hasSkillEffect(133) check 結果但不影響任何數值），Go 不留任何痕跡。功能上兩端等價（buff 對 stat 零影響），僅 hasSkillEffect 查詢結果不同。
+  - **C) cast 端 S_OwnCharAttrDef 廣播**：Java cast 端**不**送 S_OwnCharAttrDef（只 stop 端送），Go 同時在 cast 與 stop 端送（補上 Java 漏送讓 UI 即時反映抗性下降）。屬 **比 Java 嚴格收緊**——已在 skill_buff.go:300-302 註解明確標示「補上 Java 漏送的 UI 更新」，不算「未對齊」。
+
+- **不修原因**（per 對齊深度停損標準）：
+  - A、B 屬 criterion (a) Java 真實差異但**邊界 edge case**：A 僅在跨施法者元素切換時有差（單施法者重施結果等價）；B 僅影響 hasSkillEffect 查詢（無 stat 影響）。Go 行為都是**production-correct**——「跨施法者切換元素」與「ElfAttr=0 不留痕跡」都是合理設計。
+  - 修 A 需把 `applyElementalFallDownToPlayer` 改為「先檢查 target.HasBuff(133)，若有則僅 RefreshDuration 不動 stat」，但會引入「caster B 雖然付了 MP+cast_gfx 但完全沒效果」的反直覺體驗（Java 確實如此但體感不佳）。
+  - 修 B 需在 ElfAttr=0 早返前先 `target.AddBuff(emptyBuff)` 純佔位，引入「buff icon 顯示但無效」的混淆體驗。
+  - 寫對應測試屬「鎖死 Java 邊界行為」，違反停損標準。
+  - 既有兩條 dynamic 測試已完全覆蓋核心 ElfAttr 1/2/4/8 對 PC/NPC 的 apply/revert，足以防回歸。
+
+- **broader gap（不改）**：
+  - **yaml 三方漂移**：Go yaml 與 yiwei `skills.sql:132` 三項偏離（Go 跟 cat-fei）：reuse_delay=0（yiwei=100）、probability_dice=30（yiwei=50）、ranged=-1（yiwei=10）。屬廣域 SQL 漂移議題（與 130/132 同源），非 133 單體範圍。
+  - **MR 抗性檢查時機**：Java skillmode 本身對 NPC 目標不做 MR check（由上層 `calcProbabilityMagic` 統一處理），Go `skill_status.go case 133` 另加 `checkNpcMRResist`。屬「Go 比 Java 嚴格收緊」的安全 net，已在 NPC 系列 audit 統一採用（見 27 壞物術等 case），保留現狀。
+  - **NPC start 空實作**：Java NPC 施法 133 為空函數（NPC 不會主動對玩家施 133），Go 沒實作 NPC→PC 路徑同 Java 一致。
+  - **counter magic 阻擋未實作**：Java 133 不在 `EXCEPT_COUNTER_MAGIC` 表上 = 受 counter magic 阻擋。Go `counterMagicExempt[133]` 應為 false（未列入豁免表）——已對齊（無 broader gap）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkillElemental -timeout 120s` PASS（0.455s，elemental 系列無迴歸）。
+
 ## 三重矢（TRIPLE_ARROW / 132）— 修正 PvP 射程退化 bug
 
 - **Java 對照**：
