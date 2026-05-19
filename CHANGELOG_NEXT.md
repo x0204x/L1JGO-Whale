@@ -1,5 +1,15 @@
 ## 技能
 
+## 生命呼喚（CALL_OF_NATURE / 165）— 純審計重新確認三路徑復活（PC YN/Pet/NPC）完整對齊 Java，yaml 31 欄位零漂移
+
+- **Java 對照**：yiwei `skills.sql:164` 31 欄位（mp=50/item=40319×1/target=buff/target_to=3/attr=4/type=32/ranged=10/area=0/id=16/action_id=19/cast_gfx=2245/sys_msg_fail=280）；Java `CALL_OF_NATURE.skillmode` 對 PC 走 `setTempID + S_Message_YN(322)` 不直接復活，對 Pet/NPC 走滿血復活並含 witness check（IsPlayerAt → 拒絕）+ NPC `L1Tower || CantResurrect` 雙拒絕。
+- **Go 對照**（無代碼變更）：
+  - `system/skill_heal_resurrect.go:112-149 case 165` 三路徑全部對齊：PC 目標 `IsPlayerAt → 592 witness msg / TempID + PendingResSkill + PendingResCaster + SendYesNoDialog(322)`、Pet 走 `callOfNatureResurrectPet → resurrectPetWithHP(MaxHP)`（同地圖 + 距離 ≤20 + IsPlayerAt 三重檢查）、NPC 走 `callOfNatureResurrectNpc → resurrectNpcWithHP(MaxHP)` 內含 `Impl=="L1Tower" || isNpcCantResurrect → return false` 雙拒絕。
+  - `data/yaml/skill_list.yaml:5055` 31 欄位 **零漂移** 完全對齊 yiwei sql:164。
+- **測試覆蓋**：既有 3 個 test 檔（`skill_call_of_nature_test.go` + `skill_call_of_nature_companion_test.go` + `skill_resurrect_restriction_test.go`）覆蓋 PC YN/witness/Pet/NPC/cant_resurrect 全分支。
+- **broader gap（不改）**：(A) Java `L1SkillUse2:1850-1888` sleep buff lifecycle hooks 屬廣域 buff 副作用議題；(B) Java NPC AI 對 165 cast 路徑 Go 走 SkillSystem 屬廣域 NPC skill routing 議題。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 生命的祝福（NATURES_BLESSING / 164）— 純審計確認 type=16 + target_to=8 + area=-1 隊伍範圍治療路徑完整對齊 Java，含 WATER_LIFE 雙倍移除與 POLLUTE_WATER 減半
 
 - **Java 對照**：
