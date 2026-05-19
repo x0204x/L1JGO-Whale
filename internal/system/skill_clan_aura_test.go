@@ -41,7 +41,7 @@ func TestSkillClanAuraSolidCarriageRequiresShieldOrGuarderAndAddsER(t *testing.T
 	}
 }
 
-func TestSkillClanAuraGlowingAuraAppliesToPartyWithJavaStats(t *testing.T) {
+func TestSkillClanAuraGlowingAuraAppliesToPartyAndClanWithJavaStats(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 1,
@@ -51,45 +51,60 @@ func TestSkillClanAuraGlowingAuraAppliesToPartyWithJavaStats(t *testing.T) {
 		X:         100,
 		Y:         100,
 		MapID:     4,
+		ClanID:    7,
 	})
-	member := addSkillTestPlayer(ws, &world.PlayerInfo{
+	partyMember := addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 2,
 		Session:   newSkillTestSession(t, 2),
 		CharID:    1002,
-		Name:      "member",
+		Name:      "party_member",
 		X:         101,
 		Y:         100,
 		MapID:     4,
+		ClanID:    8,
 	})
-	outsider := addSkillTestPlayer(ws, &world.PlayerInfo{
+	clanmate := addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 3,
 		Session:   newSkillTestSession(t, 3),
 		CharID:    1003,
-		Name:      "outsider",
+		Name:      "clanmate",
 		X:         102,
 		Y:         100,
 		MapID:     4,
+		ClanID:    7,
 	})
-	ws.Parties.CreateParty(caster.CharID, member.CharID, world.PartyTypeNormal)
+	outsider := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 4,
+		Session:   newSkillTestSession(t, 4),
+		CharID:    1004,
+		Name:      "outsider",
+		X:         103,
+		Y:         100,
+		MapID:     4,
+		ClanID:    8,
+	})
+	ws.Parties.CreateParty(caster.CharID, partyMember.CharID, world.PartyTypeNormal)
 	s := newSkillTestSystem(t, ws)
 
+	// 對齊 l1j_fly（貓飛）`skills` 表 skill_id=114 `target_to=12` = TARGET_TO_PARTY|TARGET_TO_CLAN，
+	// 與 l1j_yiwei（義維）舊版 target_to=0 自身單體不同。Go yaml 已改為 12 對齊現代行為。
 	s.executeSelfSkill(caster.Session, caster, &data.SkillInfo{
 		SkillID:      114,
 		BuffDuration: 640,
 		Target:       "none",
-		TargetTo:     targetToParty,
+		TargetTo:     targetToParty | targetToClan,
 		Area:         -1,
 		ActionID:     19,
 	})
 
-	for _, p := range []*world.PlayerInfo{caster, member} {
+	for _, p := range []*world.PlayerInfo{caster, partyMember, clanmate} {
 		if !p.HasBuff(114) || p.HitMod != 5 || p.DmgMod != 5 || p.BowHitMod != 0 || p.MR != 0 {
-			t.Fatalf("激勵士氣應套用隊伍並依 Java 給近戰命中/傷害 +5，player=%s buff=%v Hit=%d Dmg=%d BowHit=%d MR=%d",
+			t.Fatalf("激勵士氣應套用隊伍+血盟並依 Java 給近戰命中/傷害 +5，player=%s buff=%v Hit=%d Dmg=%d BowHit=%d MR=%d",
 				p.Name, p.GetBuff(114), p.HitMod, p.DmgMod, p.BowHitMod, p.MR)
 		}
 	}
 	if outsider.HasBuff(114) {
-		t.Fatalf("非隊伍成員不應取得激勵士氣，buff=%v", outsider.GetBuff(114))
+		t.Fatalf("非隊伍且非同血盟成員不應取得激勵士氣，buff=%v", outsider.GetBuff(114))
 	}
 }
 

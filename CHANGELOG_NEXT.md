@@ -1,5 +1,21 @@
 ## 技能
 
+## 激勵士氣（GLOWING_AURA / 114）— 修正 yaml `target_to` 對齊現代 Lineage R 範圍
+
+- **驗證**：技能 ID 對照表既有註記「資料驅動，需驗證隊伍/血盟範圍」。本次比對兩份 Java 參考：
+  - **yiwei** `db_split/skills.sql:114`：`target_to=0` (`TARGET_TO_ME`)、`mp_consume=25`，搭配 `L1SkillUse.java:942-946` `if (target_to==TARGET_TO_ME && !TYPE_ATTACK) → targetlist=[user]` ＝ **舊版自身單體**。
+  - **cat-fei (l1j_fly)** `貓飛版_lineage381.sql` skills 表：`(114,'激勵士氣',15,1,40,0,0,0,0,640,'none',12,...)` → `target_to=12` = `TARGET_TO_PARTY|TARGET_TO_CLAN`、`mp_consume=40`、`buff_duration=640` ＝ **現代隊伍+血盟範圍**。
+  - Java code 行為 `L1SkillUse.java:2424-2428 GLOWING_AURA cha.addHitup(5)+addDmgup(5)` 對每個 targetlist 成員套用，因此 cat-fei `target_to=12` 走 `L1SkillUse.java:871-880` 把同血盟+同隊伍成員加入 targetlist 並全部套 +5 命中/+5 傷害。
+- **發現的 Java 真實差異**：Go `skill_list.yaml` skill 114 `target_to: 8`（僅 TARGET_TO_PARTY）漏掉 TARGET_TO_CLAN，與 cat-fei 現代行為不符。同檔案 skill 115 (`SHINING_AURA`) 已是 12 但 skill 114 與 117 (`BRAVE_AURA`) 仍為 8——本步只修 114，117 留待自身審計。
+- **修正**：
+  - `skill_list.yaml:3516` skill 114 `target_to: 8 → 12`。
+  - `skill_clan_aura_test.go TestSkillClanAuraGlowingAuraAppliesToParty*` 更新為四角色（caster 7、partyMember 8、clanmate 7、outsider 8），驗證 caster+partyMember+clanmate 三者皆得 +5 hit/+5 dmg、outsider 不得 buff，函式名重新命名為 `*AppliesToPartyAndClan*` 反映實際範圍。
+- **架構合規**：`skill_clan.go:21-62 applyRoyalAuraSkill` 既有 `targetTo&8 → party`、`targetTo&4 → clan` 雙分支邏輯本就支援 12，僅 yaml 資料缺值；無需改 Go 邏輯。
+- **broader gap（不改）**：
+  - skill 117 (`BRAVE_AURA`) yaml `target_to=8`（同樣漏掉血盟分支）留待 117 自身審計修正，避免單獨改動破壞 audit 序。
+  - Go `buffs.lua [114].exclusions = {115, 117}` 互斥 Java 端沒有對應 REPEATEDSKILLS（Java 三王族光環可疊加）。但若單獨移除 114 的 `{115, 117}` 而 [115]、[117] 仍含 `{114, ...}`，會造成不對稱互斥（先施 114 後施 115 → 115 移除 114；先施 115 後施 114 → 兩者並存）。三向互斥屬聯動修正，留待 117 audit 同步處理三條 exclusions。
+  - yiwei vs cat-fei SQL 大量資料漂移屬廣域 yaml/SQL 同步缺口（非個別技能審計範圍）。
+
 ## 精準目標（TRUE_TARGET / 113）— 補齊 PvP 增傷雙乘子
 
 - 對齊 Java `L1AttackPc.java:1509-1511 + 1580-1584` 在 `calcPcDamage` 對持有 TRUE_TARGET 的 PvP 目標套用兩段乘子：
