@@ -166,7 +166,7 @@ BUFF_DEFS = {
     [204] = { dmg_mod = 4, hit_mod = 4 },                                     -- 幻覺：歐吉 ILLUSION_OGRE（Java L1SkillUse:2660-2664 only addDmgup(+4)+addHitup(+4)；無 bow 修正、無 REPEATEDSKILLS 互斥群——Java 允許四個 illusion buff 並存）
     [206] = { mpr = 2 },                                                      -- Concentration
 
-    [209] = { sp = 2, exclusions = {204, 214, 219} },                        -- Illusion Lich
+    [209] = { sp = 2 },                                                       -- 幻覺：巫妖 ILLUSION_LICH（Java skillmode/ILLUSION_LICH.java:19-32 只檢查 !hasSkillEffect(209)、無 REPEATEDSKILLS 互斥群——Java 允許四個 illusion buff 並存）
     [211] = { hpr = 5 },                                                      -- Patience
     [212] = { sleeped = true },                                                -- Phantasm
 

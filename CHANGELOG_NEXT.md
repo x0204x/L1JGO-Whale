@@ -1,5 +1,16 @@
 ## 技能
 
+## 幻覺：巫妖（ILLUSION_LICH / 209）
+
+- 移除 `buffs.lua [209] = { sp = 2, exclusions = {204, 214, 219} }` 的 `exclusions` 欄位 → `[209] = { sp = 2 }`，對齊 Java `skillmode/ILLUSION_LICH.java:19-32` 只檢查 `!cha.hasSkillEffect(209)`，無 REPEATEDSKILLS 互斥群（Java 允許四個 illusion buff 並存）。同 204 修正模式。
+- Java 行為：`pc.addSp(2)` + `S_SPMR(pc)` + `setSkillEffect(209, integer*1000)`；stop `addSp(-2)` + `S_SPMR(pc)`。Go `applyBuffEffect` 已在 SP 變動時送 `SendMagicStatus`（`skill_buff.go:294,557`），SP +2 / -2 邏輯與 Java 一致。
+- **broader gap（不改）**：
+  - **sibling mutex 殘餘**：214/219 各自的 `exclusions` 仍引用 209；要完整對齊「Java 四 illusion buff 並存」需在 214/219 各自的子項移除其 exclusions。按隊伍順序處理。
+  - **yaml `buff_duration 32→128`**：Java SQL=128（128 秒），Go=32。差 4x，會導致 Go 209 buff 只持續 1/4 時間。屬 yaml 資料 drift。
+  - **yaml `type 4→2`**：Java SQL=2 (CHANGE)，Go=4 (CURSE)。可能影響 buff 分類（dispel/cancel 範圍）。屬 yaml 分類 drift。
+  - **yaml `mp_consume 15→20`、`reuse_delay 0→2000`、`ranged 3→5`、`probability_value/dice 100→0`**：與 207/208 同源 yaml tuning gap。
+- 驗證：`go build ./...` 通過、`go test ./internal/system/ -count=1` 全綠。
+
 ## 骷髏毀壞（BONE_BREAK / 208）
 
 - 修正 `208 BONE_BREAK` 五項 Java `skillmode/BONE_BREAK.java` + `L1MagicPc.calcProbabilityMagic` + `S_Paralysis` 對齊差異：
