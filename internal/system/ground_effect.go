@@ -232,7 +232,11 @@ func (s *GroundEffectSystem) applyCubeEnemyNpc(effect *world.GroundEffect, npc *
 			npc.AddDebuff(cubeStatusQuakeEnemy, 5)
 		}
 	case world.GroundEffectCubeShock:
-		npc.AddDebuff(cubeStatusShockEnemy, cubeStatusTicks)
+		// Java `L1Cube.giveEffect:135-145 case STATUS_CUBE_SHOCK_TO_ENEMY` 對 cha 套
+		// `setSkillEffect(STATUS_MR_REDUCTION_BY_CUBE_SHOCK=1024, 4000)`，每 tick refresh
+		// 維持 4 秒；Go `npc.AddDebuff` 使用 map[skillID]=ticks 寫入即覆蓋，自然完成 refresh。
+		// 原本用 cubeStatusShockEnemy(1023) + 40 ticks 與 Java 不符，改為 1024 + 20 ticks (4 秒)。
+		npc.AddDebuff(cubeStatusShockMR, 20)
 	case world.GroundEffectCubeBalance:
 		if effect.DamageTickAcc%cubeEffectIntervalTicks == 0 {
 			npc.MP += 5

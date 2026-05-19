@@ -1,5 +1,22 @@
 ## 技能
 
+## 立方：衝擊（CUBE_SHOCK / 215）
+
+- 修正 `ground_effect.go` NPC CUBE_SHOCK 套用的 debuff ID 與時長，對齊 Java `L1Cube.giveEffect:135-145 case STATUS_CUBE_SHOCK_TO_ENEMY`：
+  - **Before**：`npc.AddDebuff(cubeStatusShockEnemy=1023, cubeStatusTicks=40)`（8 秒）。
+  - **After**：`npc.AddDebuff(cubeStatusShockMR=1024, 20)`（4 秒，對齊 Java `setSkillEffect(STATUS_MR_REDUCTION_BY_CUBE_SHOCK, 4000)`）。
+  - Java 使用 `STATUS_MR_REDUCTION_BY_CUBE_SHOCK(1024)`（非 enemy tracking 1023）作為 MR-reduction 標記；Go NPC 路徑原本誤用 enemy tracking ID，若未來有系統檢查 `npc.HasDebuff(1024)` 來套用 MR 減免，Java 會命中而 Go 不會。
+  - Go `npc.AddDebuff` 使用 map 寫入即覆蓋，與 Java `setSkillEffect` 每 tick refresh 行為一致。
+- 不動處：
+  - **PC 路徑保留 `cubeStatusShockEnemy(1023)` enemy tracking** + GFX gating（Go 既有設計避免每 tick 重複廣播；Java SHOCK 對 PC/NPC 完全不廣播）。
+  - **無 tick gating**：Java 與 Go 都每 tick 觸發（`STATUS_CUBE_SHOCK_TO_ENEMY` 無 `_timeCounter % 4` 檢查），對齊。
+  - **無 immune buff 檢查**：Java SHOCK 沒有 STATUS_FREEZE/ABSOLUTE_BARRIER/ICE_LANCE/EARTH_BIND immunity（與 IGNITION/QUAKE 不同）；Go 也沒有，對齊。
+- **broader gap（不改）**：
+  - **實際 MR -10 套用未實作**：Java `L1Cube:139` 原 `addMr(-10)` 已被 comment out，僅留 `setSkillEffect(1024)` marker；Go 也只設 marker 不套 MR 減免。兩邊行為一致（皆無 MR -10），屬「Java 設計缺陷」雙方同步保留。
+  - **PC `cubeStatusShockMR` refresh 行為**：Go `addPlayerCubeBuff` 若 `HasBuff` 為 true 則跳過 refresh，與 Java `setSkillEffect` 每 tick refresh 不完全一致；但因兩邊都無 1024 消費者，差異純為 marker timer 細節不影響遊戲。
+  - **yaml `reuse_delay 0→5000`**：Java SQL=5000、Go=0。屬冷卻 tuning，與 207-214 同源。
+- 驗證：`go build ./...` 通過、`go test ./internal/system/ -count=1` 全綠（無 215 相關測試）。
+
 ## 幻覺：鑽石高崙（ILLUSION_DIA_GOLEM / 214）
 
 - 修正 `buffs.lua [214]` 兩項 Java 對齊缺失：
