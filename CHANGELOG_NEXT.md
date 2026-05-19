@@ -1,5 +1,16 @@
 ## 技能
 
+## 汙染之水（POLLUTE_WATER / 173）— 純審計重新確認核心 PC heal 藥水減半 + 治療法術減半 + MR 抗性閘完整對齊 Java
+
+- **Java 對照**：`UserAddHp.java:69-71 / UserAddHp_FR.java:91-93` 持有 POLLUTE_WATER → 藥水 `addhp >>= 1`；`L1SkillUse2:2002-2005` 治療法術 `_heal >>= 1`。
+- **Go 對照**（無代碼變更）：
+  - `item_use.go:60-72 heal case`：高斯隨機後 `if player.HasBuff(173) { healAmt /= 2 }` + 夾底 `< 1`。
+  - `skill_elemental.go:105-107 applyElfWaterHealingModifiers`：`HasBuff(skillPolluteWater=173) → heal >>= 1`。
+  - `playerDebuffSkills[173]=true` 走統一 `checkPlayerMRResist`。
+  - `buffs.lua [173]={}` flag-only。
+- **broader gap（不改）**：(A) NPC 目標 + 武器 special + NPC heal potion 三項屬「全體 elf debuff NPC 目標」族群差異（同 157/174 同源）；(B) yaml 與 Java `WEAPONSKILL_PROBABILITY` 屬資料調整非行為對齊。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 屬性之火（ELEMENTAL_FIRE / 171）— 純審計重新確認核心 33% 機率 1.5x 近戰增傷 + 弓/格鬥排除完整對齊 Java BuffDmgUp
 
 - **Java 對照**：`L1AttackPc.BuffDmgUp` 對持有 ELEMENTAL_FIRE 近戰非弓非格鬥攻擊者 33% 機率 1.5x；yiwei `skills.sql:170` 31 欄位。
