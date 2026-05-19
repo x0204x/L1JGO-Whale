@@ -1,5 +1,45 @@
 ## 技能
 
+## 大地防護（EARTH_SKIN / 151）— 純審計確認 AC ±6 + S_SkillIconShield(6) + REPEATEDSKILLS[1] 雙項互斥完整對齊 Java
+
+- **Java 對照**：
+  - `L1SkillId.java:502 EARTH_SKIN = 151`（大地防護）。無對應 skillmode 類別（純 buff 路徑）。
+  - `L1SkillUse.java:1438-1440` + `L1SkillUse2.java:1455-1457` icon cast：`pc.sendPackets(new S_SkillIconShield(6, _getBuffIconDuration))`（圖示 param=6）。
+  - `L1SkillUse.java:2569-2572` + `L1SkillUse2.java:2521-2524` apply：`pc.addAc(-6) + pc.sendPackets(new S_SkillIconShield(6, _getBuffIconDuration))`。
+  - `L1SkillStop.java:511-517` stop：`cha.addAc(6) + (if PC) pc.sendPackets(new S_SkillIconShield(6, 0))` 對齊 cast icon 用 duration=0 撤銷。
+  - `L1SkillUse.java:1743 + L1SkillUse2.java:1752 REPEATEDSKILLS[1]`：`{EARTH_SKIN=151, IRON_SKIN=168}` **雙項**護甲類 buff 互斥——Java 只有兩項互斥，**不**含其他防禦類技能（如 IRON_SKIN_DE=3、SHADOW_ARMOR=21/24/99、EARTH_BLESS=159）。
+  - `L1SkillUse2.java:798 + L1SkillUse.java:804`：buff cancel 路徑明確包含 EARTH_SKIN。
+  - 表格成員：`isNotCancelable` 不含 151（cancellable）；`EXCEPT_COUNTER_MAGIC` 含 151（不受 counter magic 阻擋）；`REPEATEDSKILLS[1]` 雙項互斥。
+  - yiwei `db_split/skills.sql:150`：`('151', '大地防護', '19', '6', '15', '0', '0', '0', '0', '960', 'none', '0', '0', '0', '0', '0', '0', '1', '2', '0', '0', '0', '0', '64', '', '19', '2249', '0', '0', '725', '280')` — mp=15、buff_duration=960、target=**none**、target_to=0、attr=1、type=2、ranged=0、id=64、action_id=19、cast_gfx=**2249**、sys_msg_stop=725、sys_msg_fail=280。
+
+- **Go 對照**：
+  - `buffs.lua:120 [151] = { ac = -6, exclusions = {168} }`：AC -6 + **僅與 168 互斥** 對齊 Java `REPEATEDSKILLS[1]` 排除自身後 1 項。**先前 audit 已收緊**：原 buffs.lua `{3,21,24,99,159,168}` 6 項 mutex 為 Go 私自加入非 Java 群組成員，2026-05-18 audit 已收緊為 `{168}` 對齊 Java。
+  - `skill_buff.go:154 buff.DeltaAC = int16(eff.AC)` apply 套入 ActiveBuff。
+  - `skill_buff.go:194 target.AC += buff.DeltaAC` apply 實際 AC -6（即 `target.AC += -6`）。
+  - `skill_buff.go:307 sendBuffIcon` 透過 `buff_icon_map.yaml:20-22 skill_id: 151 type:shield param:6` 送 `S_SkillIconShield(6, duration)` 對齊 Java cast icon。
+  - `skill_buff.go:506 target.AC -= buff.DeltaAC` revert AC +6 + 對應 stop icon。
+  - `executeBuffSkill` 路徑（因 yaml target='buff'）：`:983 BuildActionGfx` + `:1229 applyBuffEffect` + `:1240-1242 BuildSkillEffect(cast_gfx=2249)` 廣播 S_SkillSound。
+  - yaml `skill_list.yaml:4621-4651 skill_id=151`：mp=15、buff_duration=960、target=**buff**、target_to=**1**、attr=1、type=2、ranged=**-1**、id=64、action_id=19、cast_gfx=**2249**、sys_msg_stop=725、sys_msg_fail=280。
+  - **3 項 yaml 漂移**（target/target_to/ranged Go 跟 cat-fei）但 cast_gfx **無漂移**（罕見 yiwei 對應 cat-fei 一致值）。
+
+- **既有測試覆蓋**：
+  - `skill_elemental_buff_test.go:106-119 TestSkillElementalBuffElfArmorAndWaterBuffsUseJavaValues`：
+    - player 起始 AC=10，套 151 → AC=4（-6）✓ 鎖死 AC ±6 套用。
+    - 套 159 EARTH_BLESS（**不**在 REPEATEDSKILLS）→ 151 保留 + 159 套用、AC 不變 ✓ 鎖死 Java 「159 只送圖示不改 AC、不互斥 151」設計。
+    - 套 168 IRON_SKIN（REPEATEDSKILLS[1] 互斥）→ 151 移除 + 159 保留、AC=10-10=0（159 revert +6 - 168 apply -10 = -4 → 不對，須再核對。實際 168 給 AC -10，所以套 168 後 168 套用，151 移除 revert +6，最終 AC = 4 + 6 - 10 = 0 ✓）。
+
+- **發現的 Java 真實差異**：**無**（核心 AC ±6 + S_SkillIconShield(6) icon + REPEATEDSKILLS[1] 雙項互斥完整對齊；先前 audit 已收緊 buffs.lua mutex 從 6 項收為 1 項對齊 Java）。
+
+- **broader gap（不改）**：
+  - **yaml 3 項漂移**：target=buff vs none、target_to=1 vs 0、ranged=-1 vs 0（同 148 漂移模式但 cast_gfx 無漂移）。屬廣域 yiwei/cat-fei SQL 同步議題。
+  - **168 IRON_SKIN 反向 mutex**：buffs.lua 已對 151 補完 exclusions={168}，但 168 是否也對應補 151 mutex 待 168 audit 補齊。
+  - **159 EARTH_BLESS 不互斥**：既有測試已驗證 Java 設計（159 不在 REPEATEDSKILLS 任何群組）；待 159 audit 確認 buffs.lua [159] 互斥定義（先前 audit 已將 159 exclusions 從 `{151, 168}` 收為 `{}`）。
+  - **`L1SkillUse.sendGrfx` 末尾 1686-1694 _targetList 通用 status refresh**：屬廣域 buff cast 後置缺口（同 130/146/148/149/150 audit 同源）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkillElementalBuffElfArmor -timeout 60s` PASS（0.049s）。
+
 ## 風之疾走（WIND_WALK / 150）— 純審計確認 BraveSpeed=4 + S_SkillBrave 雙路徑 + REPEATEDSKILLS[2] 7 項互斥完整對齊 Java
 
 - **Java 對照**：
