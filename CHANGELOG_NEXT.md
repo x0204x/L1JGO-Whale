@@ -1,5 +1,74 @@
 ## 技能
 
+## 會心一擊（FINAL_BURN / 108）— 純審計無代碼變更
+
+- 純審計 `108 FINAL_BURN`：Go 完整對齊 Java `L1SkillUse.java:1223-1228, 1277-1287` + `L1MagicPc.java:1102-1104` 的 HP/MP 燃燒攻擊邏輯。三條既有測試完整覆蓋。
+- **核心行為已對齊**：
+  - **HP <= 100 拒絕**：`skill.go:323-326`：
+    ```go
+    if skillID == 108 && player.HP <= 100 {
+        handler.SendServerMessage(sess, skillMsgNotEnoughHP)  // 279
+        s.failTeleportSkill(sess, skillID)
+        return
+    }
+    ```
+    對齊 Java `L1SkillUse.java:1223-1228 if (_skillId == FINAL_BURN && currentHp <= 100) → S_ServerMessage(279) "因體力不足而無法使用魔法" + return false`。`skillMsgNotEnoughHP=279`（`skill.go:17`）對齊 Java sysmsg 279。
+  - **跳過預先 MP 消耗**：`skill.go:444-447 if skillID != skillFinalBurn → consume MP normally`；FINAL_BURN 不在此處扣 MP，保留至 `consumeFinalBurnResources` 後置處理。
+  - **執行順序對齊 Java useConsume 後置**：Java `handleCommands` line 481-482：
+    ```java
+    runSkill();         // 1. 跑技能（含 calcSkillDmg → dmg = currentMp）
+    useConsume();       // 2. 後置消耗 HP/MP（FINAL_BURN: HP→100, MP→1）
+    ```
+    Go `skill.go:504-507`：
+    ```go
+    s.executeAttackSkill(sess, player, skill, targetID)  // 1. 跑技能（含 res.Damage = player.MP）
+    if skillID == skillFinalBurn {
+        s.consumeFinalBurnResources(sess, player)        // 2. 後置消耗 HP→100, MP→1
+    }
+    ```
+    順序完全一致——傷害使用 pre-consume MP。
+  - **傷害公式**：`skill_damage.go:81-82` + `:491-495`：
+    ```go
+    } else if skill.SkillID == skillFinalBurn {
+        dmg = player.MP                                  // PC target 路徑
+    }
+    // 與
+    if skill.SkillID == skillFinalBurn {
+        res.Damage = int(player.MP)                      // NPC target 路徑
+        res.HitCount = 1
+        res.DrainMP = 0
+    }
+    ```
+    對齊 Java `L1MagicPc.java:1103-1104 if (skillId == 108) dmg = _pc.getCurrentMp()`。L1MagicPc.calcSkillDmg 在 runSkill → useConsume 之前呼叫，使用 pre-consume MP（與 Go 同序）。
+  - **資源燃燒到 Java floor**：`skill.go:602-611 consumeFinalBurnResources`：
+    ```go
+    if player.HP != 100 {
+        player.HP = 100
+        sendHpUpdate(sess, player)
+    }
+    if player.MP != 1 {
+        player.MP = 1
+        sendMpUpdate(sess, player)
+    }
+    ```
+    對齊 Java `L1SkillUse.java:1277-1287`：
+    ```java
+    _hpConsume = currentHp - 100;
+    _mpConsume = currentMp - 1;
+    setCurrentHp(currentHp - _hpConsume);  // = 100
+    setCurrentMp(currentMp - _mpConsume);  // = 1
+    ```
+  - **counterMagicExempt 不含 108**：Java `EXCEPT_COUNTER_MAGIC` (`L1SkillUse.java:147-148`) 列表 `97, 98, 99, 100, 101, 102, 104, 105, 106, 107, 109, 110, 111, 113, ...`——**從 107 跳到 109 略過 108**。Go `counterMagicExempt` (`skill_buff.go:398-413`) 同樣不含 108 → FINAL_BURN **可**被反魔法盾抵擋（攻擊魔法被 COUNTER_MAGIC buff 反射）。
+  - **PvE + PvP 完整路徑**：`skill_damage.go:81-82`（玩家對玩家路徑）+ `:491-495`（玩家對 NPC 路徑）兩處都覆蓋 FINAL_BURN 傷害計算。
+  - **既有測試完整覆蓋**：`skill_final_burn_test.go`：
+    1. `TestSkillFinalBurnFinalBurnDamagesWithPreConsumeMP` — caster MP=80 + target HP=200 → 攻擊後 target HP=120（傷害 = pre-consume MP 80）+ caster HP/MP = 100/1。
+    2. `TestSkillFinalBurnFinalBurnRequiresHpAbove100` — caster HP=100 + MP=80 → 攻擊失敗，caster HP/MP 不變（100/80）+ target HP 不變（200）。
+    3. `TestSkillFinalBurnFinalBurnConsumesHpAndMpToJavaFloor` — caster HP=250 MP=80 → 攻擊後 HP/MP=100/1（即使攻擊未命中也消耗，對齊 Java useConsume 在 runSkill 後無條件執行）。
+- **broader gap（不改）**：
+  - **HP/MP consume 訊息與動畫順序**：Java `handleCommands` 順序 `runSkill → useConsume → sendGrfx → sendFailMessage`，動畫送出在 useConsume 之後。Go 在 executeAttackSkill 內部送 GFX，然後 consumeFinalBurnResources。動畫與資源消耗的訊息順序若不一致可能造成客戶端 UI 微小視覺差異，但 Java 自身在 yiwei 版也是先 runSkill (含 broadcast attack) 再 useConsume，順序等價。
+  - **yaml mp_consume/buff_duration/reuse_delay drift**：與廣域同源 broader gap。
+- 驗證：無代碼變更，三條既有測試完整覆蓋核心行為（pre-consume 傷害、HP 不足拒絕、資源燃燒）。
+
 ## 暗影之牙（SHADOW_FANG / 107）— 純審計無代碼變更
 
 - 純審計 `107 SHADOW_FANG`：Go 完整對齊 Java `L1SkillUse.java:2458-2468` + `L1ItemInstance.setSkillWeaponEnchant():1088-1123` 的武器附魔系統。
