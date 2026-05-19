@@ -1,5 +1,38 @@
 ## 技能
 
+## 暴風之眼（STORM_EYE / 156）— 純審計確認核心 BowHit ±2 + BowDmg ±3 + icon + REPEATEDSKILLS[0] 5 項互斥完整對齊 Java
+
+- **Java 對照**：
+  - `L1SkillId.java:522 STORM_EYE = 156`，無對應 skillmode 類別（純 buff 路徑）。
+  - `L1SkillUse.java:1418-1420` + `L1SkillUse2.java:1435-1437` icon cast：`pc.sendPackets(new S_PacketBoxIconAura(155, _getBuffIconDuration))`（icon_id = skill_id - 1 = 155）。
+  - `L1SkillUse.java:2606-2610` + `L1SkillUse2.java:2558-2562` apply：`pc.addBowHitup(2) + pc.addBowDmgup(3) + sendPackets(S_PacketBoxIconAura(155, duration))`。
+  - `L1SkillStop.java:561-568` stop：`cha.addBowHitup(-2) + cha.addBowDmgup(-3) + (if PC) sendPackets(S_PacketBoxIconAura(155, 0))`。
+  - `REPEATEDSKILLS[0]`：`{148, 149, 156, 163, 166}` 5 項武器類 buff 互斥（同 148/149 audit）。
+  - 表格成員：`isNotCancelable` 不含 156（cancellable）；`EXCEPT_COUNTER_MAGIC` 含（不受 counter magic 阻擋）；`REPEATEDSKILLS[0]` 5 項武器互斥。
+  - yiwei `db_split/skills.sql:155`：`('156', '暴風之眼', '20', '3', '40', '0', '0', '0', '0', '960', 'none', '8', '0', '0', '0', '0', '0', '8', '2', '0', '0', '-1', '0', '8', '', '19', '11731', '0', '0', '724', '0')` — mp=40、buff_duration=960、target=none、target_to=8、attr=8、type=2、ranged=0、area=-1、id=8、action_id=19、cast_gfx=**11731**、sys_msg_stop=724、sys_msg_fail=0。
+
+- **Go 對照**：
+  - `buffs.lua:124 [156] = { bow_hit = 2, bow_dmg = 3, exclusions = {148, 149, 163, 166} }`：BowHit+2、BowDmg+3 + 4 項 mutex 對齊 Java REPEATEDSKILLS[0] 排除自身後 4 項。
+  - `skill_buff.go:167-168 + :201-202` apply：`buff.DeltaBowHit = int16(eff.BowHit)` + `target.BowHitMod += buff.DeltaBowHit`（BowDmg 同模式）。
+  - `:307 sendBuffIcon` 透過 `buff_icon_map.yaml:64 skill_id: 156 type: aura`（無 param）→ `handler/skill.go:222-227` aura default `iconID = skill_id - 1 = 155` 送 `S_PacketBoxIconAura(155, duration)` 對齊 Java cast icon。
+  - `:513-514` revert：`target.BowHitMod -= buff.DeltaBowHit` + 對應 stop icon。
+  - `executeSelfSkill` default 路徑（因 yaml target='none'）：`applyBuffEffect(player, skill)` + cast_gfx 廣播。
+  - yaml `skill_list.yaml:4776-4806 skill_id=156`：mp=40、buff_duration=960、target=none、target_to=8、attr=8、type=2、ranged=0、area=-1、id=8、action_id=19、cast_gfx=**2288**、sys_msg_stop=724、sys_msg_fail=0。
+  - **僅 cast_gfx 一項漂移**（Go=2288 vs yiwei=11731），其餘 30 欄位對齊 yiwei（同 149 WIND_SHOT 2247 vs 11729、150 WIND_WALK 2247 vs 11730 模式）。
+
+- **既有測試覆蓋**：
+  - 無針對 156 的單元測試。BowHit/BowDmg apply/revert 路徑由 149 WIND_SHOT（BowHit+6）同族測試間接覆蓋。
+
+- **發現的 Java 真實差異**：**無**（核心 BowHit ±2 + BowDmg ±3 + S_PacketBoxIconAura(155) icon + REPEATEDSKILLS[0] 5 項互斥完整對齊）。
+
+- **broader gap（不改）**：
+  - **yaml cast_gfx 漂移**：Go=2288 vs yiwei=11731，Go 用 cat-fei 較舊 GFX ID（同 149/150 模式）。屬廣域 yiwei/cat-fei SQL 同步議題。
+  - **`L1SkillUse.sendGrfx` 末尾 1686-1694 _targetList 通用 status refresh**：屬廣域 buff cast 後置缺口（同 130/146/148/149/150/151/152/155 audit 同源）。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - 無針對 156 的測試需執行。
+
 ## 烈炎氣息（FIRE_BLESS / 155）— 補齊 C_UseSkill 武器類型 gate，unequip cleanup hook 延後
 
 - **Java 對照**：
