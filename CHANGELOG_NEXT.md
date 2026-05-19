@@ -1,5 +1,60 @@
 ## 技能
 
+## 鏡反射（COUNTER_MIRROR / 134）— 純審計確認 PC→PC 反射完整對齊 Java，PC→NPC/NPC→PC/NPC→NPC 路徑為廣域 NPC schema 缺口
+
+- **Java 對照**：
+  - `L1SkillId.java:466 COUNTER_MIRROR = 134`（鏡反射）。**無對應 skillmode 類別**——134 是純 buff 類技能（target='none' type=2），靠通用 buff 路徑套用 32s（yaml duration=16，TicksLeft=16*5）旗標 buff，不修改任何 stat（buffs.lua `[134] = {}`），實際反射邏輯在被攻擊路徑的 active site。
+  - `L1SkillUse.java:1645-1651`：COUNTER_MIRROR 與 COUNTER_MAGIC/COUNTER_BARRIER/ARMOR_BREAK 同組，cast 廣播 `S_SkillSound(targetid, _gfxid=4395)` 用 `sendPacketsXR(-1)` 給自己 + `broadcastPacketAll` 給附近。
+  - **4 個 active site**（攻擊端被反射）：
+    - **PC→PC `L1MagicPc.calcMagicDamage:1197`**（dice damage 路徑）：`if targetPc.hasSkillEffect(134) && targetPc.Wis > random(100) → _pc.sendPacketsAll(S_DoActionGFX(_pc.id, 2)) + _pc.receiveDamage(_targetPc, dmg, false, false) + _pc.sendPacketsAll(S_SkillSound(_targetPc.id, 4395)) + dmg=0 + _targetPc.removeSkillEffect(134)`。
+    - **PC→PC `L1MagicPc.calcPcMagicDamage:1345`**（regular magic damage 路徑）：邏輯完全相同（Java 在兩條 PC 攻 PC magic damage 計算路徑都做 reflection check）。
+    - **PC→NPC `L1MagicPc.calcNpcMagicDamage:1615`**：`if targetNpc.hasSkillEffect(134) && targetNpc.Wis > random(100) → _pc.sendPacketsAll(S_DoActionGFX(_pc.id, 2)) + _pc.receiveDamage(_targetNpc, dmg, false, false) + _targetNpc.broadcastPacketAll(S_SkillSound(_targetNpc.id, 4395)) + dmg=0 + _targetNpc.removeSkillEffect(134)`（需 NPC.Wis 屬性）。
+    - **NPC→PC `L1MagicNpc.calcPcMagicDamage:420`**：`if targetPc.hasSkillEffect(134) && _npc.getNpcTemplate().get_IsErase() && !_npc.getNpcTemplate().is_boss() && targetPc.Wis > random(100) → _npc.broadcastPacketAll(S_DoActionGFX(_npc.id, 2)) + _npc.receiveDamage(_targetPc, dmg) + _npc.broadcastPacketAll(S_SkillSound(_targetPc.id, 4395)) + dmg=0 + _targetPc.removeSkillEffect(134)`（需 NPC.IsErase + !IsBoss 雙閘）。
+    - **NPC→NPC `L1MagicNpc.calcNpcMagicDamage:499`**：`if targetNpc.hasSkillEffect(134) && _npc.getNpcTemplate().get_IsErase() && targetNpc.Wis > random(100) → 同樣 broadcastPacketAll(S_DoActionGFX + S_SkillSound) + receiveDamage + dmg=0 + removeSkillEffect`（需 NPC.IsErase + 目標 NPC.Wis）。
+  - **共同特徵**：機率 = 目標 Wis 對 0-99 比較（target.Wis > random(100) → trigger）；觸發後反彈 100% 傷害給攻擊者（`receiveDamage(false, false)` raw 無 MR/PR 減免）；廣播 action GFX 2（無傷標誌）+ S_SkillSound 4395 表示反射音效；buff 一擊消耗（removeSkillEffect(134)）；對攻擊者用 `sendPacketsAll`（PC→PC）或 `broadcastPacketAll`（PC→NPC、NPC→PC、NPC→NPC）廣播給附近所有玩家。
+  - 表格成員：`isNotCancelable` 不含 134（cancellable）；`EXCEPT_COUNTER_MAGIC` 不含 134（**受 counter magic 阻擋**）；`REPEATEDSKILLS` 不含 134（無互斥）。
+  - yiwei `db_split/skills.sql:133`：`('134', '鏡反射', '17', '5', '10', '0', '40319', '1', '1000', '16', 'none', '0', '0', '0', '0', '0', '0', '0', '2', '0', '0', '0', '0', '32', '', '19', '4395', '0', '0', '0', '0')` — mp=10、item=40319×1、reuse_delay=1000、buff_duration=16、target=none、target_to=0、type=2、ranged=0、id=32、action_id=19、cast_gfx=4395、sys_msg_fail=0。
+
+- **Go 對照**：
+  - `skill_elemental.go:11 skillCounterMirror = int32(134)`。
+  - `skill_elemental.go:147-171 applyCounterMirrorMagicDamage`：完整對齊 Java PC→PC active site：
+    - 早返：caster/target nil、damage≤0、`!target.HasBuff(skillCounterMirror)` → return original damage。
+    - 機率：`if int(target.Wis) <= roll { return damage }` ＝ Java `targetPc.Wis > random(100)` 等價（roll 為 0-99，target.Wis 大於該 roll 才觸發）。
+    - 移除 buff：`s.removeBuffAndRevert(target, skillCounterMirror)` 對齊 Java `removeSkillEffect(134)`。
+    - 反彈傷害：`attacker.HP -= damage + Dirty=true + clamp 0 + sendHpUpdate` 對齊 Java `_pc.receiveDamage(_targetPc, dmg, false, false)`。
+    - 廣播：`BuildActionGfx(attacker.CharID, 2) + BuildSkillEffect(target.CharID, 4395)` 對齊 Java `S_DoActionGFX(_pc.id, 2) + S_SkillSound(_targetPc.id, 4395)`。
+    - Death 觸發：`if attacker.HP <= 0 → KillPlayer(attacker)` 對齊 Java `receiveDamage` 內部死亡處理。
+    - 返回 0 對齊 Java `dmg = 0`。
+  - **active site #1** `skill_damage.go:179`：`dmg = s.applyCounterMirrorMagicDamage(player, target, dmg, world.RandInt(100), nearby)` 在 PC magic skill 對 PC 目標的 `applySkillDamageToPlayer` 套用 reflection check（對齊 Java `calcPcMagicDamage:1345` 主要 magic damage 路徑）。
+  - **active site #2** `skill_self_area.go:75`：`applySelfAreaSkillDamageToPlayerNoVisual` 同樣套用 reflection check（對齊 Java `calcMagicDamage:1197` 的 dice damage 路徑，主要用於 self-area 範圍魔法如冰暴/閃電風暴等）。
+  - yaml `skill_list.yaml:4094-4124`：mp=10、item_consume_id=40319×1、reuse_delay=0、buff_duration=16、target=none、target_to=0、type=2、ranged=0、id=32、action_id=19、cast_gfx=4395、sys_msg_fail=280。
+  - `buffs.lua:111 [134] = {}`：空 buff 條目，對齊 Java「純旗標 buff、無 stat 變化」設計，hp/mr/ac 全部不動。
+  - `counterMagicExempt[134]`：未列入豁免表（受 counter magic 阻擋），對齊 Java `EXCEPT_COUNTER_MAGIC` 不含 134。
+  - `NON_CANCELLABLE` 不含 134（cancellable），對齊 Java `isNotCancelable` 不含 134。
+
+- **既有測試覆蓋**：
+  - `skill_elemental_summon_test.go:157-196 TestSkillElementalSummonCounterMirrorReflectsMagicDamage`：caster 100HP + target 100HP/Wis=18 + 134 buff，呼叫 `applyCounterMirrorMagicDamage(caster, target, 30, 0, nearby)` （roll=0 強制觸發）→ damage=0、casterHP=70（30 反彈）、targetHP=100、buff 移除。完整鎖死 Java PC→PC 反射 mechanic。
+
+- **發現的 Java 真實差異**：**無**（PC→PC 路徑完整對齊）。
+
+- **broader gap（不改，需 NPC schema 重構）**：
+  - **PC→NPC 反射缺失**：Java `L1MagicPc.calcNpcMagicDamage:1615` 對 NPC 目標的 hasSkillEffect(134) + NPC.Wis 反射，Go 無 NPC 端 134 buff 系統（NpcInfo 缺 Wis 屬性、無 NPC buff/debuff 帶 134）。需先補：(a) `NpcInfo.Wis int16` 欄位；(b) NPC 端可被施放 134 buff（NPC buff 系統目前只支援 elementalFallDownAttr/poisonAtk 等少數 debuff 場景，無泛用 buff 容器）。
+  - **NPC→PC 反射缺失**：Java `L1MagicNpc.calcPcMagicDamage:420` NPC 對 PC 施 magic 時若 PC 有 134 → 機率反彈給 NPC。Go `npc_ai.go:573 npcMeleeAttack` / `:643 npcRangedAttack` 套用 `applyImmuneToHarmDamage + applyReductionArmorDamage` **但無 applyCounterMirrorMagicDamage**——然而 Java 134 只反射 **magic** 傷害（method 名稱 calcPcMagicDamage），不反射物理 melee/ranged，所以 Go 物理路徑不套用 134 是**正確的**。真正缺失是「NPC 施放 magic skill 給 PC 的 damage 計算路徑」——Go NPC AI 缺乏對等的 magic cast system（NPC 不會主動施法傷害技能），這是廣域 NPC AI 缺口而非 134 單體。
+  - **NPC→NPC 反射缺失**：Java `L1MagicNpc.calcNpcMagicDamage:499` 含 IsErase 閘 + 目標 NPC.Wis 機率。Go NPC 互打目前僅 melee 物理（NPC 不互施 magic skill），與 NPC magic system 缺口同源。
+  - **NPC.IsErase / NPC.IsBoss 欄位**：Java NpcTemplate 有 `get_IsErase()`（是否可被解除 buff）與 `is_boss()`（Boss 旗標）兩屬性，分別影響 NPC→PC 與 PC→NPC 反射閘。Go NpcInfo 缺這兩欄位，需先補資料庫 schema + YAML 載入器 + Go struct。
+  - **yaml reuse_delay 漂移**：Go=0、yiwei=1000，Go 跟 cat-fei 偏離 yiwei（同 130/132/133 同源），屬廣域 SQL 漂移議題。
+  - **yaml sys_msg_fail 漂移**：Go=280、yiwei=0，Go 增加施法失敗回饋訊息，比 Java 嚴格收緊（補上 Java 無回饋的 UX 缺口），與多項 elf 技能同模式（115/133 等），保留現狀。
+  - **sendPacketsXR 自身廣播差異**：Java cast 廣播 `_player.sendPacketsXR(new S_SkillSound(targetid, _gfxid), -1)` 把自己排除在外但其實 `-1` 反而包含自己（XR 是「除了指定 XR 外」的範圍）；Go 直接 broadcast 給 nearby（含自己）。功能等價但具體序列化路徑不同，屬廣域 packet schema 議題。
+
+- **不修原因**（per 對齊深度停損標準）：
+  - PC→PC 完整對齊，**criterion (a) (b) (c) 三項都不滿足**——沒有 Java vs Go 差異、Go 沒有錯、無客戶端二進位約束問題。
+  - 其餘 3 個路徑（PC→NPC、NPC→PC、NPC→NPC）都需 **NPC schema + NPC magic system 重構**，遠超 134 單體範圍（影響所有 NPC magic 反射技能：134/11059/COUNTER_BARRIER 等）。屬廣域架構議題。
+  - 不寫新測試：既有測試已完整鎖死 Java PC→PC mechanic，新增「測試 PC→NPC 反射」屬「先設計 NPC schema 再寫測試」順序錯位。
+
+- **驗證**：
+  - `cd server && go build ./...` 通過。
+  - `cd server && go test ./internal/system -run TestSkillElementalSummonCounterMirror -timeout 60s` PASS（0.131s）。
+
 ## 弱化屬性（ELEMENTAL_FALL_DOWN / 133）— 純審計確認 Go 核心對齊 Java，邊界差異記錄為 broader gap
 
 - **Java 對照**：
