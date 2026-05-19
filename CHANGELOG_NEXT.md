@@ -1,5 +1,16 @@
 ## 技能
 
+## 體能激發（EXOTIC_VITALIZE / 169）— 純審計重新確認核心負重 HP/MP 回復旗標完整對齊 Java（無屬性加成）
+
+- **Java 對照**：`L1PcInstance.isRegenHp/isRegenMp` 行 775/831 對 EXOTIC_VITALIZE 純為旗標（無屬性加成、無 skillmode、無 L1SkillUse/L1SkillStop 條目）。yiwei `skills.sql:168` 31 欄位。
+- **Go 對照**（無代碼變更）：
+  - `buffs.lua:137 [169]={}` flag-only。
+  - `scripts/character/regen.lua` HP/MP 負重檢查：`if weight_pct >= 120 and not has_exotic_vitalize and not has_additional_fire then blocked = true`。
+  - `system/regen.go:95+140` 傳遞 `HasExoticVitalize: p.HasBuff(169)`。
+  - yaml `skill_list.yaml:5179` 31 欄位中 30 項對齊 yiwei sql:168，僅 reuse_delay=0 vs 100 一項漂移（Go 跟 cat-fei）。
+- **broader gap（不改）**：(A) Java `HprExecutor.bonus /= 2` 對 `getBaseCon() >= 45 + 負重` 減半屬廣域 regen 公式差；(B) yaml reuse_delay 漂移屬廣域 SQL 同步議題。
+- **驗證**：`cd server && go build ./...` 通過，本步無代碼變更（純審計）。
+
 ## 鋼鐵防護（IRON_SKIN / 168）— 純審計重新確認核心 AC ±10 + REPEATEDSKILLS[1] 2 項互斥 + S_SkillIconShield param=10 完整對齊 Java，yaml 31 欄位零漂移
 
 - **Java 對照**：`L1SkillUse IRON_SKIN.start() addAc(-10) + S_SkillIconShield(10, duration)`、`L1SkillStop addAc(10) + S_SkillIconShield(10, 0)`；REPEATEDSKILLS[1]={151,168}；yiwei `skills.sql:167` 31 欄位。
