@@ -121,7 +121,7 @@ dungeons:
       teleport_to: { x: 32626, y: 33054, heading: 5 }
       reject_message: 1413
     exit:
-      teleport_to: { x: 33702, y: 32502, map_id: 4, heading: 4 }   # 815: getback_restart
+      teleport_to: { x: 33705, y: 32504, map_id: 4, heading: 4 }   # 威頓村中央（815: etcitem_teleport 49185 標準傳送點）
       cleanup_items: [850]   # 真死亡騎士烈炎之劍：離開副本即刪除
     rounds:
       # 入場時：第 1 區域怪 + 入口死亡騎士（輔助 NPC，不計入 round clear）
