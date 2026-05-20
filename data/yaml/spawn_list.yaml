@@ -142914,3 +142914,48 @@ spawns:
       rest: false
       avoid_pc: false
       spread: point
+
+    # ========================================================================
+    # 火龍窟副本（MISS-P2-016）— 威頓村入口 NPC
+    # 815 SQL spawnlist_npc 對應條目：漢 (33694, 32520, mapid 4)、愛德納斯 (33625, 32363, mapid 4)
+    # 死亡騎士 46164 由副本 Round -1 auxiliary spawn 自行生成，不在常駐 spawnlist 中。
+    # ========================================================================
+    - npc_id: 46180
+      map_id: 4
+      x: 33694
+      "y": 32520
+      count: 1
+      randomx: 0
+      randomy: 0
+      locx1: 0
+      locy1: 0
+      locx2: 0
+      locy2: 0
+      heading: 6
+      respawn_delay: 0
+      mob_group_id: 0
+      respawn_screen: false
+      movement_distance: 0
+      rest: false
+      avoid_pc: false
+      spread: point
+
+    - npc_id: 46181
+      map_id: 4
+      x: 33625
+      "y": 32363
+      count: 1
+      randomx: 0
+      randomy: 0
+      locx1: 0
+      locy1: 0
+      locx2: 0
+      locy2: 0
+      heading: 6
+      respawn_delay: 0
+      mob_group_id: 0
+      respawn_screen: false
+      movement_distance: 0
+      rest: false
+      avoid_pc: false
+      spread: point

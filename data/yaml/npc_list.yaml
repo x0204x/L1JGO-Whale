@@ -84335,3 +84335,282 @@ npcs:
     undead: false
     agro: false
     tameable: false
+
+  # ============================================================================
+  # 火龍窟副本（MISS-P2-016）— 10 個新 NPC
+  # 來源：815/DB/815.sql `npc` 表；weapon_required: 850 觸發武器需求機制。
+  # ============================================================================
+
+  # ─── 入口/輔助 NPC（不需 weapon_required） ─────────────────────────
+  - npc_id: 46180
+    name: "象牙塔魔法師^漢"
+    nameid: "$18623"
+    impl: L1Merchant
+    gfx_id: 2529
+    level: 0
+    hp: 0
+    mp: 0
+    ac: 0
+    str: 0
+    dex: 0
+    con: 0
+    wis: 0
+    intel: 0
+    mr: 0
+    exp: 0
+    lawful: 0
+    size: small
+    ranged: 0
+    atk_speed: 0
+    passive_speed: 0
+    undead: false
+    agro: false
+    tameable: false
+
+  - npc_id: 46181
+    name: "傳送師^愛德納斯"
+    nameid: "$18622"
+    impl: L1Merchant
+    gfx_id: 7372
+    level: 0
+    hp: 0
+    mp: 0
+    ac: 0
+    str: 0
+    dex: 0
+    con: 0
+    wis: 0
+    intel: 0
+    mr: 0
+    exp: 0
+    lawful: 0
+    size: small
+    ranged: 0
+    atk_speed: 0
+    passive_speed: 0
+    undead: false
+    agro: false
+    tameable: false
+
+  - npc_id: 46164
+    name: "奄奄一息的死亡騎士"
+    nameid: "$18635"
+    impl: L1Merchant
+    gfx_id: 12738
+    level: 0
+    hp: 0
+    mp: 0
+    ac: 0
+    str: 0
+    dex: 0
+    con: 0
+    wis: 0
+    intel: 0
+    mr: 0
+    exp: 0
+    lawful: 0
+    size: small
+    ranged: 0
+    atk_speed: 0
+    passive_speed: 0
+    undead: false
+    agro: false
+    tameable: false
+    cant_resurrect: true
+
+  # ─── 副本怪（必須裝備 item 850 才能造成傷害） ─────────────────────
+  - npc_id: 45204
+    name: 烈炎獵犬
+    nameid: 烈炎獵犬
+    impl: L1Monster
+    gfx_id: 4643
+    level: 48
+    hp: 350
+    mp: 106
+    ac: -45
+    str: 20
+    dex: 18
+    con: 20
+    wis: 24
+    intel: 30
+    mr: 35
+    exp: 3365
+    lawful: -25
+    size: small
+    weak_attr: 4
+    ranged: 1
+    atk_speed: 1080
+    passive_speed: 640
+    undead: false
+    agro: true
+    tameable: false
+    weapon_required: 850
+
+  - npc_id: 111528
+    name: "火龍的祭品貝奈首領"
+    nameid: "火龍的祭品貝奈首領"
+    impl: L1Monster
+    gfx_id: 12799
+    level: 30
+    hp: 600
+    mp: 25
+    ac: -19
+    str: 20
+    dex: 16
+    con: 18
+    wis: 10
+    intel: 12
+    mr: 20
+    exp: 1500
+    lawful: -15
+    size: large
+    weak_attr: 4
+    ranged: 1
+    atk_speed: 1300
+    passive_speed: 1000
+    undead: false
+    agro: true
+    tameable: false
+    weapon_required: 850
+
+  - npc_id: 111530
+    name: "火龍的紅雷歐"
+    nameid: "火龍的紅雷歐"
+    impl: L1Monster
+    gfx_id: 12801
+    level: 30
+    hp: 1750
+    mp: 50
+    ac: -23
+    str: 22
+    dex: 22
+    con: 18
+    wis: 12
+    intel: 15
+    mr: 50
+    exp: 1500
+    lawful: -75
+    size: large
+    weak_attr: 4
+    ranged: 1
+    atk_speed: 1300
+    passive_speed: 1000
+    undead: false
+    agro: true
+    tameable: false
+    weapon_required: 850
+
+  - npc_id: 111531
+    name: "火龍的火燒雷歐"
+    nameid: "火龍的火燒雷歐"
+    impl: L1Monster
+    gfx_id: 12802
+    level: 30
+    hp: 2000
+    mp: 50
+    ac: -28
+    str: 25
+    dex: 22
+    con: 18
+    wis: 12
+    intel: 15
+    mr: 50
+    exp: 1500
+    lawful: -100
+    size: large
+    weak_attr: 4
+    ranged: 1
+    atk_speed: 1300
+    passive_speed: 1000
+    undead: false
+    agro: true
+    tameable: false
+    weapon_required: 850
+
+  # ─── 最終 Boss（三選一，weapon_required 850） ─────────────────────
+  - npc_id: 111532
+    name: "\\f3伊弗利特"
+    nameid: "\\f3伊弗利特"
+    impl: L1Monster
+    gfx_id: 1773
+    level: 60
+    hp: 10000
+    mp: 1000
+    ac: -60
+    str: 70
+    dex: 70
+    con: 35
+    wis: 30
+    intel: 35
+    mr: 80
+    exp: 2601
+    lawful: -1000
+    size: large
+    weak_attr: 4
+    ranged: 2
+    atk_speed: 1640
+    passive_speed: 960
+    undead: false
+    agro: true
+    tameable: false
+    hard: true
+    cant_resurrect: true
+    weapon_required: 850
+
+  - npc_id: 4070080
+    name: 不死鳥
+    nameid: 不死鳥
+    impl: L1Monster
+    gfx_id: 1791
+    level: 90
+    hp: 40000
+    mp: 1000
+    ac: -80
+    str: 90
+    dex: 70
+    con: 18
+    wis: 22
+    intel: 100
+    mr: 250
+    exp: 3482
+    lawful: -130
+    size: large
+    weak_attr: 4
+    ranged: 2
+    atk_speed: 1200
+    passive_speed: 960
+    undead: false
+    agro: true
+    tameable: false
+    hard: true
+    cant_resurrect: true
+    weapon_required: 850
+
+  - npc_id: 4070081
+    name: 巴拉卡斯
+    nameid: 巴拉卡斯
+    impl: L1Monster
+    gfx_id: 2001
+    level: 95
+    hp: 50000
+    mp: 4500
+    ac: -99
+    str: 100
+    dex: 70
+    con: 35
+    wis: 30
+    intel: 50
+    mr: 350
+    exp: 9026
+    lawful: -500
+    size: large
+    weak_attr: 4
+    ranged: 2
+    atk_speed: 1840
+    passive_speed: 480
+    undead: false
+    agro: true
+    tameable: false
+    hard: true
+    cant_resurrect: true
+    weapon_required: 850

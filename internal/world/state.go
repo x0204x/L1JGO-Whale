@@ -130,6 +130,10 @@ type PlayerInfo struct {
 	// 注意 Java 用 -1 作 sentinel，Go 改用 0 因 Go 零初值=0、副本實例 ID 永遠 >= 100，0/-1 等價無歧義。
 	ShowID int32
 
+	// 火龍窟副本（MISS-P2-016）：威頓村 NPC 漢(46180) 發放「漢的袋子」(80001) 的下次可領 Unix 秒數。
+	// 24 小時冷卻；0 = 從未領過。值對應 Java 角色資料的「下次任務道具可領時間」。
+	NextHansBagAt int64
+
 	LastMoveTime int64 // time.Now().UnixNano() of last accepted move (0 = no throttle)
 
 	TempCharGfx int32 // 0=use ClassID; >0=current polymorph GFX sprite

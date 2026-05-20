@@ -216,6 +216,7 @@ func (s *NpcRespawnSystem) createMinion(tmpl *data.NpcTemplate, x, y int32, lead
 		WindRes:           tmpl.WindRes,
 		EarthRes:          tmpl.EarthRes,
 		WeakAttr:          tmpl.WeakAttr,
+		WeaponRequired:    tmpl.WeaponRequired,
 		SpawnX:            leader.SpawnX,
 		SpawnY:            leader.SpawnY,
 		SpawnMapID:        leader.SpawnMapID,

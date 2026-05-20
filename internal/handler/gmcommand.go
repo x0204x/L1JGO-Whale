@@ -726,6 +726,7 @@ func gmSpawn(sess *net.Session, player *world.PlayerInfo, args []string, deps *D
 			WindRes:           tmpl.WindRes,
 			EarthRes:          tmpl.EarthRes,
 			WeakAttr:          tmpl.WeakAttr,
+			WeaponRequired:    tmpl.WeaponRequired,
 			SpawnX:            x,
 			SpawnY:            y,
 			SpawnMapID:        player.MapID,

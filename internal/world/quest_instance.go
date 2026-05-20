@@ -53,7 +53,8 @@ type QuestInstance struct {
 	// 內部狀態（受 mu 保護）
 	mu             sync.RWMutex
 	players        []int32         // CharID 列表
-	npcs           []int32         // NPC InstanceID 列表
+	npcs           []int32         // NPC InstanceID 列表（戰鬥怪，計入 round clear）
+	auxNpcs        []int32         // 輔助 NPC InstanceID 列表（商人/對話，不計入 round clear，副本結束時統一回收）
 	spawnedRounds  map[int32]bool  // 已觸發過出生的 round ID 集合
 }
 
@@ -183,10 +184,34 @@ func (q *QuestInstance) Npcs() []int32 {
 
 // NpcCount 副本內 NPC 總數（含死亡未清的暫態）。
 // 對應 Java L1QuestUser.npcSize()。
+// 僅統計戰鬥怪（透過 AddNpc 加入的），輔助 NPC（透過 AddAuxiliaryNpc 加入的）不計入。
 func (q *QuestInstance) NpcCount() int {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 	return len(q.npcs)
+}
+
+// AddAuxiliaryNpc 加入「不計入 round clear」的輔助 NPC（如商人/對話 NPC）。
+// 同一 NPC 重複加入會略過。
+func (q *QuestInstance) AddAuxiliaryNpc(instanceID int32) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, id := range q.auxNpcs {
+		if id == instanceID {
+			return false
+		}
+	}
+	q.auxNpcs = append(q.auxNpcs, instanceID)
+	return true
+}
+
+// AuxiliaryNpcs 取得副本內所有輔助 NPC InstanceID 的快照（供副本結束時統一回收）。
+func (q *QuestInstance) AuxiliaryNpcs() []int32 {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	out := make([]int32, len(q.auxNpcs))
+	copy(out, q.auxNpcs)
+	return out
 }
 
 // ─── 自訂變數（Lua hook 用） ──────────────────────────────────────

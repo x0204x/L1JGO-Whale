@@ -84,3 +84,77 @@ dungeons:
         spawns:
           - { npc_id: 45005, count: 1, fixed: [32700, 32704] }  # 第二波青蛙
 
+  # ----------------------------------------------------------------------------
+  # 火龍窟副本（MISS-P2-016）
+  #
+  # 官方流程：
+  #   1. 威頓村 → NPC 漢(46180) → 給「漢的袋子」(80001，24h cooldown)
+  #   2. 點擊袋子 → 隨機產「冷冽的氣息」(80020) 或金幣/藥水
+  #   3. 持冷氣 → NPC 愛德納斯(46181) → 消耗冷氣 → 傳送進 mapid 2600
+  #   4. 進場後 → 入口「奄奄一息的死亡騎士」(46164) → 對話拿「真死亡騎士烈炎之劍」(850)
+  #   5. **必須裝備 850** 才能對副本怪造成傷害（NPC.weapon_required 機制）
+  #   6. 三區域漸進戰鬥：第 1 區 → 第 2 區 → 第 3 區 → 最終 Boss 三選一
+  #   7. Boss 死亡 = 通關 → 回奇岩 (33702, 32502, mapid 4) + 刪除 850
+  #
+  # 設計取捨：
+  #   - max_users=1 對齊官方「單人副本」描述（不是 815 SQL 預設的 8）
+  #   - 不做 mapid 2699 過渡（官方流程直接傳 2600）
+  #   - Boss 三選一用框架原生 random_pick，不寫 Lua hook（足夠處理）
+  #   - cleanup_items=[850] 對應 Java L1QuestUser.java:138-146 「離場不在 2600 → 刪除」
+  #   - 出生座標範圍依 mapid 2600 邊界 (32512,32959)~(32704,33087) 內
+  #
+  # Java 對照：
+  #   FireDragonQuestLv60.MAPID=2600；QuestId 對應 server_quest_maps 條目
+  #   server_quest_maps[2600] = users=8/time=1800（我們改 max_users=1）
+  # ----------------------------------------------------------------------------
+  - id: 148
+    name: "火龍巢穴"
+    map_id: 2600
+    max_users: 1
+    time_limit: 1800     # 30 分鐘
+    out_stop: true       # 單人副本：玩家離場即結束
+    entry:
+      min_level: 60
+      class_mask: 127    # 全職業（3.80C 無戰士）
+      required_items:
+        - { item_id: 80020, count: 1, consume: true }   # 冷冽的氣息：入場消耗
+      teleport_to: { x: 32626, y: 33054, heading: 5 }
+      reject_message: 1413
+    exit:
+      teleport_to: { x: 33702, y: 32502, map_id: 4, heading: 4 }   # 815: getback_restart
+      cleanup_items: [850]   # 真死亡騎士烈炎之劍：離開副本即刪除
+    rounds:
+      # 入場時：第 1 區域怪 + 入口死亡騎士（輔助 NPC，不計入 round clear）
+      - id: -1
+        trigger: on_enter
+        spawns:
+          - { npc_id: 46164, count: 1, fixed: [32623, 33057], heading: 5, auxiliary: true }   # 奄奄一息的死亡騎士
+          - { npc_id: 45206, count: 5, area: [32560, 33020, 32630, 33080] }    # 火炎蛋
+          - { npc_id: 45284, count: 3, area: [32560, 33020, 32630, 33080] }    # 火焰戰士
+          - { npc_id: 45291, count: 3, area: [32560, 33020, 32630, 33080] }    # 火焰弓箭手
+          - { npc_id: 45204, count: 1, area: [32560, 33020, 32630, 33080] }    # 烈炎獵犬（雷歐第一次）
+      # 第 1 區清光 → 第 2 區
+      - id: 1
+        trigger: on_round_clear
+        spawns:
+          - { npc_id: 45206, count: 5, area: [32580, 32990, 32650, 33050] }    # 火炎蛋
+          - { npc_id: 111528, count: 1, area: [32580, 32990, 32650, 33050] }   # 火龍的祭品貝奈首領
+          - { npc_id: 45359, count: 2, area: [32580, 32990, 32650, 33050] }    # 阿西塔基奧
+          - { npc_id: 111530, count: 1, area: [32580, 32990, 32650, 33050] }   # 火龍的紅雷歐（第二關卡守門人）
+      # 第 2 區清光 → 第 3 區
+      - id: 2
+        trigger: on_round_clear
+        spawns:
+          - { npc_id: 45206, count: 5, area: [32600, 32960, 32680, 33020] }    # 火炎蛋
+          - { npc_id: 45617, count: 1, area: [32600, 32960, 32680, 33020] }    # 火龍的不死鳥（區域版）
+          - { npc_id: 45365, count: 2, area: [32600, 32960, 32680, 33020] }    # 熔岩高崙
+          - { npc_id: 111531, count: 1, area: [32600, 32960, 32680, 33020] }   # 火龍的火燒雷歐（第三關卡守門人）
+      # 第 3 區清光 → 最終 Boss 三選一
+      - id: 3
+        trigger: on_round_clear
+        random_pick: true   # 從下列 3 種 Boss 隨機選 1 種出生
+        spawns:
+          - { npc_id: 111532, count: 1, fixed: [32650, 32990], heading: 4 }    # 伊弗利特
+          - { npc_id: 4070080, count: 1, fixed: [32650, 32990], heading: 4 }   # 不死鳥（Boss 版）
+          - { npc_id: 4070081, count: 1, fixed: [32650, 32990], heading: 4 }   # 巴拉卡斯
+

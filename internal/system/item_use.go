@@ -1298,7 +1298,7 @@ func checkBraveClassRestrict(classType int16, restrict string) bool {
 	}
 }
 
-// enchantScrollBless 回傳卷軸的祝福分類（0=普通, 1=祝福, 2=詛咒）。
+// enchantScrollBless 回傳卷軸的祝福分類（0=祝福, 1=普通, 2=詛咒，對齊 Java/DB 慣例）。
 // 值來自物品實例的 Bless 欄位（DB character_items.bless），直接使用。
 func enchantScrollBless(_ int32, bless int) int {
 	return bless
@@ -1771,6 +1771,7 @@ func (s *ItemUseSystem) useCreateMonsterWand(sess *net.Session, player *world.Pl
 		WindRes:           tmpl.WindRes,
 		EarthRes:          tmpl.EarthRes,
 		WeakAttr:          tmpl.WeakAttr,
+		WeaponRequired:    tmpl.WeaponRequired,
 		SpawnX:            spawnX,
 		SpawnY:            spawnY,
 		SpawnMapID:        player.MapID,

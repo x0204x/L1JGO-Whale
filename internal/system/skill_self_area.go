@@ -132,6 +132,16 @@ func (s *SkillSystem) applySelfAreaSkillDamageToNpcNoVisual(sess *net.Session, p
 	if dmg < 0 {
 		dmg = 0
 	}
+	// 副本武器需求檢查（火龍窟「必須裝備真死亡騎士烈炎之劍」）：自我中心 AoE 技能對副本怪同樣需符合武器需求。
+	if dmg > 0 && npc.WeaponRequired != 0 {
+		var equippedID int32
+		if wpn := player.Equip.Weapon(); wpn != nil {
+			equippedID = wpn.ItemID
+		}
+		if !npc.CanReceiveDamageFrom(equippedID) {
+			dmg = 0
+		}
+	}
 	if player.AttackView {
 		handler.SendDamageNumbers(sess, npc.ID, dmg)
 	}

@@ -4,6 +4,57 @@
 # key_items: 鑰匙開啟型
 
 items:
+  # ──────────────────────────────────────────────────────────────────
+  # 漢的袋子 (80001) — 火龍窟副本門票來源（MISS-P2-016）
+  # 官方介紹：「每次開到冷冽的氣息一個」+ 隨機金幣 / 各色藥水
+  # 機率分配：冷氣 30%、金幣 35%、紅藥 15%、橙藥 12%、白藥 8%
+  # ──────────────────────────────────────────────────────────────────
+  - box_item_id: 80001
+    get_item_id: 80020   # 冷冽的氣息（門票）
+    random_int: 100
+    random: 30
+    min_count: 1
+    max_count: 1
+    broadcast: false
+    bless: -1
+    enchant: 0
+  - box_item_id: 80001
+    get_item_id: 40308   # 金幣
+    random_int: 100
+    random: 35
+    min_count: 500
+    max_count: 1500
+    broadcast: false
+    bless: -1
+    enchant: 0
+  - box_item_id: 80001
+    get_item_id: 40010   # 治癒藥水（紅）
+    random_int: 100
+    random: 15
+    min_count: 3
+    max_count: 8
+    broadcast: false
+    bless: -1
+    enchant: 0
+  - box_item_id: 80001
+    get_item_id: 40011   # 強力治癒藥水（橙）
+    random_int: 100
+    random: 12
+    min_count: 2
+    max_count: 5
+    broadcast: false
+    bless: -1
+    enchant: 0
+  - box_item_id: 80001
+    get_item_id: 84072   # 純白的萬能藥
+    random_int: 100
+    random: 8
+    min_count: 1
+    max_count: 1
+    broadcast: false
+    bless: -1
+    enchant: 0
+
   # 古老皮袋(40167) — 隨機開出鑽石或魔法寶石
   - box_item_id: 40167
     get_item_id: 40044    # 鑽石

@@ -236,6 +236,21 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 		damage += processDollSkillProc(player, npc, nearby, s.deps)
 	}
 
+	// 副本武器需求檢查（火龍窟「必須裝備真死亡騎士烈炎之劍才能傷敵」）：
+	// 玩家右手武器 item_id 不符 NPC.WeaponRequired 時所有傷害歸 0，但仍播放動畫。
+	if damage > 0 && npc.WeaponRequired != 0 {
+		var equippedID int32
+		if wpn := player.Equip.Weapon(); wpn != nil {
+			equippedID = wpn.ItemID
+		}
+		if !npc.CanReceiveDamageFrom(equippedID) {
+			damage = 0
+			if player.Session != nil {
+				handler.SendSystemMessage(player.Session, "你的武器無法傷害這個敵人。")
+			}
+		}
+	}
+
 	// 廣播攻擊動畫
 	for _, viewer := range nearby {
 		handler.SendAttackPacket(viewer.Session, player.CharID, npc.ID, damage, player.Heading)

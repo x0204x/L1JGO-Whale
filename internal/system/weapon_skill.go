@@ -131,6 +131,18 @@ func processWeaponSkillAoE(player *world.PlayerInfo, primaryTarget *world.NpcInf
 			continue
 		}
 
+		// 副本武器需求檢查（火龍窟「必須裝備真死亡騎士烈炎之劍」）：
+		// 武器技能 AoE 命中副本怪時若主武器不符 → 該目標傷害歸 0、跳過後續扣血與廣播。
+		if target.WeaponRequired != 0 {
+			var equippedID int32
+			if wpn := player.Equip.Weapon(); wpn != nil {
+				equippedID = wpn.ItemID
+			}
+			if !target.CanReceiveDamageFrom(equippedID) {
+				continue
+			}
+		}
+
 		// 扣血
 		target.HP -= int32(dmg)
 		if target.HP < 0 {

@@ -45,6 +45,10 @@ type NpcTemplate struct {
 	EarthRes       int16  `yaml:"earth_res"`  // 地抗
 	WeakAttr       int16  `yaml:"weak_attr"`  // 害怕屬性 bitmask：1=地, 2=火, 4=水, 8=風
 	LightSize      int16  `yaml:"light_size"` // 光源半徑（0=無光源）
+
+	// WeaponRequired 副本怪武器需求：玩家必須裝備指定 item_id 的右手武器才能造成傷害（0=不要求）。
+	// 對應火龍窟副本「必須裝備真死亡騎士烈炎之劍」機制；範圍涵蓋玩家近戰、技能、武器 proc。
+	WeaponRequired int32 `yaml:"weapon_required"`
 }
 
 func (n *NpcTemplate) EffectiveTurnUndeadable() bool {

@@ -3831,3 +3831,16 @@ actions:
   - npc_id: 99999
     normal_action: test_hover
     caotic_action: test_hover
+
+  # ============================================================================
+  # 火龍窟副本（MISS-P2-016）— NPC 動作映射
+  # ============================================================================
+  - npc_id: 46180     # 象牙塔魔法師^漢（威頓村，發漢的袋子）
+    normal_action: give_hans_bag
+    caotic_action: give_hans_bag
+  - npc_id: 46181     # 傳送師^愛德納斯（威頓村，收冷氣傳送）
+    normal_action: enter_fire_dragon_cave
+    caotic_action: enter_fire_dragon_cave
+  - npc_id: 46164     # 奄奄一息的死亡騎士（副本內，給烈炎之劍）
+    normal_action: give_flame_sword
+    caotic_action: give_flame_sword

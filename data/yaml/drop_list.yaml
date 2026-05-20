@@ -52604,3 +52604,48 @@ drops:
         max: 1
         chance: 300000
         enchant_level: 0
+
+  # ============================================================================
+  # 火龍窟副本（MISS-P2-016）— 三大最終 Boss 掉落表
+  # 官方介紹掉落：龍血精華/魔石強化卷軸/對盔甲(對武器)施法卷軸 + 祝福版 + 詛咒版/純白萬能藥
+  # 缺漏物品（5/13）：龍印魔石寶箱/龍耀符石寶箱/惡魔氣息/天幣 — 815.sql 未找到、留待物品系統補
+  # chance 採 L1J 標準 1000000 比例（300000 = 30%）
+  # ============================================================================
+  - mob_id: 111532   # 伊弗利特
+    items:
+      - { item_id: 40308, min: 5000, max: 12000, chance: 1000000, enchant_level: 0 }   # 金幣（必掉）
+      - { item_id: 60228, min: 1, max: 1, chance: 250000, enchant_level: 0 }            # 龍血精華 25%
+      - { item_id: 70043, min: 1, max: 1, chance: 200000, enchant_level: 0 }            # 魔石強化卷軸 20%
+      - { item_id: 40074, min: 1, max: 3, chance: 300000, enchant_level: 0 }            # 對盔甲施法卷軸 30%
+      - { item_id: 40087, min: 1, max: 3, chance: 300000, enchant_level: 0 }            # 對武器施法卷軸 30%
+      - { item_id: 140074, min: 1, max: 1, chance: 100000, enchant_level: 0 }           # 祝福對盔甲 10%
+      - { item_id: 140087, min: 1, max: 1, chance: 100000, enchant_level: 0 }           # 祝福對武器 10%
+      - { item_id: 240074, min: 1, max: 2, chance: 200000, enchant_level: 0 }           # 詛咒對盔甲 20%
+      - { item_id: 240087, min: 1, max: 2, chance: 200000, enchant_level: 0 }           # 詛咒對武器 20%
+      - { item_id: 84072, min: 1, max: 2, chance: 150000, enchant_level: 0 }            # 純白萬能藥 15%
+
+  - mob_id: 4070080   # 不死鳥（Boss）
+    items:
+      - { item_id: 40308, min: 5000, max: 12000, chance: 1000000, enchant_level: 0 }
+      - { item_id: 60228, min: 1, max: 1, chance: 250000, enchant_level: 0 }
+      - { item_id: 70043, min: 1, max: 1, chance: 200000, enchant_level: 0 }
+      - { item_id: 40074, min: 1, max: 3, chance: 300000, enchant_level: 0 }
+      - { item_id: 40087, min: 1, max: 3, chance: 300000, enchant_level: 0 }
+      - { item_id: 140074, min: 1, max: 1, chance: 100000, enchant_level: 0 }
+      - { item_id: 140087, min: 1, max: 1, chance: 100000, enchant_level: 0 }
+      - { item_id: 240074, min: 1, max: 2, chance: 200000, enchant_level: 0 }
+      - { item_id: 240087, min: 1, max: 2, chance: 200000, enchant_level: 0 }
+      - { item_id: 84072, min: 1, max: 2, chance: 150000, enchant_level: 0 }
+
+  - mob_id: 4070081   # 巴拉卡斯
+    items:
+      - { item_id: 40308, min: 5000, max: 12000, chance: 1000000, enchant_level: 0 }
+      - { item_id: 60228, min: 1, max: 1, chance: 250000, enchant_level: 0 }
+      - { item_id: 70043, min: 1, max: 1, chance: 200000, enchant_level: 0 }
+      - { item_id: 40074, min: 1, max: 3, chance: 300000, enchant_level: 0 }
+      - { item_id: 40087, min: 1, max: 3, chance: 300000, enchant_level: 0 }
+      - { item_id: 140074, min: 1, max: 1, chance: 100000, enchant_level: 0 }
+      - { item_id: 140087, min: 1, max: 1, chance: 100000, enchant_level: 0 }
+      - { item_id: 240074, min: 1, max: 2, chance: 200000, enchant_level: 0 }
+      - { item_id: 240087, min: 1, max: 2, chance: 200000, enchant_level: 0 }
+      - { item_id: 84072, min: 1, max: 2, chance: 150000, enchant_level: 0 }

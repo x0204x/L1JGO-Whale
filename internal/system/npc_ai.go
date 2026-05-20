@@ -1073,6 +1073,7 @@ func (s *NpcAISystem) executeNpcSummon(npc *world.NpcInfo, summonID int32, summo
 			WindRes:           tmpl.WindRes,
 			EarthRes:          tmpl.EarthRes,
 			WeakAttr:          tmpl.WeakAttr,
+			WeaponRequired:    tmpl.WeaponRequired,
 			SpawnX:            sx,
 			SpawnY:            sy,
 			SpawnMapID:        npc.MapID,

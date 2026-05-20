@@ -324,15 +324,30 @@ func (s *QuestWorldSystem) OnNpcDeath(npc *world.NpcInfo) {
 		return
 	}
 
+	// 只觸發「第一個」尚未出生的 on_round_clear round（依 YAML 順序）。
+	// 避免多個 on_round_clear round 在單次全清時被一次全部觸發；
+	// 取而代之的是讓玩家殺光第 N 區 → 第 N+1 區出生 → 殺光 → 第 N+2 區... 依序推進。
+	spawned := false
 	for i := range def.Rounds {
 		r := &def.Rounds[i]
 		if r.Trigger != data.RoundTriggerOnRoundClear {
+			continue
+		}
+		if inst.IsRoundSpawned(r.ID) {
 			continue
 		}
 		if !inst.MarkRoundSpawned(r.ID) {
 			continue
 		}
 		s.spawnRound(inst, r)
+		spawned = true
+		break
+	}
+
+	// 若沒有任何新 round 被觸發 + 副本內已無怪 → 視為最終全清，結束副本。
+	// 對應 Java L1QuestUser.endQuest 由 QuestMobExecutor.stopQuest 觸發的路徑。
+	if !spawned && inst.NpcCount() == 0 {
+		s.endInstance(inst, "last_mob_death")
 	}
 }
 
@@ -382,11 +397,14 @@ func (s *QuestWorldSystem) endInstance(inst *world.QuestInstance, reason string)
 
 // cleanupDungeonNpcs 移除副本內所有 NPC（含廣播 + 解除地圖封鎖）。
 // 對應 Java L1QuestUser.removeAllMobs（forced cleanup）。
+// 同時清理戰鬥怪 (inst.Npcs) 與輔助 NPC (inst.AuxiliaryNpcs)。
 func (s *QuestWorldSystem) cleanupDungeonNpcs(inst *world.QuestInstance) {
 	if inst == nil || s.ws == nil {
 		return
 	}
-	for _, npcID := range inst.Npcs() {
+	allIDs := append([]int32{}, inst.Npcs()...)
+	allIDs = append(allIDs, inst.AuxiliaryNpcs()...)
+	for _, npcID := range allIDs {
 		npc := s.ws.GetNpc(npcID)
 		if npc == nil {
 			continue

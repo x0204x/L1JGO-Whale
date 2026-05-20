@@ -274,6 +274,14 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 	case "exit_demo_dungeon":
 		exitDemoDungeon(sess, player, deps)
 
+	// 火龍窟副本（MISS-P2-016）
+	case "give_hans_bag":          // 漢(46180)：給「漢的袋子」(24h cooldown)
+		giveHansBag(sess, player, deps)
+	case "enter_fire_dragon_cave": // 愛德納斯(46181)：收冷冽的氣息 → 傳入 mapid 2600
+		enterFireDragonCave(sess, player, deps)
+	case "give_flame_sword":       // 副本內死亡騎士(46164)：給「真死亡騎士烈炎之劍」(850)
+		giveFlameSword(sess, player, deps)
+
 	// ---------- 城堡管理 NPC 動作 ----------
 
 	case "inex":

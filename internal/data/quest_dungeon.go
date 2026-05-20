@@ -102,6 +102,10 @@ type DungeonRound struct {
 	Trigger RoundTrigger    `yaml:"trigger,omitempty"` // 預設：id=-1 時 on_enter，其他需明確指定
 	Timer   int32           `yaml:"timer,omitempty"`   // trigger=on_timer 時的秒數
 	Spawns  []DungeonSpawn  `yaml:"spawns"`
+
+	// RandomPick 若為 true，spawns 不全部執行；改為從中**隨機選擇 1 條** spawn 執行（用於 Boss 三選一）。
+	// 對應火龍窟「最終 Boss 隨機出現一種」需求。其他 round 不應啟用此旗標。
+	RandomPick bool `yaml:"random_pick,omitempty"`
 }
 
 // DungeonSpawn 單一 NPC 出生規則。
@@ -115,6 +119,11 @@ type DungeonSpawn struct {
 	Fixed   []int32 `yaml:"fixed,omitempty"`   // [x, y]
 	Heading int16   `yaml:"heading,omitempty"`
 	GroupID int32   `yaml:"group_id,omitempty"` // 0=無隊伍
+
+	// Auxiliary 標記非戰鬥 NPC（商人 / 任務 / 對話）：仍生成於副本內並對玩家可見，
+	// 但不計入 round clear 統計（避免不可擊殺的 NPC 永遠卡住下一輪出生）。
+	// 對應火龍窟「入口死亡騎士」L1Merchant 角色：發放真死亡騎士烈炎之劍但不參戰。
+	Auxiliary bool `yaml:"auxiliary,omitempty"`
 }
 
 // DungeonHookSpec Lua hook 路徑（格式 "scripts/dungeons/xxx.lua#func_name"）。

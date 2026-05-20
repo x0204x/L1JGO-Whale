@@ -407,6 +407,16 @@ func (s *SkillSystem) applyFoeSlayerNpcDamage(sess *net.Session, caster *world.P
 	if damage <= 0 || npc.Dead {
 		return
 	}
+	// 副本武器需求檢查（火龍窟「必須裝備真死亡騎士烈炎之劍」）：FoeSlayer 龍騎士魔法傷害同樣受限。
+	if npc.WeaponRequired != 0 {
+		var equippedID int32
+		if wpn := caster.Equip.Weapon(); wpn != nil {
+			equippedID = wpn.ItemID
+		}
+		if !npc.CanReceiveDamageFrom(equippedID) {
+			return
+		}
+	}
 	npc.HP -= damage
 	if npc.HP < 0 {
 		npc.HP = 0

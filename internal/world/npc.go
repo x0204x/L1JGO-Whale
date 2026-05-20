@@ -59,6 +59,7 @@ type NpcInfo struct {
 	WindRes           int16 // 風抗
 	EarthRes          int16 // 地抗
 	WeakAttr          int16 // 害怕屬性 bitmask：1=地, 2=火, 4=水, 8=風
+	WeaponRequired    int32 // 副本武器需求：玩家右手裝備 item_id 必須等於此值才能造成傷害（0=不限）
 
 	// Spawn data for respawning
 	SpawnX       int32
@@ -147,6 +148,20 @@ type MobGroupInfo struct {
 	Leader             *NpcInfo   // 隊長 NPC
 	Members            []*NpcInfo // 所有成員（含隊長）
 	RemoveGroupOnDeath bool       // 隊長死亡時是否解散群體
+}
+
+// CanReceiveDamageFrom 判斷 NPC 是否能被持有指定武器 item_id 的玩家造成傷害。
+// 對應火龍窟副本「必須裝備真死亡騎士烈炎之劍」機制：副本怪設定 WeaponRequired，
+// 玩家右手武器 item_id 不符時所有玩家來源傷害（近戰/技能/武器 proc）一律歸 0。
+// weaponItemID = 0 表示空手或未持武器；NPC WeaponRequired = 0 表示不設限。
+func (n *NpcInfo) CanReceiveDamageFrom(weaponItemID int32) bool {
+	if n == nil {
+		return false
+	}
+	if n.WeaponRequired == 0 {
+		return true
+	}
+	return weaponItemID == n.WeaponRequired
 }
 
 // HasDebuff 檢查 NPC 是否有指定 debuff。

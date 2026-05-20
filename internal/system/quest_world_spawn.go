@@ -95,6 +95,7 @@ func buildDungeonNpc(deps *handler.Deps, tmpl *data.NpcTemplate, x, y int32, map
 		WindRes:           tmpl.WindRes,
 		EarthRes:          tmpl.EarthRes,
 		WeakAttr:          tmpl.WeakAttr,
+		WeaponRequired:    tmpl.WeaponRequired,
 		RespawnDelay:      0, // 副本 NPC 不自動重生
 		ShowID:            showID,
 		Transient:         true,
@@ -119,7 +120,18 @@ func (s *QuestWorldSystem) spawnRound(inst *world.QuestInstance, round *data.Dun
 	}
 
 	spawned := 0
-	for i := range round.Spawns {
+
+	// random_pick 模式：從 spawns 隨機挑 1 條執行（用於 Boss 三選一）。
+	spawnIdxs := make([]int, 0, len(round.Spawns))
+	if round.RandomPick && len(round.Spawns) > 0 {
+		spawnIdxs = append(spawnIdxs, rand.Intn(len(round.Spawns)))
+	} else {
+		for i := range round.Spawns {
+			spawnIdxs = append(spawnIdxs, i)
+		}
+	}
+
+	for _, i := range spawnIdxs {
 		sp := &round.Spawns[i]
 		tmpl := s.deps.Npcs.Get(sp.NpcID)
 		if tmpl == nil {
@@ -151,7 +163,12 @@ func (s *QuestWorldSystem) spawnRound(inst *world.QuestInstance, round *data.Dun
 			if npc == nil {
 				continue
 			}
-			s.addDungeonNpc(inst, npc)
+			if sp.Auxiliary {
+				// 輔助 NPC（商人/對話/任務）：加進世界但不計入 round clear。
+				s.addDungeonAuxiliaryNpc(inst, npc)
+			} else {
+				s.addDungeonNpc(inst, npc)
+			}
 			spawned++
 
 			// 群體隊員（leader 帶隊員出生）
@@ -218,6 +235,25 @@ func (s *QuestWorldSystem) addDungeonNpc(inst *world.QuestInstance, npc *world.N
 	for _, viewer := range viewers {
 		handler.SendNpcPack(viewer.Session, npc)
 	}
+}
+
+// addDungeonAuxiliaryNpc 加入「不參與 round clear」的副本內 NPC（商人/對話 NPC）。
+// 與 addDungeonNpc 差異：不呼叫 inst.AddNpc，使其在最後一隻怪死亡判定時被忽略。
+// 仍會註冊到世界、設定 ShowID + Transient、向副本內玩家廣播，並在副本結束時被 cleanupDungeonNpcs 統一銷毀。
+func (s *QuestWorldSystem) addDungeonAuxiliaryNpc(inst *world.QuestInstance, npc *world.NpcInfo) {
+	if s.ws == nil || inst == nil || npc == nil {
+		return
+	}
+	s.ws.AddNpc(npc)
+	if s.deps != nil && s.deps.MapData != nil {
+		s.deps.MapData.SetImpassable(npc.MapID, npc.X, npc.Y, true)
+	}
+	viewers := s.ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, inst.ID)
+	for _, viewer := range viewers {
+		handler.SendNpcPack(viewer.Session, npc)
+	}
+	// 同時記錄到實例的輔助 NPC 清單，方便副本結束時統一回收。
+	inst.AddAuxiliaryNpc(npc.ID)
 }
 
 // spawnGroupMinions 為已生成的 leader 帶出群體隊員。

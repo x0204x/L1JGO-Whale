@@ -256,6 +256,17 @@ func (s *SkillSystem) applyAreaSkillDamageToNpc(sess *net.Session, player *world
 	if dmg < 0 {
 		dmg = 0
 	}
+	// 副本武器需求檢查（火龍窟「必須裝備真死亡騎士烈炎之劍」）：玩家技能對副本怪傷害同樣受限。
+	if dmg > 0 && npc.WeaponRequired != 0 {
+		var equippedID int32
+		if wpn := player.Equip.Weapon(); wpn != nil {
+			equippedID = wpn.ItemID
+		}
+		if !npc.CanReceiveDamageFrom(equippedID) {
+			dmg = 0
+			handler.SendSystemMessage(sess, "你的武器無法傷害這個敵人。")
+		}
+	}
 	if skill.CastGfx > 0 {
 		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
 	}
@@ -585,8 +596,24 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 			hitsToApply = 1
 		}
 
+		// 副本武器需求檢查（火龍窟「必須裝備真死亡騎士烈炎之劍」）：
+		// AoE / 多 hit 技能對每個副本怪目標檢查一次，不符則該目標所有 hit 傷害歸 0。
+		blockDmg := false
+		if t.npc.WeaponRequired != 0 {
+			var equippedID int32
+			if wpn := player.Equip.Weapon(); wpn != nil {
+				equippedID = wpn.ItemID
+			}
+			if !t.npc.CanReceiveDamageFrom(equippedID) {
+				blockDmg = true
+			}
+		}
+
 		for h := 0; h < hitsToApply; h++ {
 			dmg := t.dmg
+			if blockDmg {
+				dmg = 0
+			}
 
 			if directedAreaSkill {
 				// S_RangeSkill 已一次帶出方向範圍攻擊的施法與命中特效。

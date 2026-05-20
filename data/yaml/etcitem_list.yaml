@@ -46184,3 +46184,135 @@ items:
     delay_id: 0
     delay_time: 0
     food_volume: 0
+
+  # ============================================================================
+  # 火龍窟副本（MISS-P2-016）— 物品定義
+  # ============================================================================
+
+  # 漢的袋子（item_id 80001）—— 寶箱型物品，點擊隨機開出冷冽的氣息 / 金幣 / 藥水
+  # use_type=treasure_box 對應 815 SQL itemtype；本次先以 normal 載入，box loot 由
+  # item_box.yaml 定義（Pass 8 處理）。delay_id=8 → 共用冷卻；delay_time=86400(24h)
+  - item_id: 80001
+    name: 漢的袋子
+    item_type: treasure_box
+    use_type: normal
+    material: leather
+    weight: 1000
+    inv_gfx: 1417
+    grd_gfx: 3494
+    itemdesc_id: 0
+    stackable: false
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: false
+    delay_id: 8
+    delay_time: 86400
+    food_volume: 0
+
+  # 冷冽的氣息（item_id 80020）—— 入副本門票，消耗即傳送
+  - item_id: 80020
+    name: 冷冽的氣息
+    item_type: gemstone
+    use_type: none
+    material: none
+    weight: 10
+    inv_gfx: 3276
+    grd_gfx: 1561
+    itemdesc_id: 0
+    stackable: true
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: false
+    delay_id: 0
+    delay_time: 0
+    food_volume: 0
+
+  # ─── Boss 掉落物（缺漏的 3 個 placeholder）─────────────────────────
+  # 龍血精華
+  - item_id: 60228
+    name: 龍血精華
+    item_type: other
+    use_type: normal
+    material: gold
+    weight: 100
+    inv_gfx: 3276
+    grd_gfx: 1561
+    itemdesc_id: 0
+    stackable: true
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: true
+    delay_id: 0
+    delay_time: 0
+    food_volume: 0
+
+  # 魔石強化卷軸
+  - item_id: 70043
+    name: 魔石強化卷軸
+    item_type: scroll
+    use_type: normal
+    material: paper
+    weight: 100
+    inv_gfx: 1147
+    grd_gfx: 3094
+    itemdesc_id: 0
+    stackable: true
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: true
+    delay_id: 0
+    delay_time: 0
+    food_volume: 0
+
+  # 純白的萬能藥
+  - item_id: 84072
+    name: 純白的萬能藥
+    item_type: potion
+    use_type: normal
+    material: liquid
+    weight: 100
+    inv_gfx: 1148
+    grd_gfx: 3001
+    itemdesc_id: 0
+    stackable: true
+    max_charge_count: 0
+    dmg_small: 0
+    dmg_large: 0
+    min_level: 0
+    max_level: 0
+    loc_x: 0
+    loc_y: 0
+    map_id: 0
+    bless: 1
+    tradeable: true
+    delay_id: 0
+    delay_time: 0
+    food_volume: 0
