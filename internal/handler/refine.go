@@ -112,9 +112,34 @@ func handleRefineResolve(sess *net.Session, r *packet.Reader, player *world.Play
 		return
 	}
 
-	// 委派系統執行分解（移除裝備 + 給予結晶體）
-	const crystalItemID int32 = 41246
-	deps.NpcSvc.Refine(sess, player, item, crystalItemID, crystalCount)
+	// 火神之淚加成：assist 槽放入火神之淚 → 結晶數 ×（1+bonus）+ 扣 1 個火神之淚
+	usedTear := false
+	if assistObjID > 0 {
+		if tear := player.Inv.FindByObjectID(assistObjID); tear != nil && tear.ItemID == data.FireSmithTearItemID {
+			baseCount := crystalCount
+			crystalCount = int32(float64(crystalCount) * (1 + data.FireSmithRefineTearBonus))
+			usedTear = true
+			deps.Log.Info("火神精煉/淚加成",
+				zap.String("char", player.Name),
+				zap.Int32("base", baseCount),
+				zap.Int32("final", crystalCount),
+				zap.Float64("bonus", data.FireSmithRefineTearBonus),
+			)
+		}
+	}
+
+	// 委派系統執行分解（移除裝備 + 給予火神結晶體 80029）
+	deps.NpcSvc.Refine(sess, player, item, data.FireSmithCrystalItemID, crystalCount)
+
+	// 扣火神之淚（Refine 已執行完才扣；確保失敗早退時不誤扣）
+	if usedTear {
+		if !deps.NpcSvc.ConsumeItem(sess, player, assistObjID, 1) {
+			deps.Log.Warn("火神精煉/淚扣除失敗",
+				zap.String("char", player.Name),
+				zap.Int32("assistObjID", assistObjID),
+			)
+		}
+	}
 
 	// 系統訊息：獲得 X 個火神結晶體
 	sendGlobalChat(sess, 9, fmt.Sprintf("\\f2獲得 %d 個火神結晶體。", crystalCount))

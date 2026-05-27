@@ -251,6 +251,7 @@ func (s *PetMatchSystem) withdrawPet(sess *net.Session, player *world.PlayerInfo
 		X:           player.X + int32(world.RandInt(3)) - 1,
 		Y:           player.Y + int32(world.RandInt(3)) - 1,
 		MapID:       player.MapID,
+		ShowID:      player.ShowID,
 		Heading:     player.Heading,
 		Status:      world.PetStatusRest,
 		AC:          tmpl.AC,
@@ -266,7 +267,7 @@ func (s *PetMatchSystem) withdrawPet(sess *net.Session, player *world.PlayerInfo
 	ws.AddPet(pet)
 
 	// 廣播外觀
-	nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	for _, viewer := range nearby {
 		isOwner := viewer.CharID == player.CharID
 		handler.SendPetPack(viewer.Session, pet, isOwner, player.Name)
@@ -413,7 +414,7 @@ func (s *PetMatchSystem) cleanupPlayer(pc *world.PlayerInfo, slotIdx int) {
 		pets := ws.GetPetsByOwner(pc.CharID)
 		for _, pet := range pets {
 			ws.RemovePet(pet.ID)
-			nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+			nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 			for _, viewer := range nearby {
 				handler.SendRemoveObject(viewer.Session, pet.ID)
 			}

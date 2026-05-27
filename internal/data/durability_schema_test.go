@@ -37,6 +37,7 @@ npcs:
     name: shock stun caster
     impl: L1Monster
     hp: 10
+    atk_magic_speed: 1200
     sub_magic_speed: 1600
 `)
 
@@ -51,6 +52,27 @@ npcs:
 	}
 	if tmpl.SubMagicSpeed != 1600 {
 		t.Fatalf("Java NpcTable 會載入 sub_magic_speed，SubMagicSpeed=%d want=1600", tmpl.SubMagicSpeed)
+	}
+	if tmpl.AtkMagicSpeed != 1200 {
+		t.Fatalf("Java NpcTable 會載入 atk_magic_speed，AtkMagicSpeed=%d want=1200", tmpl.AtkMagicSpeed)
+	}
+}
+
+func TestNpcYamlIncludesAtkMagicSpeedLikeJava(t *testing.T) {
+	table, err := LoadNpcTable(filepath.Join("..", "..", "data", "yaml", "npc_list.yaml"))
+	if err != nil {
+		t.Fatalf("載入 NPC YAML 失敗: %v", err)
+	}
+
+	tmpl := table.Get(45005)
+	if tmpl == nil {
+		t.Fatal("找不到 yiwei 測試 NPC 45005")
+	}
+	if tmpl.AtkMagicSpeed != 1000 {
+		t.Fatalf("yiwei npc 45005 應保留 atk_magic_speed，AtkMagicSpeed=%d want=1000", tmpl.AtkMagicSpeed)
+	}
+	if tmpl.SubMagicSpeed != 1000 {
+		t.Fatalf("yiwei npc 45005 應保留 sub_magic_speed，SubMagicSpeed=%d want=1000", tmpl.SubMagicSpeed)
 	}
 }
 

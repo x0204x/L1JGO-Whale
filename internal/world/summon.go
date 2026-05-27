@@ -41,6 +41,7 @@ type SummonInfo struct {
 	X       int32
 	Y       int32
 	MapID   int16
+	ShowID  int32
 	Heading int16
 
 	Status     SummonStatus // current AI behavior mode
@@ -157,6 +158,33 @@ func (s *State) GetNearbySummons(x, y int32, mapID int16) []*SummonInfo {
 	for _, nid := range nearbyIDs {
 		sum := s.summons[nid]
 		if sum == nil || sum.Dead {
+			continue
+		}
+		dx := sum.X - x
+		dy := sum.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= 20 {
+			result = append(result, sum)
+		}
+	}
+	return result
+}
+
+func (s *State) GetNearbySummonsInShow(x, y int32, mapID int16, showID int32) []*SummonInfo {
+	nearbyIDs := s.npcAoi.GetNearby(x, y, mapID)
+	var result []*SummonInfo
+	for _, nid := range nearbyIDs {
+		sum := s.summons[nid]
+		if sum == nil || sum.Dead || sum.ShowID != showID {
 			continue
 		}
 		dx := sum.X - x

@@ -17,7 +17,10 @@ func TestSkillIllusionistStatusMindBreakPlayerUsesJavaDamageAndDrainsMP(t *testi
 		X:         100,
 		Y:         100,
 		MapID:     4,
-		SP:        10,
+		ClassType: 6,
+		Level:     60,
+		Intel:     18,
+		SP:        2,
 		Wis:       10,
 	})
 	target := addSkillTestPlayer(ws, &world.PlayerInfo{
@@ -48,7 +51,7 @@ func TestSkillIllusionistStatusMindBreakPlayerUsesJavaDamageAndDrainsMP(t *testi
 	if target.MP != 15 {
 		t.Fatalf("心靈破壞應扣目標 5 MP，MP=%d", target.MP)
 	}
-	if target.HP != 62 {
+	if target.HP != 43 {
 		t.Fatalf("心靈破壞應使用 Java SP*3.8 傷害，HP=%d", target.HP)
 	}
 }

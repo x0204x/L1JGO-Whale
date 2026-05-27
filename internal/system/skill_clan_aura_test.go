@@ -282,6 +282,63 @@ func TestSkillClanAuraBraveAvatarAppliesAndRemovesPartyAura(t *testing.T) {
 	}
 }
 
+func TestSkillClanAuraBraveAvatarBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	leader := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:   1,
+		Session:     newSkillTestSession(t, 1),
+		CharID:      1001,
+		Name:        "prince",
+		X:           100,
+		Y:           100,
+		MapID:       4,
+		ShowID:      10,
+		ClassType:   0,
+		KnownSpells: []int32{119},
+	})
+	member := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "member",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		ShowID:    10,
+	})
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "same-show",
+		X:         102,
+		Y:         100,
+		MapID:     4,
+		ShowID:    10,
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 4,
+		Session:   newSkillTestSession(t, 4),
+		CharID:    1004,
+		Name:      "other-show",
+		X:         103,
+		Y:         100,
+		MapID:     4,
+		ShowID:    99,
+	})
+	ws.Parties.CreateParty(leader.CharID, member.CharID, world.PartyTypeNormal)
+	s := newSkillTestSystem(t, ws)
+
+	s.updateBraveAvatarAura()
+
+	if !hasSkillEffectPacket(drainSkillTestPackets(sameShow.Session), member.CharID, 9009) {
+		t.Fatal("同 ShowID 觀眾應看到王者加護 9009 特效")
+	}
+	if hasSkillEffectPacket(drainSkillTestPackets(otherShow.Session), member.CharID, 9009) {
+		t.Fatal("yiwei sendPacketsAll 會用 showId 隔離，不同 ShowID 觀眾不應看到王者加護 9009 特效")
+	}
+}
+
 func TestSkillClanAuraTrueTargetRegistersBuffWithoutStatBonus(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{

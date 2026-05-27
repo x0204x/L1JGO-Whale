@@ -16,6 +16,7 @@ import (
 	"github.com/l1jgo/server/internal/core/event"
 	coresys "github.com/l1jgo/server/internal/core/system"
 	"github.com/l1jgo/server/internal/data"
+	"github.com/l1jgo/server/internal/dialog"
 	"github.com/l1jgo/server/internal/handler"
 	gonet "github.com/l1jgo/server/internal/net"
 	"github.com/l1jgo/server/internal/net/packet"
@@ -39,7 +40,7 @@ func main() {
 func printBanner(serverName string, serverID int) {
 	fmt.Println()
 	fmt.Println("\033[36;1m  ┌───────────────────────────────────────────┐\033[0m")
-	fmt.Println("\033[36;1m  │\033[0m           L1JGO-Whale  v0.3.28           \033[36;1m│\033[0m")
+	fmt.Println("\033[36;1m  │\033[0m           L1JGO-Whale  v0.3.29           \033[36;1m│\033[0m")
 	fmt.Println("\033[36;1m  │\033[0m      天堂 3.80C · Go 遊戲伺服器           \033[36;1m│\033[0m")
 	fmt.Println("\033[36;1m  └───────────────────────────────────────────┘\033[0m")
 	fmt.Println()
@@ -215,6 +216,15 @@ func run() error {
 		return fmt.Errorf("load npc actions: %w", err)
 	}
 	printStat("NPC 動作", npcActionTable.Count())
+
+	// 動態對話（YAML+HTM 引擎）：掃 data/dialogs/ 子資料夾
+	dialogManager := dialog.NewManager()
+	if dialogRegs, err := dialog.LoadAll("data/dialogs"); err != nil {
+		return fmt.Errorf("load dialogs: %w", err)
+	} else {
+		dialogManager.SetAll(dialogRegs)
+		printStat("動態對話", dialogManager.Count())
+	}
 
 	// 5c. Load item templates and shop data
 	itemTable, err := data.LoadItemTable(
@@ -490,72 +500,75 @@ func run() error {
 	// 6. Create packet handler registry and register handlers
 	pktReg := packet.NewRegistry(log)
 	deps := &handler.Deps{
-		AccountRepo:   accountRepo,
-		CharRepo:      charRepo,
-		ItemRepo:      itemRepo,
-		Config:        cfg,
-		Log:           log,
-		World:         worldState,
-		Scripting:     luaEngine,
-		NpcActions:    npcActionTable,
-		Items:         itemTable,
-		Shops:         shopTable,
-		Drops:         dropTable,
-		Teleports:     teleportTable,
-		TeleportHtml:  teleportHtmlTable,
-		Portals:       portalTable,
-		RandomPortals: randomPortalTable,
-		Skills:        skillTable,
-		Npcs:          npcTable,
-		MobSkills:     mobSkillTable,
-		MapData:       mapDataTable,
-		Polys:         polymorphTable,
-		ArmorSets:     armorSetTable,
-		ItemPowers:    itemPowerTable,
-		SprTable:      sprTable,
-		WarehouseRepo: warehouseRepo,
-		WALRepo:       walRepo,
-		ClanRepo:      clanRepo,
-		BuffRepo:      buffRepo,
-		Doors:         doorTable,
-		ItemMaking:    itemMakingTable,
+		AccountRepo:      accountRepo,
+		CharRepo:         charRepo,
+		ItemRepo:         itemRepo,
+		Config:           cfg,
+		Log:              log,
+		World:            worldState,
+		Scripting:        luaEngine,
+		NpcActions:       npcActionTable,
+		Items:            itemTable,
+		Shops:            shopTable,
+		Drops:            dropTable,
+		Teleports:        teleportTable,
+		TeleportHtml:     teleportHtmlTable,
+		Portals:          portalTable,
+		RandomPortals:    randomPortalTable,
+		Skills:           skillTable,
+		Npcs:             npcTable,
+		MobSkills:        mobSkillTable,
+		MapData:          mapDataTable,
+		Polys:            polymorphTable,
+		ArmorSets:        armorSetTable,
+		ItemPowers:       itemPowerTable,
+		SprTable:         sprTable,
+		WarehouseRepo:    warehouseRepo,
+		WALRepo:          walRepo,
+		ClanRepo:         clanRepo,
+		BuffRepo:         buffRepo,
+		Doors:            doorTable,
+		ItemMaking:       itemMakingTable,
 		FireCrystals:     fireCrystalTable,
 		FireSmithRecipes: fireSmithRecipeTable,
-		Resolvents:    resolventTable,
-		SpellbookReqs: spellbookReqs,
-		BuffIcons:     buffIconTable,
-		NpcServices:   npcServiceTable,
-		QuestRepo:     questRepo,
-		BuddyRepo:     buddyRepo,
-		ExcludeRepo:   excludeRepo,
-		BoardRepo:     boardRepo,
-		MailRepo:      mailRepo,
-		PetRepo:       petRepo,
-		PetTypes:      petTypeTable,
-		PetItems:      petItemTable,
-		Dolls:         dollTable,
-		Hierarchs:     hierarchTable,
-		TeleportPages: teleportPageTable,
-		WeaponSkills:  weaponSkillTable,
-		ItemBoxes:     itemBoxTable,
-		ItemUpgrades:  itemUpgradeTable,
-		ItemVIPs:      itemVIPTable,
-		NpcChats:      npcChatTable,
-		MobGroups:     mobGroupTable,
-		Houses:        houseTable,
-		HouseRepo:     houseRepo,
-		InnRepo:       innRepo,
-		InnRooms:      innRooms,
-		QuestData:     questData,
-		ClanMatching:  handler.NewClanMatchingManager(),
-		Alliances:     handler.NewAllianceManager(),
-		TrapMgr:       trapMgr,
-		Castles:       castleTable,
-		WarGifts:      warGiftTable,
-		CastleRepo:    castleRepo,
+		Resolvents:       resolventTable,
+		SpellbookReqs:    spellbookReqs,
+		BuffIcons:        buffIconTable,
+		NpcServices:      npcServiceTable,
+		QuestRepo:        questRepo,
+		BuddyRepo:        buddyRepo,
+		ExcludeRepo:      excludeRepo,
+		BoardRepo:        boardRepo,
+		MailRepo:         mailRepo,
+		PetRepo:          petRepo,
+		PetTypes:         petTypeTable,
+		PetItems:         petItemTable,
+		Dolls:            dollTable,
+		Hierarchs:        hierarchTable,
+		TeleportPages:    teleportPageTable,
+		WeaponSkills:     weaponSkillTable,
+		ItemBoxes:        itemBoxTable,
+		ItemUpgrades:     itemUpgradeTable,
+		ItemVIPs:         itemVIPTable,
+		NpcChats:         npcChatTable,
+		MobGroups:        mobGroupTable,
+		Houses:           houseTable,
+		HouseRepo:        houseRepo,
+		InnRepo:          innRepo,
+		InnRooms:         innRooms,
+		QuestData:        questData,
+		ClanMatching:     handler.NewClanMatchingManager(),
+		Alliances:        handler.NewAllianceManager(),
+		TrapMgr:          trapMgr,
+		Castles:          castleTable,
+		WarGifts:         warGiftTable,
+		CastleRepo:       castleRepo,
+		Dialogs:          dialogManager,
 	}
 	handler.RegisterAll(pktReg, deps)
 	handler.SetShowNpcID(cfg.Debug.ShowNpcID)
+	// 註冊 YAML 對話的 live dialog renderer（必須在 deps 建構後）
+	handler.SetDialogManagerForLive(deps)
 
 	// 7. Create network server
 	pktPerSec := 0
@@ -719,6 +732,7 @@ func run() error {
 	runner.Register(system.NewGroundItemSystem(worldState))
 	runner.Register(system.NewGroundEffectSystem(worldState, deps))
 	runner.Register(system.NewPartyRefreshSystem(worldState, deps, 10)) // 10 ticks = 2 seconds
+	runner.Register(system.NewLiveDialogSystem(worldState))             // 動態 HTML 對話即時更新（@dynamic 路徑）
 	rankingSys := system.NewRankingSystem(worldState, deps)
 	deps.Ranking = rankingSys
 	runner.Register(rankingSys)
@@ -887,6 +901,7 @@ func spawnNpcs(ws *world.State, npcTable *data.NpcTable, spawns []data.SpawnEntr
 			}
 
 			leader := createNpcFromTemplate(tmpl, x, y, spawn.MapID, spawn.Heading, spawn.RespawnDelay, sprTable)
+			system.ApplyNpcInitialHideLikeJava(leader)
 			leader.MobGroupID = spawn.MobGroupID
 			ws.AddNpc(leader)
 			if maps != nil {
@@ -943,6 +958,7 @@ func createNpcFromTemplate(tmpl *data.NpcTemplate, x, y int32, mapID, heading in
 		AC:            tmpl.AC,
 		STR:           tmpl.STR,
 		DEX:           tmpl.DEX,
+		Intel:         tmpl.INT,
 		Exp:           tmpl.Exp,
 		Lawful:        tmpl.Lawful,
 		Size:          tmpl.Size,
@@ -950,9 +966,12 @@ func createNpcFromTemplate(tmpl *data.NpcTemplate, x, y int32, mapID, heading in
 		Undead:        tmpl.Undead,
 		Hard:          tmpl.Hard,
 		Agro:          tmpl.Agro,
+		Family:        tmpl.Family,
+		AgroFamily:    tmpl.AgroFamily,
 		AtkDmg:        int32(tmpl.Level) + int32(tmpl.STR)/3,
 		Ranged:        tmpl.Ranged,
 		AtkSpeed:      atkSpeed,
+		AtkMagicSpeed: tmpl.AtkMagicSpeed,
 		SubMagicSpeed: tmpl.SubMagicSpeed,
 		MoveSpeed:     moveSpeed,
 		PoisonAtk:     tmpl.PoisonAtk,

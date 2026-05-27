@@ -107,6 +107,49 @@ dungeons:
   #   FireDragonQuestLv60.MAPID=2600；QuestId 對應 server_quest_maps 條目
   #   server_quest_maps[2600] = users=8/time=1800（我們改 max_users=1）
   # ----------------------------------------------------------------------------
+  # ─── 火龍窟 Phase 1：前室 ───────────────────────────────────────────────
+  # 玩家從威頓村愛德納斯傳送進來，只有奄奄一息的死亡騎士；
+  # 收下「真‧死亡騎士烈炎之劍」之後過場進真副本（148）。
+  # mapid 2699 = 火龍巢穴(接任務) — 對應 380 reference Npc_FireDragon.java
+  - id: 147
+    name: "火龍窟前室"
+    map_id: 2699
+    max_users: 1
+    time_limit: 3600     # 1 小時（伺服器端強制；地監倒數 UI 需另外接 mapTimerGroups）
+    out_stop: true
+    entry:
+      min_level: 60
+      class_mask: 127
+      required_items:
+        - { item_id: 80020, count: 1, consume: false }   # 冷冽的氣息：前室只驗證、不消耗
+      teleport_to: { x: 32624, y: 33054, heading: 5 }    # 380 reference 落點
+      reject_message: 1413
+    exit:
+      teleport_to: { x: 33705, y: 32504, map_id: 4, heading: 4 }
+    rounds:
+      - id: -1
+        trigger: on_enter
+        spawns:
+          - { npc_id: 46164, count: 1, fixed: [32623, 33057], heading: 5, auxiliary: true }   # 奄奄一息的死亡騎士
+    scenes:
+      # 入場後死亡騎士 9 行對白
+      - id: "dying_knight_intro"
+        trigger: on_enter
+        anchor_npc: 46164
+        lines:
+          - { delay: 2000,  speaker: player, text: "你是誰" }
+          - { delay: 5000,  speaker: npc,    text: "全..部都要破壞 . 所有的 ..都需要破壞.." }
+          - { delay: 8000,  speaker: npc,    text: "我? 我是..誰??" }
+          - { delay: 11000, speaker: npc,    text: "騎士..對..我是騎士..為什麼我在這裡" }
+          - { delay: 15000, speaker: player, text: "騎..士" }
+          - { delay: 18000, speaker: npc,    text: "恩..我是騎士..." }
+          - { delay: 21000, speaker: npc,    text: "相信自己的能力應該能跟巴拉卡斯抗衡" }
+          - { delay: 25000, speaker: player, text: "被巴拉卡斯打敗了嗎" }
+          - { delay: 28000, speaker: npc,    text: "我失去理性前.快拿這把劍逃走吧." }
+
+  # ─── 火龍窟 Phase 2：真副本 ─────────────────────────────────────────────
+  # 死亡騎士給劍時觸發 transition：靜默退出 147 → 進入 148。
+  # 80020 已在死亡騎士 action 的 take_item effect 消耗，此處不再驗證。
   - id: 148
     name: "火龍巢穴"
     map_id: 2600
@@ -116,38 +159,36 @@ dungeons:
     entry:
       min_level: 60
       class_mask: 127    # 全職業（3.80C 無戰士）
-      required_items:
-        - { item_id: 80020, count: 1, consume: true }   # 冷冽的氣息：入場消耗
       teleport_to: { x: 32626, y: 33054, heading: 5 }
       reject_message: 1413
     exit:
       teleport_to: { x: 33705, y: 32504, map_id: 4, heading: 4 }   # 威頓村中央（815: etcitem_teleport 49185 標準傳送點）
       cleanup_items: [850]   # 真死亡騎士烈炎之劍：離開副本即刪除
     rounds:
-      # 入場時：第 1 區域怪 + 入口死亡騎士（輔助 NPC，不計入 round clear）
+      # 入場時：第 1 區域怪（死亡騎士已留在前室，不再 spawn）
+      # 全部使用副本專屬怪「火龍的 XXX」系列（對齊 380 reference 230255+）
       - id: -1
         trigger: on_enter
         spawns:
-          - { npc_id: 46164, count: 1, fixed: [32623, 33057], heading: 5, auxiliary: true }   # 奄奄一息的死亡騎士
-          - { npc_id: 45206, count: 5, area: [32560, 33020, 32630, 33080] }    # 火炎蛋
-          - { npc_id: 45284, count: 3, area: [32560, 33020, 32630, 33080] }    # 火焰戰士
-          - { npc_id: 45291, count: 3, area: [32560, 33020, 32630, 33080] }    # 火焰弓箭手
-          - { npc_id: 45204, count: 1, area: [32560, 33020, 32630, 33080] }    # 烈炎獵犬（雷歐第一次）
+          - { npc_id: 111525, count: 5, area: [32560, 33020, 32630, 33080] }   # 火龍的火炎蛋
+          - { npc_id: 111526, count: 3, area: [32560, 33020, 32630, 33080] }   # 火龍的火焰戰士
+          - { npc_id: 111527, count: 3, area: [32560, 33020, 32630, 33080] }   # 火龍的火焰弓箭手
+          - { npc_id: 111524, count: 1, area: [32560, 33020, 32630, 33080] }   # 火龍的雷歐（第一關卡守門人）
       # 第 1 區清光 → 第 2 區
       - id: 1
         trigger: on_round_clear
         spawns:
-          - { npc_id: 45206, count: 5, area: [32580, 32990, 32650, 33050] }    # 火炎蛋
+          - { npc_id: 111525, count: 5, area: [32580, 32990, 32650, 33050] }   # 火龍的火炎蛋
           - { npc_id: 111528, count: 1, area: [32580, 32990, 32650, 33050] }   # 火龍的祭品貝奈首領
-          - { npc_id: 45359, count: 2, area: [32580, 32990, 32650, 33050] }    # 阿西塔基奧
+          - { npc_id: 111529, count: 2, area: [32580, 32990, 32650, 33050] }   # 火龍的阿西塔基奧
           - { npc_id: 111530, count: 1, area: [32580, 32990, 32650, 33050] }   # 火龍的紅雷歐（第二關卡守門人）
       # 第 2 區清光 → 第 3 區
       - id: 2
         trigger: on_round_clear
         spawns:
-          - { npc_id: 45206, count: 5, area: [32600, 32960, 32680, 33020] }    # 火炎蛋
-          - { npc_id: 45617, count: 1, area: [32600, 32960, 32680, 33020] }    # 火龍的不死鳥（區域版）
-          - { npc_id: 45365, count: 2, area: [32600, 32960, 32680, 33020] }    # 熔岩高崙
+          - { npc_id: 111525, count: 5, area: [32600, 32960, 32680, 33020] }   # 火龍的火炎蛋
+          - { npc_id: 111534, count: 1, area: [32600, 32960, 32680, 33020] }   # 火龍的不死鳥（區域版）
+          - { npc_id: 111533, count: 2, area: [32600, 32960, 32680, 33020] }   # 火龍的熔岩高崙
           - { npc_id: 111531, count: 1, area: [32600, 32960, 32680, 33020] }   # 火龍的火燒雷歐（第三關卡守門人）
       # 第 3 區清光 → 最終 Boss 三選一
       - id: 3
@@ -157,4 +198,5 @@ dungeons:
           - { npc_id: 111532, count: 1, fixed: [32650, 32990], heading: 4 }    # 伊弗利特
           - { npc_id: 4070080, count: 1, fixed: [32650, 32990], heading: 4 }   # 不死鳥（Boss 版）
           - { npc_id: 4070081, count: 1, fixed: [32650, 32990], heading: 4 }   # 巴拉卡斯
+    # 真副本沒 scenes；對白在前室 147 已演完
 

@@ -1,0 +1,16 @@
+## 火龍窟傳送師 愛德納斯(46181) — 火龍窟副本入口
+## 380 reference: D:/L1J-new-java/380/com/lineage/data/npc/quest2/Npc_FireDragon.java
+##
+## **2026-05-20 暫時鎖定**：副本 Phase 1→2 過場 + 劇本系統入聊天歷史問題未解，
+## 先把入口擋住避免玩家進入半成品流程；解決後恢復原 eldnas1/2/3 分支。
+## 原路由邏輯（lacks 80020→eldnas1 / level<60→eldnas3 / 其他→eldnas2 + a:enter_dungeon:147）
+## 保留在 git history，恢復時 revert 此檔即可。
+
+default_speaker: 愛德納斯
+
+on_talk:
+  - send: locked   # 一律送維護中
+
+on_action:
+  cancel:
+    effects: []    # 點 [離開] 直接關閉，無實際 effect

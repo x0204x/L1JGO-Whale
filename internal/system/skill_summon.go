@@ -254,6 +254,7 @@ func (s *SummonSystem) ExecuteSummonMonster(sess *net.Session, player *world.Pla
 			X:           player.X + int32(world.RandInt(5)) - 2,
 			Y:           player.Y + int32(world.RandInt(5)) - 2,
 			MapID:       player.MapID,
+			ShowID:      player.ShowID,
 			Heading:     player.Heading,
 			Status:      world.SummonAggressive,
 			Tamed:       false,
@@ -262,7 +263,7 @@ func (s *SummonSystem) ExecuteSummonMonster(sess *net.Session, player *world.Pla
 
 		ws.AddSummon(sum)
 
-		nearby := ws.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+		nearby := companionViewersAt(ws, sum.X, sum.Y, sum.MapID, sum.ShowID)
 		for _, viewer := range nearby {
 			isOwner := viewer.CharID == player.CharID
 			handler.SendSummonPack(viewer.Session, sum, isOwner, masterName)
@@ -346,6 +347,7 @@ func (s *SummonSystem) ExecuteElementalSummon(sess *net.Session, player *world.P
 		X:           player.X + int32(world.RandInt(5)) - 2,
 		Y:           player.Y + int32(world.RandInt(5)) - 2,
 		MapID:       player.MapID,
+		ShowID:      player.ShowID,
 		Heading:     player.Heading,
 		Status:      world.SummonAggressive,
 		Tamed:       false,
@@ -353,7 +355,7 @@ func (s *SummonSystem) ExecuteElementalSummon(sess *net.Session, player *world.P
 	}
 
 	s.deps.World.AddSummon(sum)
-	nearby := s.deps.World.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+	nearby := companionViewersAt(s.deps.World, sum.X, sum.Y, sum.MapID, sum.ShowID)
 	for _, viewer := range nearby {
 		isOwner := viewer.CharID == player.CharID
 		handler.SendSummonPack(viewer.Session, sum, isOwner, player.Name)
@@ -436,6 +438,7 @@ func (s *SummonSystem) ExecuteTamingMonster(sess *net.Session, player *world.Pla
 		X:           npc.X,
 		Y:           npc.Y,
 		MapID:       npc.MapID,
+		ShowID:      player.ShowID,
 		Heading:     npc.Heading,
 		Status:      world.SummonRest, // 馴服的召喚獸預設休憩
 		Tamed:       true,
@@ -445,7 +448,7 @@ func (s *SummonSystem) ExecuteTamingMonster(sess *net.Session, player *world.Pla
 	// 移除原始 NPC + 解鎖格子
 	npc.Dead = true
 	ws.NpcDied(npc)
-	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := companionViewersAt(ws, npc.X, npc.Y, npc.MapID, npc.ShowID)
 	for _, viewer := range nearby {
 		handler.SendRemoveObject(viewer.Session, npc.ID)
 	}
@@ -454,7 +457,7 @@ func (s *SummonSystem) ExecuteTamingMonster(sess *net.Session, player *world.Pla
 	ws.AddSummon(sum)
 
 	masterName := player.Name
-	nearby = ws.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+	nearby = companionViewersAt(ws, sum.X, sum.Y, sum.MapID, sum.ShowID)
 	for _, viewer := range nearby {
 		isOwner := viewer.CharID == player.CharID
 		handler.SendSummonPack(viewer.Session, sum, isOwner, masterName)
@@ -557,6 +560,7 @@ func (s *SummonSystem) ExecuteCreateZombie(sess *net.Session, player *world.Play
 		X:           npc.X,
 		Y:           npc.Y,
 		MapID:       npc.MapID,
+		ShowID:      player.ShowID,
 		Heading:     npc.Heading,
 		Status:      world.SummonRest,
 		Tamed:       true,
@@ -564,7 +568,7 @@ func (s *SummonSystem) ExecuteCreateZombie(sess *net.Session, player *world.Play
 	}
 
 	// 移除屍體
-	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := companionViewersAt(ws, npc.X, npc.Y, npc.MapID, npc.ShowID)
 	for _, viewer := range nearby {
 		handler.SendRemoveObject(viewer.Session, npc.ID)
 	}
@@ -573,7 +577,7 @@ func (s *SummonSystem) ExecuteCreateZombie(sess *net.Session, player *world.Play
 	ws.AddSummon(sum)
 
 	masterName := player.Name
-	nearby = ws.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+	nearby = companionViewersAt(ws, sum.X, sum.Y, sum.MapID, sum.ShowID)
 	for _, viewer := range nearby {
 		isOwner := viewer.CharID == player.CharID
 		handler.SendSummonPack(viewer.Session, sum, isOwner, masterName)
@@ -627,7 +631,7 @@ func (s *SummonSystem) liberateSummon(sum *world.SummonInfo) {
 
 	// 從世界移除召喚獸
 	ws.RemoveSummon(sum.ID)
-	nearby := ws.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+	nearby := companionViewersAt(ws, sum.X, sum.Y, sum.MapID, sum.ShowID)
 	for _, viewer := range nearby {
 		handler.SendCompanionEffect(viewer.Session, sum.ID, 2245) // 歸返自然音效
 		handler.SendRemoveObject(viewer.Session, sum.ID)
@@ -671,11 +675,12 @@ func (s *SummonSystem) liberateSummon(sum *world.SummonInfo) {
 		X:                 sum.X,
 		Y:                 sum.Y,
 		MapID:             sum.MapID,
+		ShowID:            sum.ShowID,
 		Heading:           sum.Heading,
 	}
 
 	ws.AddNpc(npc)
-	nearby = ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby = companionViewersAt(ws, npc.X, npc.Y, npc.MapID, npc.ShowID)
 	for _, viewer := range nearby {
 		handler.SendNpcPack(viewer.Session, npc)
 	}
@@ -685,7 +690,7 @@ func (s *SummonSystem) liberateSummon(sum *world.SummonInfo) {
 func (s *SummonSystem) killSummon(sum *world.SummonInfo) {
 	ws := s.deps.World
 	ws.RemoveSummon(sum.ID)
-	nearby := ws.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+	nearby := companionViewersAt(ws, sum.X, sum.Y, sum.MapID, sum.ShowID)
 	for _, viewer := range nearby {
 		handler.SendCompanionEffect(viewer.Session, sum.ID, 169) // 召喚獸消失音效
 		handler.SendRemoveObject(viewer.Session, sum.ID)

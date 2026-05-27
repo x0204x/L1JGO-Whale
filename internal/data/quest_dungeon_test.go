@@ -91,7 +91,7 @@ dungeons:
         - { item_id: 47010, count: 1, consume: true }
       required_quest_step:
         - { quest_id: 50, step: 100 }
-      forbidden_buffs: [78, 230]
+      forbidden_buffs: [78, 4000]
       teleport_to: { x: 32700, y: 32700, heading: 5 }
       reject_message: 1413
     exit:

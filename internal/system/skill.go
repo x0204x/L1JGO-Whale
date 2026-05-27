@@ -44,6 +44,129 @@ func calcMagicLevel(classType, level int) int {
 	}
 }
 
+// calcMagicBonusLikeJava 對齊 Java L1Character.getMagicBonus()。
+func calcMagicBonusLikeJava(intel int) int {
+	switch {
+	case intel <= 5:
+		return -2
+	case intel <= 8:
+		return -1
+	case intel <= 11:
+		return 0
+	case intel <= 14:
+		return 1
+	case intel <= 17:
+		return 2
+	case intel <= 24:
+		return intel - 15
+	case intel <= 35:
+		return 10
+	case intel <= 42:
+		return 11
+	case intel <= 49:
+		return 12
+	default:
+		return 13
+	}
+}
+
+// calcPlayerTrueSPLikeJava 對齊 Java getTrueSp(): getMagicLevel() + getMagicBonus()。
+func calcPlayerTrueSPLikeJava(player *world.PlayerInfo) int {
+	if player == nil {
+		return 0
+	}
+	return calcMagicLevel(int(player.ClassType), int(player.Level)) + calcMagicBonusLikeJava(int(player.Intel))
+}
+
+// calcPlayerSPLikeJava 對齊 Java getSp() 的主要路徑：true SP + 裝備/buff 額外 SP。
+func calcPlayerSPLikeJava(player *world.PlayerInfo) int {
+	if player == nil {
+		return 0
+	}
+	return calcPlayerTrueSPLikeJava(player) + int(player.SP)
+}
+
+func calcPlayerBaseStrLikeJava(player *world.PlayerInfo) int {
+	if player == nil {
+		return 0
+	}
+	base := int(player.Str) - player.EquipBonuses.AddStr
+	for _, buff := range player.ActiveBuffs {
+		if buff == nil {
+			continue
+		}
+		base -= int(buff.DeltaStr)
+	}
+	if base < 0 {
+		return 0
+	}
+	return base
+}
+
+func calcPlayerBaseDexLikeJava(player *world.PlayerInfo) int {
+	if player == nil {
+		return 0
+	}
+	base := int(player.Dex) - player.EquipBonuses.AddDex
+	for _, buff := range player.ActiveBuffs {
+		if buff == nil {
+			continue
+		}
+		base -= int(buff.DeltaDex)
+	}
+	if base < 0 {
+		return 0
+	}
+	return base
+}
+
+func calcPlayerBaseIntLikeJava(player *world.PlayerInfo) int {
+	if player == nil {
+		return 0
+	}
+	base := int(player.Intel) - player.EquipBonuses.AddInt
+	for _, buff := range player.ActiveBuffs {
+		if buff == nil {
+			continue
+		}
+		base -= int(buff.DeltaIntel)
+	}
+	if base < 0 {
+		return 0
+	}
+	return base
+}
+
+func calcPlayerErLikeYiwei(player *world.PlayerInfo) int16 {
+	if player == nil {
+		return 0
+	}
+	if player.HasBuff(174) {
+		return 0
+	}
+	er := 0
+	switch player.ClassType {
+	case 1, 4, 7: // Knight, Dark Elf, Warrior
+		er += int(player.Level) / 4
+	case 0, 2: // Crown, Elf
+		er += int(player.Level) / 6
+	case 3: // Wizard
+		er += int(player.Level) / 10
+	case 5: // Dragon Knight
+		er += int(player.Level) / 5
+	case 6: // Illusionist
+		er += int(player.Level) / 9
+	}
+	dex := int(player.Dex)
+	if dex <= 7 {
+		er += 3
+	} else {
+		er += (dex-8)/2 + 4
+	}
+	er += int(player.Dodge)
+	return int16(er)
+}
+
 // SkillSystem processes queued skill requests in Phase 2.
 // 管理技能執行、buff 套用/到期、NPC debuff。
 type SkillSystem struct {
@@ -206,12 +329,7 @@ func (s *SkillSystem) GMClearAllStatuses(target *world.PlayerInfo) {
 	}
 	if needInvisRemove {
 		handler.SendInvisible(target.Session, target.CharID, false)
-		nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
-		for _, viewer := range nearby {
-			if viewer.CharID != target.CharID {
-				handler.SendPutObject(viewer.Session, target)
-			}
-		}
+		s.sendPlayerReappearToVisible(target)
 	}
 
 	// 中毒/詛咒（獨立於 ActiveBuffs 的系統）
@@ -231,6 +349,17 @@ func (s *SkillSystem) GMClearAllStatuses(target *world.PlayerInfo) {
 // RemoveBuffAndRevert implements handler.SkillManager.
 func (s *SkillSystem) RemoveBuffAndRevert(target *world.PlayerInfo, skillID int32) {
 	s.removeBuffAndRevert(target, skillID)
+}
+
+func (s *SkillSystem) sendYiweiPostCastStatusRefresh(targets ...*world.PlayerInfo) {
+	for _, target := range targets {
+		if target == nil || target.Session == nil {
+			continue
+		}
+		handler.SendMagicStatus(target.Session, byte(calcPlayerSPLikeJava(target)), uint16(target.MR))
+		handler.SendPlayerStatus(target.Session, target)
+		handler.SendUpdateER(target.Session, calcPlayerErLikeYiwei(target))
+	}
 }
 
 // TickPlayerBuffs implements handler.SkillManager.
@@ -387,8 +516,8 @@ func (s *SkillSystem) processSkill(req handler.SkillRequest) {
 		return
 	}
 
-	// 131 TELEPORT_TO_MATHER：Java `TELEPORT_TO_MATHER.start()` 第 23-35 行在傳送前依序檢查
-	// 230(亡命之徒) / 4000(束縛) / 192(奪命之雷) 與 `pc.getMap().isEscapable()`；
+	// 131 TELEPORT_TO_MATHER：3.80C 路徑只保留 4000(束縛) / 192(奪命之雷) 與
+	// `pc.getMap().isEscapable()` 檢查；225-230 戰士技能屬後續版本，不套入此目標版本。
 	// 在 MP 消耗前返回（與 skill 5/69 模式一致）。
 	if skillID == 131 && s.teleportToMatherBlockedBeforeConsume(sess, player) {
 		return

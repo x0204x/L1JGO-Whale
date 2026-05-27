@@ -322,11 +322,10 @@ func sendServerMessageS(sess *net.Session, msgID uint16, args ...string) {
 // broadcastVisualUpdate sends S_CHANGE_DESC (opcode 119) to self + nearby players.
 // Format: [D objectID][C currentWeapon][C 0xff][C 0xff]
 func broadcastVisualUpdate(sess *net.Session, player *world.PlayerInfo, deps *Deps) {
-	nearby := deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, sess.ID, player.ShowID)
 	for _, viewer := range nearby {
 		sendCharVisualUpdate(viewer.Session, player)
 	}
-	// Also send to self
 	sendCharVisualUpdate(sess, player)
 }
 

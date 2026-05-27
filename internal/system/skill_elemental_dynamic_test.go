@@ -99,6 +99,7 @@ func TestSkillElementalDynamicWaterLifeAndPolluteWaterModifyHealing(t *testing.T
 		X:         100,
 		Y:         100,
 		MapID:     4,
+		Intel:     18,
 	})
 	target := addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 2,
@@ -112,18 +113,18 @@ func TestSkillElementalDynamicWaterLifeAndPolluteWaterModifyHealing(t *testing.T
 		MaxHP:     200,
 	})
 	s := newSkillTestSystem(t, ws)
-	healSkill := &data.SkillInfo{SkillID: 1, BuffDuration: 0, Target: "buff", Type: 16, DamageValue: 20, ActionID: 19}
+	healSkill := &data.SkillInfo{SkillID: 1, BuffDuration: 0, Target: "buff", Type: 16, DamageValue: 2, DamageDice: 1, ActionID: 19}
 
 	s.applyBuffEffect(target, &data.SkillInfo{SkillID: 170, BuffDuration: 64})
 	s.executeBuffSkill(caster.Session, caster, healSkill, target.CharID)
-	if target.HP != 92 || target.HasBuff(170) {
+	if target.HP != 60 || target.HasBuff(170) {
 		t.Fatalf("水之元氣應讓下一次治療加倍並被移除，HP=%d buff170=%v", target.HP, target.GetBuff(170))
 	}
 
 	target.HP = 50
 	s.applyBuffEffect(target, &data.SkillInfo{SkillID: 173, BuffDuration: 32})
 	s.executeBuffSkill(caster.Session, caster, healSkill, target.CharID)
-	if target.HP != 60 || !target.HasBuff(173) {
+	if target.HP != 52 || !target.HasBuff(173) {
 		t.Fatalf("污濁之水應讓治療量減半且不被治療移除，HP=%d buff173=%v", target.HP, target.GetBuff(173))
 	}
 }

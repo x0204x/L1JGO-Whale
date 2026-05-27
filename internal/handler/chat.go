@@ -61,7 +61,7 @@ func HandleChat(sess *net.Session, r *packet.Reader, deps *Deps) {
 		// Normal chat: broadcast to nearby players via S_SAY (opcode 81)
 		msg := fmt.Sprintf("%s: %s", player.Name, text)
 		sendNormalChat(sess, player.CharID, msg)
-		nearby := deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+		nearby := deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, sess.ID, player.ShowID)
 		for _, other := range nearby {
 			if !IsExcluded(other, player.Name) {
 				sendNormalChat(other.Session, player.CharID, msg)
@@ -72,7 +72,7 @@ func HandleChat(sess *net.Session, r *packet.Reader, deps *Deps) {
 		// Shout: wider range chat via S_SAY (opcode 81) type 2
 		msg := fmt.Sprintf("<%s> %s", player.Name, text)
 		sendShoutChat(sess, player.CharID, msg, player.X, player.Y)
-		nearby := deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+		nearby := deps.World.GetNearbyPlayersInShowRange(player.X, player.Y, player.MapID, sess.ID, player.ShowID, 50)
 		for _, other := range nearby {
 			if !IsExcluded(other, player.Name) {
 				sendShoutChat(other.Session, player.CharID, msg, player.X, player.Y)

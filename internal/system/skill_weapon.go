@@ -80,7 +80,7 @@ func (s *SkillSystem) executeArmorEnchant(sess *net.Session, player *world.Playe
 	}
 
 	// 施法動畫 + GFX
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 	if skill.CastGfx > 0 {
 		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
@@ -131,7 +131,7 @@ func (s *SkillSystem) executeCreateMagicalWeapon(sess *net.Session, player *worl
 	}
 
 	// 廣播施法動畫
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 	if skill.CastGfx > 0 {
 		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
@@ -179,7 +179,7 @@ func (s *SkillSystem) executeBringStone(sess *net.Session, player *world.PlayerI
 	}
 
 	// 廣播施法動畫
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 	if skill.CastGfx > 0 {
 		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
@@ -284,7 +284,7 @@ func (s *SkillSystem) executeTargetedWeaponEnchant(sess *net.Session, player *wo
 		return
 	}
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 	if skill.CastGfx > 0 {
 		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, skill.CastGfx))
@@ -305,7 +305,7 @@ func (s *SkillSystem) executeBlessWeaponEnchant(sess *net.Session, player *world
 	targetPlayer := player
 	if targetID != 0 && targetID != player.CharID {
 		other := s.deps.World.GetByCharID(targetID)
-		if other == nil || other.Dead || other.MapID != player.MapID ||
+		if other == nil || other.Dead || other.MapID != player.MapID || other.ShowID != player.ShowID ||
 			chebyshevDist(player.X, player.Y, other.X, other.Y) > 20 {
 			handler.SendServerMessage(sess, 79)
 			return
@@ -323,7 +323,7 @@ func (s *SkillSystem) executeBlessWeaponEnchant(sess *net.Session, player *world
 		return
 	}
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 	if skill.CastGfx > 0 {
 		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(targetPlayer.CharID, skill.CastGfx))

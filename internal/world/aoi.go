@@ -103,6 +103,28 @@ func (g *AOIGrid) GetNearbyInto(x, y int32, mapID int16, buf []uint64) []uint64 
 	return buf
 }
 
+// GetNearbyIntoRange returns all session IDs in cells intersecting a tile radius.
+// Caller still performs exact distance filtering.
+func (g *AOIGrid) GetNearbyIntoRange(x, y int32, mapID int16, radius int32, buf []uint64) []uint64 {
+	buf = buf[:0]
+	if radius < 0 {
+		radius = 0
+	}
+	minCX := toCellCoord(x - radius)
+	maxCX := toCellCoord(x + radius)
+	minCY := toCellCoord(y - radius)
+	maxCY := toCellCoord(y + radius)
+	for cx := minCX; cx <= maxCX; cx++ {
+		for cy := minCY; cy <= maxCY; cy++ {
+			k := cellKey{mapID: mapID, cx: cx, cy: cy}
+			for sid := range g.cells[k] {
+				buf = append(buf, sid)
+			}
+		}
+	}
+	return buf
+}
+
 // NpcAOIGrid tracks which NPCs are in which cells.
 // Same logic as AOIGrid but keyed by int32 NPC object IDs instead of uint64 session IDs.
 // Separate type to avoid type assertions on the hot path.

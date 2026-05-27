@@ -273,10 +273,17 @@ func applyDamagePoisonToNpc(npc *world.NpcInfo, attackerSID uint64, amount int32
 	npc.PoisonDmgTimer = 0
 	npc.PoisonAttackerSID = attackerSID
 	if deps != nil && deps.World != nil {
-		nearby := deps.World.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+		nearby := nearbyNpcPoisonX8Viewers(deps.World, npc)
 		handler.BroadcastToPlayers(nearby, handler.BuildPoison(npc.ID, 1))
 	}
 	return true
+}
+
+func nearbyNpcPoisonX8Viewers(ws *world.State, npc *world.NpcInfo) []*world.PlayerInfo {
+	if ws == nil || npc == nil {
+		return nil
+	}
+	return ws.GetNearbyPlayersInShowRange(npc.X, npc.Y, npc.MapID, 0, npc.ShowID, 8)
 }
 
 func canApplyPoisonToPlayer(target *world.PlayerInfo) bool {
@@ -298,7 +305,7 @@ func broadcastPlayerPoison(target *world.PlayerInfo, poisonType byte, deps *hand
 	// 發給自己
 	target.Session.Send(data)
 	// 發給附近觀察者
-	nearby := deps.World.GetNearbyPlayers(target.X, target.Y, target.MapID, target.SessionID)
+	nearby := deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, target.SessionID, target.ShowID)
 	handler.BroadcastToPlayers(nearby, data)
 }
 

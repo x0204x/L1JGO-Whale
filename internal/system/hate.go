@@ -17,6 +17,7 @@ func AddHate(npc *world.NpcInfo, sessionID uint64, damage int32) {
 	// 首次受擊或仇恨超過當前目標 → 切換
 	if npc.AggroTarget == 0 {
 		npc.AggroTarget = sessionID
+		linkMobGroupHateLikeJava(npc, sessionID)
 		return
 	}
 	if sessionID != npc.AggroTarget {
@@ -24,6 +25,71 @@ func AddHate(npc *world.NpcInfo, sessionID uint64, damage int32) {
 			npc.AggroTarget = sessionID
 		}
 	}
+	linkMobGroupHateLikeJava(npc, sessionID)
+}
+
+func AddPlayerHateLikeJava(ws *world.State, npc *world.NpcInfo, player *world.PlayerInfo, damage int32) {
+	if npc == nil || player == nil {
+		return
+	}
+	AddHate(npc, player.SessionID, damage)
+	if damage <= 0 {
+		return
+	}
+	linkNpcFamilyHateLikeJava(ws, npc, player)
+}
+
+func linkNpcFamilyHateLikeJava(ws *world.State, npc *world.NpcInfo, player *world.PlayerInfo) {
+	if ws == nil || npc == nil || player == nil || player.SessionID == 0 {
+		return
+	}
+	for _, member := range ws.GetNearbyNpcsInShow(player.X, player.Y, player.MapID, npc.ShowID) {
+		if member == nil || member == npc || member.Dead {
+			continue
+		}
+		if len(member.HateList) != 0 {
+			continue
+		}
+		switch {
+		case member.AgroFamily == 1:
+			if npc.Family == "" || member.Family != npc.Family {
+				continue
+			}
+		case member.AgroFamily > 1:
+		default:
+			continue
+		}
+		setNpcLinkTargetLikeJava(member, player.SessionID)
+	}
+}
+
+func linkMobGroupHateLikeJava(npc *world.NpcInfo, sessionID uint64) {
+	if npc == nil || sessionID == 0 || npc.GroupInfo == nil {
+		return
+	}
+	for _, member := range npc.GroupInfo.Members {
+		if member == nil || member == npc || member.Dead {
+			continue
+		}
+		if member.ShowID != npc.ShowID {
+			continue
+		}
+		if member.NpcID == 99007 {
+			continue
+		}
+		if len(member.HateList) != 0 {
+			continue
+		}
+		setNpcLinkTargetLikeJava(member, sessionID)
+	}
+}
+
+func setNpcLinkTargetLikeJava(npc *world.NpcInfo, sessionID uint64) {
+	if npc == nil || sessionID == 0 {
+		return
+	}
+	npc.HateList = map[uint64]int32{sessionID: 0}
+	npc.AggroTarget = sessionID
 }
 
 // GetMaxHateTarget 回傳仇恨值最高的 SessionID。

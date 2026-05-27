@@ -3835,12 +3835,17 @@ actions:
   # ============================================================================
   # 火龍窟副本（MISS-P2-016）— NPC 動作映射
   # ============================================================================
-  - npc_id: 46180     # 象牙塔魔法師^漢（威頓村，發漢的袋子）
-    normal_action: give_hans_bag
-    caotic_action: give_hans_bag
-  - npc_id: 46181     # 傳送師^愛德納斯（威頓村，收冷氣傳送）
-    normal_action: enter_fire_dragon_cave
-    caotic_action: enter_fire_dragon_cave
-  - npc_id: 46164     # 奄奄一息的死亡騎士（副本內，給烈炎之劍）
-    normal_action: give_flame_sword
-    caotic_action: give_flame_sword
+  # NPC dialog 映射 → 客戶端內建 HTML 頁面（依 D:/L1J-new-java/380 對照）
+  #   46180 漢       → hamo2，按鈕 action="a"      → giveHansBag()
+  #   46181 愛德納斯 → eldnas2，按鈕 action="a"     → enterFireDragonCave()
+  #   46164 死亡騎士 → fd_death，按鈕 action="enter" → giveFlameSword()
+  # 實際分派在 npcaction.go default 區塊依 npc.NpcID + action 判斷。
+  - npc_id: 46180
+    normal_action: hamo2
+    caotic_action: hamo2
+  - npc_id: 46181
+    normal_action: eldnas2
+    caotic_action: eldnas2
+  - npc_id: 46164
+    normal_action: fd_death
+    caotic_action: fd_death

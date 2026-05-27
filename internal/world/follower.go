@@ -19,6 +19,7 @@ type FollowerInfo struct {
 	X       int32
 	Y       int32
 	MapID   int16
+	ShowID  int32
 	Heading int16
 
 	// Original NPC spawn position (for respawn on follower dismissal)
@@ -127,6 +128,33 @@ func (s *State) GetNearbyFollowers(x, y int32, mapID int16) []*FollowerInfo {
 	for _, nid := range nearbyIDs {
 		f := s.followers[nid]
 		if f == nil || f.Dead {
+			continue
+		}
+		dx := f.X - x
+		dy := f.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= 20 {
+			result = append(result, f)
+		}
+	}
+	return result
+}
+
+func (s *State) GetNearbyFollowersInShow(x, y int32, mapID int16, showID int32) []*FollowerInfo {
+	nearbyIDs := s.npcAoi.GetNearby(x, y, mapID)
+	var result []*FollowerInfo
+	for _, nid := range nearbyIDs {
+		f := s.followers[nid]
+		if f == nil || f.Dead || f.ShowID != showID {
 			continue
 		}
 		dx := f.X - x

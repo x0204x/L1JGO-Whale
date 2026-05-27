@@ -40,6 +40,36 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 	sess.CharName = charName
 	sess.SetState(packet.StateInWorld)
 
+	// 死亡狀態自動復活：客戶端死亡時可能自動關閉，導致角色卡在死亡位置 HP=0。
+	// 重新登入時若 HP <= 0，自動傳送到附近村莊並補滿基礎 HP/MP/飽食度。
+	// Java C_Restart 復活行為等效（pc.setCurrentHp(pc.getLevel()), set_food(40)）。
+	revivedOnLogin := ch.HP <= 0
+	if revivedOnLogin {
+		oldX, oldY, oldMap := ch.X, ch.Y, ch.MapID
+		loc := deps.Scripting.GetRespawnLocation(int(ch.MapID))
+		if loc != nil {
+			ch.X = int32(loc.X)
+			ch.Y = int32(loc.Y)
+			ch.MapID = int16(loc.Map)
+		} else {
+			ch.X, ch.Y, ch.MapID = 33084, 33391, 4 // fallback: 王城
+		}
+		ch.HP = int32(ch.Level)
+		if ch.HP < 1 {
+			ch.HP = 1
+		}
+		ch.MP = int32(ch.Level / 2)
+		if ch.MP < 0 {
+			ch.MP = 0
+		}
+		ch.Food = 40
+		deps.Log.Info("死亡狀態登入自動復活",
+			zap.String("name", ch.Name),
+			zap.Int32("oldX", oldX), zap.Int32("oldY", oldY), zap.Int16("oldMap", oldMap),
+			zap.Int32("newX", ch.X), zap.Int32("newY", ch.Y), zap.Int16("newMap", ch.MapID),
+		)
+	}
+
 	deps.Log.Info(fmt.Sprintf("角色進入世界  帳號=%s  角色=%s", sess.AccountName, charName))
 
 	// Register player in world state
@@ -91,6 +121,11 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 	}
 
 	deps.World.AddPlayer(player)
+
+	// 死亡復活時標記 dirty，確保新位置與 HP 立刻被 batch save 持久化（避免再次崩潰仍卡舊位置）
+	if revivedOnLogin {
+		player.Dirty = true
+	}
 
 	// Load inventory from DB (or give starting gold if empty)
 	loadInventoryFromDB(player, deps)
@@ -209,7 +244,7 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 	OnEnterTimedMap(sess, player, player.MapID, deps)
 
 	// --- 發送附近玩家（AOI）+ 封鎖格子 + 填入 Known ---
-	nearby := deps.World.GetNearbyPlayers(ch.X, ch.Y, ch.MapID, sess.ID)
+	nearby := deps.World.GetNearbyPlayersInShow(ch.X, ch.Y, ch.MapID, sess.ID, player.ShowID)
 	for _, other := range nearby {
 		SendPutObject(sess, other)
 		player.Known.Players[other.CharID] = world.KnownPos{X: other.X, Y: other.Y}
@@ -217,14 +252,14 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 	}
 
 	// --- 發送附近 NPC + 封鎖格子 + 填入 Known ---
-	nearbyNpcs := deps.World.GetNearbyNpcs(ch.X, ch.Y, ch.MapID)
+	nearbyNpcs := deps.World.GetNearbyNpcsInShow(ch.X, ch.Y, ch.MapID, player.ShowID)
 	for _, npc := range nearbyNpcs {
 		SendNpcPack(sess, npc)
 		player.Known.Npcs[npc.ID] = world.KnownPos{X: npc.X, Y: npc.Y}
 	}
 
 	// --- 發送附近寵伴 + 封鎖格子 + 填入 Known ---
-	nearbySum := deps.World.GetNearbySummons(ch.X, ch.Y, ch.MapID)
+	nearbySum := deps.World.GetNearbySummonsInShow(ch.X, ch.Y, ch.MapID, player.ShowID)
 	for _, sum := range nearbySum {
 		isOwner := sum.OwnerCharID == player.CharID
 		masterName := ""
@@ -234,7 +269,7 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 		SendSummonPack(sess, sum, isOwner, masterName)
 		player.Known.Summons[sum.ID] = world.KnownPos{X: sum.X, Y: sum.Y}
 	}
-	nearbyDolls := deps.World.GetNearbyDolls(ch.X, ch.Y, ch.MapID)
+	nearbyDolls := deps.World.GetNearbyDollsInShow(ch.X, ch.Y, ch.MapID, player.ShowID)
 	for _, doll := range nearbyDolls {
 		masterName := ""
 		if master := deps.World.GetByCharID(doll.OwnerCharID); master != nil {
@@ -243,7 +278,7 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 		SendDollPack(sess, doll, masterName)
 		player.Known.Dolls[doll.ID] = world.KnownPos{X: doll.X, Y: doll.Y}
 	}
-	nearbyHierarchs := deps.World.GetNearbyHierarchs(ch.X, ch.Y, ch.MapID)
+	nearbyHierarchs := deps.World.GetNearbyHierarchsInShow(ch.X, ch.Y, ch.MapID, player.ShowID)
 	for _, h := range nearbyHierarchs {
 		masterName := ""
 		if master := deps.World.GetByCharID(h.OwnerCharID); master != nil {
@@ -252,12 +287,12 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 		SendHierarchPack(sess, h, masterName)
 		player.Known.Hierarchs[h.ID] = world.KnownPos{X: h.X, Y: h.Y}
 	}
-	nearbyFollowers := deps.World.GetNearbyFollowers(ch.X, ch.Y, ch.MapID)
+	nearbyFollowers := deps.World.GetNearbyFollowersInShow(ch.X, ch.Y, ch.MapID, player.ShowID)
 	for _, f := range nearbyFollowers {
 		SendFollowerPack(sess, f)
 		player.Known.Followers[f.ID] = world.KnownPos{X: f.X, Y: f.Y}
 	}
-	nearbyPets := deps.World.GetNearbyPets(ch.X, ch.Y, ch.MapID)
+	nearbyPets := deps.World.GetNearbyPetsInShow(ch.X, ch.Y, ch.MapID, player.ShowID)
 	for _, pet := range nearbyPets {
 		isOwner := pet.OwnerCharID == player.CharID
 		masterName := ""
@@ -269,14 +304,14 @@ func HandleEnterWorld(sess *net.Session, r *packet.Reader, deps *Deps) {
 	}
 
 	// --- 發送附近地面物品 + 填入 Known ---
-	nearbyGnd := deps.World.GetNearbyGroundItems(ch.X, ch.Y, ch.MapID)
+	nearbyGnd := deps.World.GetNearbyGroundItemsInShow(ch.X, ch.Y, ch.MapID, player.ShowID)
 	for _, g := range nearbyGnd {
 		SendDropItem(sess, g)
 		player.Known.GroundItems[g.ID] = world.KnownPos{X: g.X, Y: g.Y}
 	}
 
 	// --- 發送附近門 + 填入 Known ---
-	nearbyEffects := deps.World.GetNearbyGroundEffects(ch.X, ch.Y, ch.MapID)
+	nearbyEffects := deps.World.GetNearbyGroundEffectsInShow(ch.X, ch.Y, ch.MapID, player.ShowID)
 	for _, effect := range nearbyEffects {
 		SendGroundEffectPack(sess, effect)
 		player.Known.GroundEffects[effect.ID] = world.KnownPos{X: effect.X, Y: effect.Y}

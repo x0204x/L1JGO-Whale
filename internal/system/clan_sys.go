@@ -27,6 +27,10 @@ func NewClanSystem(deps *handler.Deps) *ClanSystem {
 	return &ClanSystem{deps: deps}
 }
 
+func (s *ClanSystem) clanVisiblePlayers(player *world.PlayerInfo, excludeSession uint64) []*world.PlayerInfo {
+	return s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, excludeSession, player.ShowID)
+}
+
 // ==================== 建立血盟 ====================
 
 // Create 建立新血盟。
@@ -109,7 +113,7 @@ func (s *ClanSystem) Create(sess *net.Session, player *world.PlayerInfo, clanNam
 	handler.SendClanAttention(sess)
 
 	// 廣播到附近玩家
-	nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	nearby := s.clanVisiblePlayers(player, sess.ID)
 	for _, other := range nearby {
 		handler.SendClanName(other.Session, player.CharID, clanName, clanID, true)
 	}
@@ -129,7 +133,7 @@ func (s *ClanSystem) JoinRequest(sess *net.Session, player *world.PlayerInfo) {
 
 	// 尋找 3 格內最近的 Crown/Guardian
 	var target *world.PlayerInfo
-	nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	nearby := s.clanVisiblePlayers(player, sess.ID)
 	bestDist := int32(999)
 	for _, other := range nearby {
 		if other.ClanID == 0 {
@@ -244,7 +248,7 @@ func (s *ClanSystem) JoinResponse(sess *net.Session, responder *world.PlayerInfo
 
 	// 清除申請者稱號 + 廣播
 	sendCharTitle(applicant.Session, applicant.CharID, "")
-	nearbyApp := s.deps.World.GetNearbyPlayers(applicant.X, applicant.Y, applicant.MapID, applicant.SessionID)
+	nearbyApp := s.clanVisiblePlayers(applicant, applicant.SessionID)
 	for _, other := range nearbyApp {
 		sendCharTitle(other.Session, applicant.CharID, "")
 	}
@@ -262,7 +266,7 @@ func (s *ClanSystem) JoinResponse(sess *net.Session, responder *world.PlayerInfo
 		online := s.deps.World.GetByCharID(m.CharID)
 		if online != nil {
 			sendCharResetEmblem(online.Session, applicant.CharID, clan.EmblemID)
-			nearby := s.deps.World.GetNearbyPlayers(online.X, online.Y, online.MapID, online.SessionID)
+			nearby := s.clanVisiblePlayers(online, online.SessionID)
 			for _, other := range nearby {
 				sendCharResetEmblem(other.Session, online.CharID, clan.EmblemID)
 			}
@@ -344,7 +348,7 @@ func (s *ClanSystem) dissolveClan(sess *net.Session, player *world.PlayerInfo, c
 			handler.SendClanAttention(member.Session)
 
 			// 廣播到附近玩家
-			nearby := s.deps.World.GetNearbyPlayers(member.X, member.Y, member.MapID, member.SessionID)
+			nearby := s.clanVisiblePlayers(member, member.SessionID)
 			for _, other := range nearby {
 				handler.SendClanName(other.Session, member.CharID, "", 0, false)
 			}
@@ -394,7 +398,7 @@ func (s *ClanSystem) memberLeave(sess *net.Session, player *world.PlayerInfo, cl
 	}
 
 	// 廣播到附近玩家
-	nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	nearby := s.clanVisiblePlayers(player, sess.ID)
 	for _, other := range nearby {
 		handler.SendClanName(other.Session, player.CharID, "", 0, false)
 	}
@@ -463,7 +467,7 @@ func (s *ClanSystem) BanMember(sess *net.Session, player *world.PlayerInfo, targ
 		handler.SendClanAttention(target.Session)
 
 		// 廣播到目標附近
-		nearby := s.deps.World.GetNearbyPlayers(target.X, target.Y, target.MapID, target.SessionID)
+		nearby := s.clanVisiblePlayers(target, target.SessionID)
 		for _, other := range nearby {
 			handler.SendClanName(other.Session, target.CharID, "", 0, false)
 		}
@@ -721,7 +725,7 @@ func (s *ClanSystem) SetTitle(sess *net.Session, player *world.PlayerInfo, charN
 		sendCharTitle(sess, player.CharID, title)
 
 		// 廣播到附近
-		nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+		nearby := s.clanVisiblePlayers(player, sess.ID)
 		for _, other := range nearby {
 			sendCharTitle(other.Session, player.CharID, title)
 		}
@@ -759,7 +763,7 @@ func (s *ClanSystem) SetTitle(sess *net.Session, player *world.PlayerInfo, charN
 		target.Dirty = true
 		sendCharTitle(target.Session, target.CharID, title)
 
-		nearby := s.deps.World.GetNearbyPlayers(target.X, target.Y, target.MapID, target.SessionID)
+		nearby := s.clanVisiblePlayers(target, target.SessionID)
 		for _, other := range nearby {
 			sendCharTitle(other.Session, target.CharID, title)
 		}

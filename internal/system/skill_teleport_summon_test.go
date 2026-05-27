@@ -176,6 +176,67 @@ func TestSkillTeleportDoesNotSendGenericActionGfxMatchesJava(t *testing.T) {
 	}
 }
 
+func TestSkillTeleportDepartureEffectBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "teleport-show",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		ShowID:    10,
+		HP:        100,
+		MaxHP:     100,
+		MP:        100,
+		MaxMP:     100,
+		Level:     52,
+		Inv:       world.NewInventory(),
+		KnownSpells: []int32{
+			5,
+		},
+		Bookmarks: []world.Bookmark{
+			{ID: 77, Name: "target", X: 32710, Y: 32820, MapID: 4},
+		},
+	})
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "same-show",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		ShowID:    10,
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "other-show",
+		X:         102,
+		Y:         100,
+		MapID:     4,
+		ShowID:    99,
+	})
+	s := newTeleportSummonTestSystem(t, ws)
+
+	s.processSkill(handler.SkillRequest{
+		SessionID:  player.SessionID,
+		SkillID:    5,
+		BookmarkID: 77,
+		MapID:      4,
+	})
+
+	if !hasSkillEffectPacket(drainSkillTestPackets(sameShow.Session), player.CharID, 169) {
+		t.Fatal("同 ShowID 玩家應看到 TELEPORT 出發 169 特效")
+	}
+	if hasSkillEffectPacket(drainSkillTestPackets(otherShow.Session), player.CharID, 169) {
+		t.Fatal("yiwei sendPacketsAll 會用 showId 隔離，不同 ShowID 玩家不應看到 TELEPORT 出發特效")
+	}
+}
+
 func TestSkillTeleportFailureUnlocksClientMatchesJava(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{
@@ -336,7 +397,7 @@ func TestSkillTeleportTowerDominancePermitMatchesJava(t *testing.T) {
 	}
 }
 
-func TestSkillTeleportDesperadoBlocksTeleportBeforeCost(t *testing.T) {
+func TestSkillTeleportIgnoresRemovedWarriorDesperadoBuffFor380C(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{
 		SessionID: 1,
@@ -369,11 +430,11 @@ func TestSkillTeleportDesperadoBlocksTeleportBeforeCost(t *testing.T) {
 		MapID:      4,
 	})
 
-	if player.X != 100 || player.Y != 100 || player.MapID != 4 {
-		t.Fatalf("亡命之徒狀態下瞬移應被拒絕，位置=%d,%d,%d", player.X, player.Y, player.MapID)
+	if player.X != 32710 || player.Y != 32820 || player.MapID != 4 {
+		t.Fatalf("3.80C 已剔除的 230 buff 不應阻擋瞬移，位置=%d,%d,%d", player.X, player.Y, player.MapID)
 	}
-	if player.MP != 100 {
-		t.Fatalf("亡命之徒拒絕應發生在消耗 MP 前，MP=%d", player.MP)
+	if player.MP != 90 {
+		t.Fatalf("瞬移成功應正常消耗 MP，MP=%d", player.MP)
 	}
 }
 
@@ -579,5 +640,66 @@ func TestSkillMassTeleportAsksClanMemberByDefault(t *testing.T) {
 	}
 	if member.TeleportX != 32710 || member.TeleportY != 32820 || member.TeleportMapID != 4 {
 		t.Fatalf("確認前應暫存傳送目的地，got=%d,%d,%d", member.TeleportX, member.TeleportY, member.TeleportMapID)
+	}
+}
+
+func TestSkillMassTeleportSkipsDifferentShowClanMemberLikeJava(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "mass-caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		ShowID:    10,
+		HP:        100,
+		MaxHP:     100,
+		MP:        100,
+		MaxMP:     100,
+		Level:     60,
+		ClanID:    10,
+		Inv:       world.NewInventory(),
+		KnownSpells: []int32{
+			69,
+		},
+		Bookmarks: []world.Bookmark{
+			{ID: 77, Name: "target", X: 32710, Y: 32820, MapID: 4},
+		},
+	})
+	caster.Inv.AddItem(40318, 1, "magic gem", 0, 0, true, 1)
+	member := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "other-show-member",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		ShowID:    99,
+		HP:        100,
+		MaxHP:     100,
+		MP:        100,
+		MaxMP:     100,
+		Level:     60,
+		ClanID:    10,
+		Inv:       world.NewInventory(),
+	})
+	s := newTeleportSummonTestSystem(t, ws)
+
+	s.processSkill(handler.SkillRequest{
+		SessionID:  caster.SessionID,
+		SkillID:    69,
+		BookmarkID: 77,
+		MapID:      4,
+	})
+
+	if member.PendingYesNoType == 748 || member.TeleportMapID != 0 {
+		t.Fatalf("不同 ShowID 血盟成員不在 yiwei visiblePlayer 內，不應收到集體傳送詢問或暫存目的地，Pending=%d TeleportMapID=%d",
+			member.PendingYesNoType, member.TeleportMapID)
+	}
+	if member.X != 101 || member.Y != 100 || member.MapID != 4 {
+		t.Fatalf("不同 ShowID 血盟成員不應被 MASS_TELEPORT 傳送，got=(%d,%d,%d)", member.X, member.Y, member.MapID)
 	}
 }

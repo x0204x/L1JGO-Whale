@@ -76,3 +76,10 @@ const (
 	FireSmithHammerItemID   int32 = 80027 // 火神之槌
 	FireSmithTearItemID     int32 = 80030 // 火神之淚
 )
+
+// FireSmithRefineTearBonus 火神精煉時 assist 槽放入火神之淚的結晶數量加成倍率。
+// 公式：finalCount = baseCount × (1 + FireSmithRefineTearBonus)
+// 例：0.2 → +20%（baseCount=26 → 31）；0.5 → +50%；1.0 → +100%（×2）。
+// 客戶端封包 ccddd 只送 1 個 assistObjID，每次煉化最多用 1 個火神之淚。
+// 此值為專案自訂（客戶端原始公式未確認），可依平衡需要調整。
+const FireSmithRefineTearBonus = 0.2

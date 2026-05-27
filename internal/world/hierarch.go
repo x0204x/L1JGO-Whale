@@ -16,6 +16,7 @@ type HierarchInfo struct {
 	X       int32
 	Y       int32
 	MapID   int16
+	ShowID  int32
 	Heading int16
 
 	HP    int32
@@ -129,6 +130,33 @@ func (s *State) GetNearbyHierarchs(x, y int32, mapID int16) []*HierarchInfo {
 	for _, nid := range nearbyIDs {
 		h := s.hierarchs[nid]
 		if h == nil {
+			continue
+		}
+		dx := h.X - x
+		dy := h.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= 20 {
+			result = append(result, h)
+		}
+	}
+	return result
+}
+
+func (s *State) GetNearbyHierarchsInShow(x, y int32, mapID int16, showID int32) []*HierarchInfo {
+	nearbyIDs := s.npcAoi.GetNearby(x, y, mapID)
+	var result []*HierarchInfo
+	for _, nid := range nearbyIDs {
+		h := s.hierarchs[nid]
+		if h == nil || h.ShowID != showID {
 			continue
 		}
 		dx := h.X - x

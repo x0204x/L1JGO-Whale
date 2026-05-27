@@ -120,6 +120,36 @@ func (s *QuestWorldSystem) Update(_ time.Duration) {
 	for _, inst := range expired {
 		s.endInstance(inst, "time_limit")
 	}
+
+	// 推進所有 instance 的 dungeon scene 佇列 + 處理 on_timer scenes
+	s.mu.RLock()
+	snapshot := make([]*world.QuestInstance, 0, len(s.instances))
+	for _, inst := range s.instances {
+		snapshot = append(snapshot, inst)
+	}
+	s.mu.RUnlock()
+	for _, inst := range snapshot {
+		if s.dungeons != nil {
+			def := s.dungeons.Get(inst.QuestID)
+			if def != nil {
+				// 檢查有 on_timer scene 需要觸發
+				elapsedSec := (cur - inst.StartTick) / questWorldTicksPerSecond
+				for i := range def.Scenes {
+					sc := &def.Scenes[i]
+					if sc.Trigger != data.SceneTriggerOnTimer {
+						continue
+					}
+					if int64(sc.Timer) > elapsedSec {
+						continue
+					}
+					// MarkScenePlayed 會避免重複觸發
+					s.triggerDungeonScenes(inst, def, data.SceneTriggerOnTimer, 0, 0)
+					break // triggerDungeonScenes 一次掃完所有 on_timer scene
+				}
+			}
+		}
+		s.tickDungeonScenes(inst, cur)
+	}
 }
 
 // ─── 公開 API ────────────────────────────────────────────────────────
@@ -161,8 +191,13 @@ func (s *QuestWorldSystem) Count() int {
 
 // Enter 玩家進入指定副本任務 ID 的新實例。
 // 對應 Java WorldQuest.put 的「key 不存在時建立新副本」分支。
-// 注意：Stage C 不做 Round 出生與進場條件 DSL；那些屬於 Stage D/E。
 // 失敗回 nil（副本定義不存在）。
+//
+// 若玩家已在其他副本 instance（player.ShowID > 0），會先靜默退出舊 instance
+// （清 NPC + 銷毀 instance），**不**傳送玩家到舊副本 Exit.TeleportTo。
+// 這同時涵蓋：
+//   - Phase 1 → Phase 2 過場（死亡騎士給劍 → 進真副本）
+//   - 防呆：玩家用 /home 等指令逃出副本後又點 NPC 重入，舊副本 NPC 不會殘留
 func (s *QuestWorldSystem) Enter(player *world.PlayerInfo, dungeonID int32) *world.QuestInstance {
 	if player == nil || s.dungeons == nil {
 		return nil
@@ -172,6 +207,19 @@ func (s *QuestWorldSystem) Enter(player *world.PlayerInfo, dungeonID int32) *wor
 		s.logf("QuestWorld.Enter 失敗：副本定義不存在", zap.Int32("dungeon_id", dungeonID))
 		return nil
 	}
+
+	// 進場條件驗證（Entry DSL）— level / class / required_items
+	if !s.validateEntry(player, def) {
+		return nil
+	}
+
+	// 玩家已在其他副本 → 先靜默退出（清 NPC + instance），避免重複入場留下殘骸
+	if player.ShowID > 0 {
+		s.silentExit(player)
+	}
+
+	// 消耗 required_items 中 consume=true 的物品
+	s.consumeEntryItems(player, def)
 
 	s.mu.Lock()
 	id := s.nextID
@@ -201,6 +249,9 @@ func (s *QuestWorldSystem) Enter(player *world.PlayerInfo, dungeonID int32) *wor
 		}
 		s.spawnRound(inst, r)
 	}
+
+	// 觸發 on_enter scene 劇本
+	s.triggerDungeonScenes(inst, def, data.SceneTriggerOnEnter, 0, player.CharID)
 
 	s.logf("QuestWorld.Enter",
 		zap.Int32("show_id", id),
@@ -272,6 +323,15 @@ func (s *QuestWorldSystem) Exit(player *world.PlayerInfo) bool {
 	}
 	player.ShowID = 0
 
+	// 取副本定義，無論 shouldEnd 與否，離開者本人都要清 cleanup_items
+	// （endInstance 內的迴圈只跑「仍在 inst.Players() 內的剩餘玩家」，
+	//  此時離開者已經被 RemovePlayer 移除掉，需在這裡單獨處理）
+	var def *data.DungeonDef
+	if s.dungeons != nil {
+		def = s.dungeons.Get(inst.QuestID)
+	}
+	s.cleanupExitItems(player, def)
+
 	// 副本結束條件：outStop 或無玩家
 	shouldEnd := inst.OutStop || inst.PlayerCount() <= 0
 
@@ -290,6 +350,152 @@ func (s *QuestWorldSystem) Exit(player *world.PlayerInfo) bool {
 // RemoveOnDisconnect 玩家斷線清理：實作 handler.QuestWorldManager 介面。
 func (s *QuestWorldSystem) RemoveOnDisconnect(player *world.PlayerInfo) {
 	s.Exit(player)
+}
+
+// validateEntry 檢查進場條件（min_level / max_level / class_mask / required_items）。
+// 任一條件不過 → 送 reject_message（如有設定）並回 false。
+//
+// 對應 Java 系列 NPC 在 staraQuest 之前的條件檢查（散落在各 Npc_FireDragon.action 等）。
+func (s *QuestWorldSystem) validateEntry(player *world.PlayerInfo, def *data.DungeonDef) bool {
+	if def == nil || player == nil || def.Entry == nil {
+		return true // 沒寫 entry 就不檢查
+	}
+	entry := def.Entry
+
+	if entry.MinLevel > 0 && int32(player.Level) < entry.MinLevel {
+		s.sendEntryReject(player, entry.RejectMessage, "level<min")
+		return false
+	}
+	if entry.MaxLevel > 0 && int32(player.Level) > entry.MaxLevel {
+		s.sendEntryReject(player, entry.RejectMessage, "level>max")
+		return false
+	}
+	if entry.ClassMask > 0 {
+		mask := int32(1) << uint(player.ClassType)
+		if mask&entry.ClassMask == 0 {
+			s.sendEntryReject(player, entry.RejectMessage, "class")
+			return false
+		}
+	}
+	// required_items：每一筆都要持有指定數量
+	if player.Inv != nil {
+		for i := range entry.RequiredItems {
+			req := &entry.RequiredItems[i]
+			it := player.Inv.FindByItemID(req.ItemID)
+			if it == nil || it.Count < req.Count {
+				s.sendEntryReject(player, entry.RejectMessage, "required_item")
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// sendEntryReject 送 reject_message + log。
+// reject_message 為訊息 ID（對應 sysmsg.tbl）；0 = 不送，靜默拒絕。
+func (s *QuestWorldSystem) sendEntryReject(player *world.PlayerInfo, msgID int32, reason string) {
+	if player.Session != nil && msgID > 0 {
+		handler.SendServerMessage(player.Session, uint16(msgID))
+	}
+	s.logf("QuestWorld.Enter rejected",
+		zap.Int32("char_id", player.CharID),
+		zap.String("reason", reason),
+	)
+}
+
+// consumeEntryItems 把 required_items 中 consume=true 的物品從玩家背包扣掉，
+// 並發送 inventory 更新封包。已通過 validateEntry 後才會呼叫，數量保證足夠。
+func (s *QuestWorldSystem) consumeEntryItems(player *world.PlayerInfo, def *data.DungeonDef) {
+	if player == nil || player.Inv == nil || def == nil || def.Entry == nil {
+		return
+	}
+	for i := range def.Entry.RequiredItems {
+		req := &def.Entry.RequiredItems[i]
+		if !req.Consume || req.Count <= 0 {
+			continue
+		}
+		item := player.Inv.FindByItemID(req.ItemID)
+		if item == nil {
+			continue // 理論上不會發生（validateEntry 已檢查）
+		}
+		objID := item.ObjectID
+		removed := player.Inv.RemoveItem(objID, req.Count)
+		if player.Session != nil {
+			if removed {
+				handler.SendRemoveInventoryItem(player.Session, objID)
+			} else {
+				handler.SendItemCountUpdate(player.Session, item)
+			}
+			handler.SendWeightUpdate(player.Session, player)
+		}
+	}
+	player.Dirty = true
+}
+
+// cleanupExitItems 玩家離開副本時刪除 cleanup_items（副本專屬物品，避免帶出副本流通）。
+func (s *QuestWorldSystem) cleanupExitItems(player *world.PlayerInfo, def *data.DungeonDef) {
+	if player == nil || player.Inv == nil || def == nil || def.Exit == nil {
+		return
+	}
+	if len(def.Exit.CleanupItems) == 0 {
+		return
+	}
+	for _, itemID := range def.Exit.CleanupItems {
+		// 對 stackable 與 non-stackable 都涵蓋：迴圈刪除所有同 ID 物品
+		for {
+			it := player.Inv.FindByItemID(itemID)
+			if it == nil {
+				break
+			}
+			objID := it.ObjectID
+			removed := player.Inv.RemoveItem(objID, it.Count)
+			if player.Session != nil {
+				if removed {
+					handler.SendRemoveInventoryItem(player.Session, objID)
+				} else {
+					handler.SendItemCountUpdate(player.Session, it)
+				}
+			}
+			if !removed {
+				// 防呆：理論上 RemoveItem(count = it.Count) 必定全清，這裡跳出避免無窮迴圈
+				break
+			}
+		}
+	}
+	if player.Session != nil {
+		handler.SendWeightUpdate(player.Session, player)
+	}
+	player.Dirty = true
+}
+
+// silentExit 把玩家從目前副本 instance 中安靜移除（不傳送到 Exit.TeleportTo）。
+// 用於：
+//   - 副本之間過場（如火龍窟 Phase1→Phase2，由下一個 Enter 接管傳送）
+//   - 防呆：玩家已逃離副本 map 後又點 NPC 重入，舊 instance 殘骸要清掉
+//
+// 行為：移除玩家、若 OutStop=true 或 PlayerCount<=0 則 endInstance 清 NPC，
+// 但因為玩家已先被移除，endInstance 不會把這名玩家傳送回 Exit.TeleportTo。
+func (s *QuestWorldSystem) silentExit(player *world.PlayerInfo) {
+	if player == nil || player.ShowID <= 0 {
+		return
+	}
+	showID := player.ShowID
+
+	s.mu.RLock()
+	inst := s.instances[showID]
+	s.mu.RUnlock()
+	if inst == nil {
+		// ShowID 指向不存在實例 → 直接清旗標
+		player.ShowID = 0
+		return
+	}
+
+	inst.RemovePlayer(player.CharID)
+	player.ShowID = 0
+
+	if inst.OutStop || inst.PlayerCount() <= 0 {
+		s.endInstance(inst, "silent_transition")
+	}
 }
 
 // OnNpcDeath 副本內 NPC 死亡時觸發；實作 handler.QuestWorldManager 介面。
@@ -341,6 +547,9 @@ func (s *QuestWorldSystem) OnNpcDeath(npc *world.NpcInfo) {
 		}
 		s.spawnRound(inst, r)
 		spawned = true
+
+		// 觸發該 round 的 on_round_clear scene 劇本
+		s.triggerDungeonScenes(inst, def, data.SceneTriggerOnRoundClear, r.ID, 0)
 		break
 	}
 
@@ -360,10 +569,12 @@ func (s *QuestWorldSystem) endInstance(inst *world.QuestInstance, reason string)
 		return
 	}
 
-	// 取得副本定義以拿 Exit.TeleportTo
+	// 取得副本定義以拿 Exit.TeleportTo / CleanupItems
+	var def *data.DungeonDef
 	var exitDest *data.DungeonExitDest
 	if s.dungeons != nil {
-		if def := s.dungeons.Get(inst.QuestID); def != nil && def.Exit != nil {
+		def = s.dungeons.Get(inst.QuestID)
+		if def != nil && def.Exit != nil {
 			exitDest = def.Exit.TeleportTo
 		}
 	}
@@ -371,13 +582,14 @@ func (s *QuestWorldSystem) endInstance(inst *world.QuestInstance, reason string)
 	// 清除副本內所有 NPC（Transient 暫態 NPC 直接從世界移除 + 通知周圍玩家）
 	s.cleanupDungeonNpcs(inst)
 
-	// 傳出仍在副本地圖的玩家
+	// 傳出仍在副本地圖的玩家 + 清掉 cleanup_items 中的副本專屬物品
 	for _, charID := range inst.Players() {
 		p := s.ws.GetByCharID(charID)
 		if p == nil {
 			continue
 		}
 		p.ShowID = 0
+		s.cleanupExitItems(p, def) // 副本專屬物品（真死亡騎士烈炎之劍等）回收
 		if p.MapID == inst.MapID && exitDest != nil {
 			handler.TeleportPlayer(p.Session, p, exitDest.X, exitDest.Y, exitDest.MapID, exitDest.Heading, s.deps)
 		}

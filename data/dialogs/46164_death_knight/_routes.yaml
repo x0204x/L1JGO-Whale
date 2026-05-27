@@ -1,0 +1,28 @@
+## 火龍窟前室 NPC 奄奄一息的死亡騎士(46164) — Phase 1 → Phase 2 過場關鍵
+## 380 reference: D:/L1J-new-java/380/com/lineage/data/npc/quest2/Npc_DyingDeathKnight.java
+##
+## 流程：玩家進前室(dungeon 147) 看完 9 句對白 → 點死亡騎士領劍 → 進真副本(148)
+##   未有 850        → give_prompt（顯示 [收下] 按鈕）
+##   已有 850        → already_have（防呆：理論上前室不會出現此狀態）
+##
+## 按 [收下] 觸發序列（effect 依序執行）：
+##   1. take_item 80020      消耗冷冽的氣息
+##   2. give_item 850        發真‧死亡騎士烈炎之劍（離場時自動回收）
+##   3. enter_dungeon 148    進真副本（Enter() 自動靜默退出 147）
+
+default_speaker: 奄奄一息的死亡騎士
+
+on_talk:
+  - when: { has_item: { id: 850, count: 1 } }
+    send: already_have
+  - send: give_prompt
+
+on_action:
+  enter:                # 按鈕 <a action="enter">[收下]</a>
+    require:
+      - { has_item: { id: 80020, count: 1 } }
+      - { lacks_item: { id: 850, count: 1 } }
+    effects:
+      - take_item: { id: 80020, count: 1 }   # 消耗冷冽的氣息
+      - give_item: { id: 850, count: 1 }     # 給真‧死亡騎士烈炎之劍
+      - enter_dungeon: 148                   # 過場到真副本（自動清前室 instance）

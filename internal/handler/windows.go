@@ -39,7 +39,16 @@ func HandleWindows(sess *net.Session, r *packet.Reader, deps *Deps) {
 		HandleDragonDoorSelect(sess, player, r, deps)
 
 	case 13:
-		// 客戶端點擊 NPC 時附帶發送，Java 也無處理，靜默忽略
+		// 多用途：原版 Java 在點 NPC 時送、靜默忽略。
+		// 觀察 @dynamic 對話下，<a action="cancel"> 等「關閉/取消」類按鈕被客戶端 patch
+		// 處理為純本地關閉，不送 C_HACTION，但會送 C_Windows type 13（疑似 click 通知）。
+		// 因此：收到 type 13 時，若該玩家有 live dialog，視為「玩家關閉了對話」並停止刷新。
+		if player.LiveDialog != nil {
+			player.LiveDialog = nil
+			deps.Log.Info("dialog: cleared live dialog by C_Windows type 13",
+				zap.Int32("char_id", player.CharID),
+			)
+		}
 
 	default:
 		deps.Log.Debug("C_Windows 未處理的 type",

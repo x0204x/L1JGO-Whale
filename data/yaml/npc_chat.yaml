@@ -444,7 +444,6 @@ chats:
     is_world_chat: false
     is_repeat: true
     repeat_interval: 15000
-
   - npc_id: 81175
     chat_timing: 1
     note: "通緝犯庫傑(死亡時)"

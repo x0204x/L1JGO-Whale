@@ -89,9 +89,7 @@ func (s *TrapSystem) sendTrapEffect(sess *net.Session, player *world.PlayerInfo,
 	// 發送給觸發者
 	sess.Send(data)
 
-	// 廣播給附近玩家
-	nearby := s.deps.World.GetNearbyPlayers(trap.X, trap.Y, trap.MapID, sess.ID)
-	handler.BroadcastToPlayers(nearby, data)
+	handler.BroadcastToVisiblePlayers(s.deps.World, trap.X, trap.Y, trap.MapID, sess.ID, player.ShowID, data)
 }
 
 // trapDamage 陷阱傷害處理。

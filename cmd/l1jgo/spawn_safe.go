@@ -29,6 +29,7 @@ func spawnNpcsSafe(ws *world.State, npcTable *data.NpcTable, spawns []data.Spawn
 			}
 
 			leader := createNpcFromTemplate(tmpl, x, y, spawn.MapID, spawn.Heading, spawn.RespawnDelay, sprTable)
+			system.ApplyNpcInitialHideLikeJava(leader)
 			leader.MobGroupID = spawn.MobGroupID
 			system.ApplyNpcSpawnRule(leader, rule)
 			ws.AddNpc(leader)

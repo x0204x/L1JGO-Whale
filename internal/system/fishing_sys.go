@@ -61,12 +61,9 @@ func (s *FishingSystem) StartFishing(player *world.PlayerInfo, item *world.InvIt
 	player.FishingPoleID = item.ItemID
 	player.FishingTick = 0
 
-	// 廣播釣魚動作
-	handler.SendFishingAction(player.Session, player, fishX, fishY)
-	nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, player.SessionID)
-	for _, other := range nearby {
-		handler.SendFishingAction(other.Session, player, fishX, fishY)
-	}
+	data := handler.BuildFishingAction(player, fishX, fishY)
+	player.Session.Send(data)
+	handler.BroadcastToVisiblePlayers(s.deps.World, player.X, player.Y, player.MapID, player.SessionID, player.ShowID, data)
 
 	s.deps.Log.Debug("開始釣魚",
 		zap.String("player", player.Name),

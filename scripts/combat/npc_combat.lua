@@ -81,6 +81,7 @@ function calc_npc_ranged(ctx)
     elseif attack_roll > defense then
         is_hit = true
     end
+    is_hit = apply_er_evasion(is_hit, tgt.dodge)
 
     local damage = 0
     if is_hit then

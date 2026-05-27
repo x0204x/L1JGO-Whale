@@ -15,6 +15,33 @@ func NextNpcID() int32 {
 	return npcIDCounter.Add(1)
 }
 
+const (
+	NpcHiddenNone     = 0
+	NpcHiddenSink     = 1
+	NpcHiddenFly      = 2
+	NpcHiddenIce      = 3
+	NpcHiddenKirtas   = 4
+	NpcHiddenShellman = 5
+)
+
+// NpcActionStatus 回傳 S_NPCPack 的動作狀態 byte。
+func NpcActionStatus(npc *NpcInfo) byte {
+	if npc == nil {
+		return 0
+	}
+	if npc.HiddenStatus != NpcHiddenNone && npc.HiddenActionStatus != 0 {
+		return npc.HiddenActionStatus
+	}
+	switch npc.HiddenStatus {
+	case NpcHiddenSink:
+		return 13
+	case NpcHiddenFly, NpcHiddenIce, NpcHiddenShellman:
+		return 4
+	default:
+		return 0
+	}
+}
+
 // NpcInfo holds runtime data for an NPC currently in-world.
 // Accessed only from the game loop goroutine — no locks.
 type NpcInfo struct {
@@ -37,6 +64,7 @@ type NpcInfo struct {
 	AC                int16
 	STR               int16
 	DEX               int16
+	Intel             int16
 	Exp               int32 // exp reward on kill
 	Lawful            int32
 	Size              string // "small" or "large"
@@ -47,10 +75,13 @@ type NpcInfo struct {
 	TurnUndeadableSet bool
 	Hard              bool
 	CantResurrect     bool
-	Agro              bool  // true = aggressive, attacks players on sight
+	Agro              bool // true = aggressive, attacks players on sight
+	Family            string
+	AgroFamily        int16
 	AtkDmg            int32 // damage per attack (simplified: Level + STR/3)
 	Ranged            int16 // attack range (1 = melee, >1 = ranged attacker)
 	AtkSpeed          int16 // attack animation speed (ms, 0 = default)
+	AtkMagicSpeed     int16 // attack magic animation delay (ms, 0 = fallback)
 	SubMagicSpeed     int16 // non-directional magic animation delay (ms, 0 = fallback)
 	MoveSpeed         int16 // passive/move speed (ms, 0 = default)
 	PoisonAtk         byte  // 怪物施毒能力（從模板載入）: 0=無, 1=傷害毒, 2=沉默毒, 4=麻痺毒
@@ -80,9 +111,11 @@ type NpcInfo struct {
 	SpawnScreen  bool
 
 	// State
-	Dead         bool
-	DeleteTimer  int // ticks until S_RemoveObject is sent (Java: NPC_DELETION_TIME, default 10s = 50 ticks)
-	RespawnTimer int // ticks remaining until respawn
+	Dead               bool
+	DeleteTimer        int  // ticks until S_RemoveObject is sent (Java: NPC_DELETION_TIME, default 10s = 50 ticks)
+	RespawnTimer       int  // ticks remaining until respawn
+	HiddenStatus       int  // Java L1NpcInstance.HIDDEN_STATUS_*，0=none, 1=sink
+	HiddenActionStatus byte // Java setStatus() for hidden NPC packs; 0 uses the default mapping.
 
 	// AI state — 仇恨系統
 	AggroTarget uint64           // SessionID of hate target (0 = no target)，由仇恨列表驅動
@@ -90,6 +123,10 @@ type NpcInfo struct {
 	AttackTimer int              // ticks until next attack (cooldown)
 	MoveTimer   int              // ticks until next move towards target
 	StuckTicks  int              // consecutive ticks blocked by another entity (for stuck detection)
+
+	MobSkillUseCounts      map[int]int // mobskill act_no -> successful uses (Java: _skillUseCount)
+	MobSkillDelayTicks     map[int]int // mobskill act_no -> remaining reuseDelay ticks
+	MobSkillTypeDelayTicks map[int]int // mobskill type -> remaining type-level reuseDelay ticks
 
 	// Idle wandering state (Java: _randomMoveDistance / _randomMoveDirection)
 	WanderDist  int   // remaining tiles to walk in current wander direction

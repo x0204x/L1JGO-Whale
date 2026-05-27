@@ -65,7 +65,7 @@ func (s *SkillSystem) applyThunderGrabBind(caster, target *world.PlayerInfo) {
 	target.Paralyzed = true
 	handler.SendParalysis(target.Session, handler.BindApply)
 
-	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, 0, target.ShowID)
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, 4184))
 	// Java `THUNDER_GRAB.java:40 spawnEffect(81182, bindtime, pc.X, pc.Y, mapId, srcpc, 0)` —
 	// 在目標位置生成 81182 視覺地面效果，存活時間 = bindtime（秒）。
@@ -93,6 +93,7 @@ func (s *SkillSystem) spawnThunderGrabGroundEffect(caster *world.PlayerInfo, x, 
 		X:            x,
 		Y:            y,
 		MapID:        mapID,
+		ShowID:       caster.ShowID,
 		OwnerCharID:  caster.CharID,
 		OwnerSession: caster.SessionID,
 		OwnerName:    caster.Name,
@@ -172,6 +173,7 @@ func (s *SkillSystem) spawnFreezingBreathGroundEffect(caster *world.PlayerInfo, 
 		X:            x,
 		Y:            y,
 		MapID:        mapID,
+		ShowID:       caster.ShowID,
 		OwnerCharID:  caster.CharID,
 		OwnerSession: caster.SessionID,
 		OwnerName:    caster.Name,
@@ -311,15 +313,16 @@ func (s *SkillSystem) calcFoeSlayerPlayerHitDamage(caster, target *world.PlayerI
 		return 0
 	}
 	result := s.deps.Scripting.CalcMeleeAttack(scripting.CombatContext{
-		AttackerLevel:  int(caster.Level),
-		AttackerSTR:    int(caster.Str),
-		AttackerDEX:    int(caster.Dex),
-		AttackerWeapon: s.foeSlayerWeaponDamage(caster, "small"),
-		AttackerHitMod: int(caster.HitMod),
-		AttackerDmgMod: int(caster.DmgMod),
-		TargetAC:       int(target.AC),
-		TargetLevel:    int(target.Level),
-		TargetMR:       0,
+		AttackerLevel:   int(caster.Level),
+		AttackerSTR:     int(caster.Str),
+		AttackerBaseSTR: calcPlayerBaseStrLikeJava(caster),
+		AttackerDEX:     int(caster.Dex),
+		AttackerWeapon:  s.foeSlayerWeaponDamage(caster, "small"),
+		AttackerHitMod:  int(caster.HitMod),
+		AttackerDmgMod:  int(caster.DmgMod),
+		TargetAC:        int(target.AC),
+		TargetLevel:     int(target.Level),
+		TargetMR:        0,
 	})
 	if !result.IsHit || result.Damage <= 0 {
 		return 0
@@ -343,6 +346,7 @@ func (s *SkillSystem) calcFoeSlayerNpcHitDamage(caster *world.PlayerInfo, npc *w
 	result := s.deps.Scripting.CalcMeleeAttack(scripting.CombatContext{
 		AttackerLevel:   int(caster.Level),
 		AttackerSTR:     int(caster.Str),
+		AttackerBaseSTR: calcPlayerBaseStrLikeJava(caster),
 		AttackerDEX:     int(caster.Dex),
 		AttackerWeapon:  s.foeSlayerWeaponDamage(caster, targetSize),
 		AttackerHitMod:  int(caster.HitMod),
@@ -424,7 +428,7 @@ func (s *SkillSystem) applyFoeSlayerNpcDamage(sess *net.Session, caster *world.P
 	if npc.Sleeped {
 		BreakNpcSleep(npc, s.deps.World)
 	}
-	AddHate(npc, sess.ID, damage)
+	AddPlayerHateLikeJava(s.deps.World, npc, caster, damage)
 	hpRatio := int16(0)
 	if npc.MaxHP > 0 {
 		hpRatio = int16((npc.HP * 100) / npc.MaxHP)

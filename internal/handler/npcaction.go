@@ -45,6 +45,13 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 	player.FireSmithNpcObjID = 0
 	player.PendingAuctionHouseID = 0
 	player.PendingInnNpcObjID = 0
+	// 任何 NPC 動作都會關閉動態對話的即時刷新（避免按鈕點完後 server 仍持續送舊狀態）
+	hadLive := player.LiveDialog != nil
+	player.LiveDialog = nil
+	if hadLive {
+		deps.Log.Info("dialog: cleared live dialog by action",
+			zap.String("action", action), zap.Int32("char_id", player.CharID))
+	}
 
 	// --- Summon ring selection: numeric string response from "summonlist" dialog ---
 	// Java: L1ActionPc.java checks cmd.matches("[0-9]+") && isSummonMonster().
@@ -129,6 +136,12 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 
 	// Auto-cancel trade when interacting with NPC
 	cancelTradeIfActive(player, deps)
+
+	// 動態 HTML 對話（YAML+HTM 引擎）action 分派
+	// 若該 NPC 有 _routes.yaml 且 lowerAction 有對應 on_action 定義，直接交給 dialog 引擎
+	if TryDispatchAction(sess, player, objID, lowerAction, deps) {
+		return
+	}
 
 	// L1Housekeeper（管家 NPC）— 管家動作優先處理
 	if npc.Impl == "L1Housekeeper" {
@@ -274,14 +287,6 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 	case "exit_demo_dungeon":
 		exitDemoDungeon(sess, player, deps)
 
-	// 火龍窟副本（MISS-P2-016）
-	case "give_hans_bag":          // 漢(46180)：給「漢的袋子」(24h cooldown)
-		giveHansBag(sess, player, deps)
-	case "enter_fire_dragon_cave": // 愛德納斯(46181)：收冷冽的氣息 → 傳入 mapid 2600
-		enterFireDragonCave(sess, player, deps)
-	case "give_flame_sword":       // 副本內死亡騎士(46164)：給「真死亡騎士烈炎之劍」(850)
-		giveFlameSword(sess, player, deps)
-
 	// ---------- 城堡管理 NPC 動作 ----------
 
 	case "inex":
@@ -309,8 +314,10 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 		// 查詢攻城戰時間（Java: C_NPCAction.java:742）
 		handleAskWarTime(sess, npc, deps)
 
-	// Close dialog (empty string or explicit close)
-	case "":
+	// Close dialog — empty string (原版 L1J 標準) 或 @dynamic 對話的具名 close
+	// （客戶端 @dynamic 路徑下「離開」鈕用 action="cancel" / "close"，避免 action="" 的
+	// 「沒掛 action」狀態與「明確關閉」歧義，詳見 handler/dynamic_dialog.go 註解）
+	case "", "cancel", "close":
 		// Do nothing — dialog closes
 
 	default:
@@ -334,6 +341,12 @@ func HandleNpcAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 			handleSlotNpc(sess, player, objID, lowerAction, deps)
 			return
 		}
+
+		// 火龍窟副本（MISS-P2-016）— 三個 NPC 全部由 YAML+HTM 對話引擎處理：
+		//   46180 漢          data/dialogs/46180_han/         (按鈕 a → 給漢的袋子)
+		//   46181 愛德納斯    data/dialogs/46181_eldnas/      (按鈕 a → 入副本 148)
+		//   46164 死亡騎士    data/dialogs/46164_death_knight/(按鈕 enter → 給 850)
+		// 上面 TryDispatchAction 已處理，不需要 switch fallback。
 
 		// Check teleport destinations (handles "teleport xxx" and other
 		// action names like "Strange21", "goto battle ring", "a"/"b"/etc.)
@@ -618,13 +631,14 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 	ownedSummons := deps.World.GetSummonsByOwner(player.CharID)
 	ownedDolls := deps.World.GetDollsByOwner(player.CharID)
 	ownedFollower := deps.World.GetFollowerByOwner(player.CharID)
+	ownedHierarch := deps.World.GetHierarchByOwner(player.CharID)
 
 	// 從舊位置附近玩家視野中移除同伴（Java: Teleportation.java removeKnownObject）
 	for _, pet := range ownedPets {
 		if pet.Dead {
 			continue
 		}
-		oldViewers := deps.World.GetNearbyPlayers(pet.X, pet.Y, pet.MapID, 0)
+		oldViewers := deps.World.GetNearbyPlayersInShow(pet.X, pet.Y, pet.MapID, 0, pet.ShowID)
 		removeData := BuildRemoveObject(pet.ID)
 		for _, v := range oldViewers {
 			if v.CharID != player.CharID {
@@ -636,7 +650,7 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 		if sum.Dead {
 			continue
 		}
-		oldViewers := deps.World.GetNearbyPlayers(sum.X, sum.Y, sum.MapID, 0)
+		oldViewers := deps.World.GetNearbyPlayersInShow(sum.X, sum.Y, sum.MapID, 0, sum.ShowID)
 		removeData := BuildRemoveObject(sum.ID)
 		for _, v := range oldViewers {
 			if v.CharID != player.CharID {
@@ -645,7 +659,7 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 		}
 	}
 	for _, doll := range ownedDolls {
-		oldViewers := deps.World.GetNearbyPlayers(doll.X, doll.Y, doll.MapID, 0)
+		oldViewers := deps.World.GetNearbyPlayersInShow(doll.X, doll.Y, doll.MapID, 0, doll.ShowID)
 		removeData := BuildRemoveObject(doll.ID)
 		for _, v := range oldViewers {
 			if v.CharID != player.CharID {
@@ -654,8 +668,17 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 		}
 	}
 	if ownedFollower != nil && !ownedFollower.Dead {
-		oldViewers := deps.World.GetNearbyPlayers(ownedFollower.X, ownedFollower.Y, ownedFollower.MapID, 0)
+		oldViewers := deps.World.GetNearbyPlayersInShow(ownedFollower.X, ownedFollower.Y, ownedFollower.MapID, 0, ownedFollower.ShowID)
 		removeData := BuildRemoveObject(ownedFollower.ID)
+		for _, v := range oldViewers {
+			if v.CharID != player.CharID {
+				v.Session.Send(removeData)
+			}
+		}
+	}
+	if ownedHierarch != nil {
+		oldViewers := deps.World.GetNearbyPlayersInShow(ownedHierarch.X, ownedHierarch.Y, ownedHierarch.MapID, 0, ownedHierarch.ShowID)
+		removeData := BuildRemoveObject(ownedHierarch.ID)
 		for _, v := range oldViewers {
 			if v.CharID != player.CharID {
 				v.Session.Send(removeData)
@@ -664,7 +687,7 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 	}
 
 	// 1. 舊位置附近玩家：移除我 + 解鎖我的格子
-	oldNearby := deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	oldNearby := deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, sess.ID, player.ShowID)
 	for _, other := range oldNearby {
 		SendRemoveObject(other.Session, player.CharID)
 	}
@@ -706,6 +729,10 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 		ox, oy := offsets[oi%4][0], offsets[oi%4][1]
 		deps.World.TeleportFollower(ownedFollower.ID, x+ox, y+oy, mapID, heading)
 	}
+	if ownedHierarch != nil {
+		ox, oy := offsets[oi%4][0], offsets[oi%4][1]
+		deps.World.TeleportHierarch(ownedHierarch.ID, x+ox, y+oy, mapID, heading)
+	}
 
 	// 3. S_MapID（即使同地圖也要發——客戶端傳送需要；依目標地圖 underwater 設定送水的旗標）
 	sendMapIDForPlayer(sess, player, int16(mapID), deps)
@@ -718,7 +745,7 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 	}
 
 	// 4. 目的地附近玩家：顯示我 + 封鎖我的格子 + 填入 Known
-	newNearby := deps.World.GetNearbyPlayers(x, y, mapID, sess.ID)
+	newNearby := deps.World.GetNearbyPlayersInShow(x, y, mapID, sess.ID, player.ShowID)
 	for _, other := range newNearby {
 		SendPutObject(other.Session, player)
 	}
@@ -732,13 +759,13 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 		player.Known.Players[other.CharID] = world.KnownPos{X: other.X, Y: other.Y}
 	}
 
-	nearbyNpcs := deps.World.GetNearbyNpcs(x, y, mapID)
+	nearbyNpcs := deps.World.GetNearbyNpcsInShow(x, y, mapID, player.ShowID)
 	for _, npc := range nearbyNpcs {
 		SendNpcPack(sess, npc)
 		player.Known.Npcs[npc.ID] = world.KnownPos{X: npc.X, Y: npc.Y}
 	}
 
-	nearbyGnd := deps.World.GetNearbyGroundItems(x, y, mapID)
+	nearbyGnd := deps.World.GetNearbyGroundItemsInShow(x, y, mapID, player.ShowID)
 	for _, g := range nearbyGnd {
 		SendDropItem(sess, g)
 		player.Known.GroundItems[g.ID] = world.KnownPos{X: g.X, Y: g.Y}
@@ -751,7 +778,7 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 	}
 
 	// 發送同伴 + 附近其他人的同伴（同伴已傳送到新位置，GetNearby* 會包含它們）
-	nearbySum := deps.World.GetNearbySummons(x, y, mapID)
+	nearbySum := deps.World.GetNearbySummonsInShow(x, y, mapID, player.ShowID)
 	for _, sum := range nearbySum {
 		isOwner := sum.OwnerCharID == player.CharID
 		masterName := ""
@@ -767,7 +794,7 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 			}
 		}
 	}
-	nearbyDolls := deps.World.GetNearbyDolls(x, y, mapID)
+	nearbyDolls := deps.World.GetNearbyDollsInShow(x, y, mapID, player.ShowID)
 	for _, doll := range nearbyDolls {
 		masterName := ""
 		if m := deps.World.GetByCharID(doll.OwnerCharID); m != nil {
@@ -781,7 +808,21 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 			}
 		}
 	}
-	nearbyFollowers := deps.World.GetNearbyFollowers(x, y, mapID)
+	nearbyHierarchs := deps.World.GetNearbyHierarchsInShow(x, y, mapID, player.ShowID)
+	for _, h := range nearbyHierarchs {
+		masterName := ""
+		if m := deps.World.GetByCharID(h.OwnerCharID); m != nil {
+			masterName = m.Name
+		}
+		SendHierarchPack(sess, h, masterName)
+		player.Known.Hierarchs[h.ID] = world.KnownPos{X: h.X, Y: h.Y}
+		if h.OwnerCharID == player.CharID {
+			for _, other := range newNearby {
+				SendHierarchPack(other.Session, h, player.Name)
+			}
+		}
+	}
+	nearbyFollowers := deps.World.GetNearbyFollowersInShow(x, y, mapID, player.ShowID)
 	for _, f := range nearbyFollowers {
 		SendFollowerPack(sess, f)
 		player.Known.Followers[f.ID] = world.KnownPos{X: f.X, Y: f.Y}
@@ -791,7 +832,7 @@ func teleportPlayer(sess *net.Session, player *world.PlayerInfo, x, y int32, map
 			}
 		}
 	}
-	nearbyPets := deps.World.GetNearbyPets(x, y, mapID)
+	nearbyPets := deps.World.GetNearbyPetsInShow(x, y, mapID, player.ShowID)
 	for _, pet := range nearbyPets {
 		isOwner := pet.OwnerCharID == player.CharID
 		masterName := ""
@@ -1297,7 +1338,6 @@ func classIDToName(classID int32) string {
 		return ""
 	}
 }
-
 
 // sendRefineUI 發送火神精煉/合成原生拖放 UI 封包。
 // Java 380 參考：S_EquipmentWindow(int type, int value) — 當 type==48||49 時：

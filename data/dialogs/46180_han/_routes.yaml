@@ -1,0 +1,30 @@
+## 威頓村 NPC 漢(46180) — 火龍窟副本任務起點
+## 380 reference: D:/L1J-new-java/380/com/lineage/data/npc/Npc_Ham.java
+##
+## 流程：玩家點漢 → 依條件顯示對話（等級不足 / 冷卻中 / 可領取）
+##       按 [要] → 給漢的袋子 + 設定 24h cooldown + 送 bag_given 對話
+
+default_speaker: 漢
+# default_speaker_color 預設 ffcc00（黃色），可省略
+
+on_talk:
+  - when: { level_lt: 60 }
+    send: low_level
+  - when: { cooldown_active: NextHansBagAt }
+    send: cooldown
+    # 暫時關閉 live refresh：每秒重送 S_HYPERTEXT 會讓 patched client 把對話框
+    # close+open 重繪一次，閃爍會吃掉玩家按 [離開] 的點擊。
+    # 改成靜態顯示，玩家要更新時間請重點 NPC。等 client patch 改成 in-place 更新後再開。
+    # refresh: 1s
+    # duration: 5m
+  - send: has_bag       # 預設分支（無 when）
+
+on_action:
+  a:                    # 按鈕 <a action="a">[要]</a>
+    require:
+      - { level_gte: 60 }
+      - { cooldown_passed: NextHansBagAt }
+    effects:
+      - give_item: { id: 80001, count: 1 }
+      - set_cooldown: { field: NextHansBagAt, seconds: 86400 }
+    then_send: bag_given

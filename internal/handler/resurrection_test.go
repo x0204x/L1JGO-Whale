@@ -96,6 +96,87 @@ func TestResurrectionResponseSendsResurrectionPacket(t *testing.T) {
 	}
 }
 
+func TestResurrectionResponseBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	targetSess := newResurrectionTestSession(t, 12)
+	casterSess := newResurrectionTestSession(t, 11)
+	sameSess := newResurrectionTestSession(t, 13)
+	otherSess := newResurrectionTestSession(t, 14)
+	caster := &world.PlayerInfo{
+		SessionID: 11,
+		Session:   casterSess,
+		CharID:    1101,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+		ShowID:    77,
+	}
+	target := &world.PlayerInfo{
+		SessionID:        12,
+		Session:          targetSess,
+		CharID:           1102,
+		Name:             "dead",
+		X:                101,
+		Y:                100,
+		MapID:            900,
+		ShowID:           77,
+		ClassID:          61,
+		Dead:             true,
+		HP:               0,
+		MaxHP:            100,
+		MaxMP:            50,
+		Inv:              world.NewInventory(),
+		PendingResSkill:  61,
+		PendingResCaster: caster.CharID,
+	}
+	sameShow := &world.PlayerInfo{
+		SessionID: 13,
+		Session:   sameSess,
+		CharID:    1103,
+		Name:      "same_show",
+		X:         102,
+		Y:         100,
+		MapID:     900,
+		ShowID:    77,
+	}
+	otherShow := &world.PlayerInfo{
+		SessionID: 14,
+		Session:   otherSess,
+		CharID:    1104,
+		Name:      "other_show",
+		X:         103,
+		Y:         100,
+		MapID:     900,
+		ShowID:    88,
+	}
+	ws.AddPlayer(caster)
+	ws.AddPlayer(target)
+	ws.AddPlayer(sameShow)
+	ws.AddPlayer(otherShow)
+	engine, err := scripting.NewEngine("../../scripts", zap.NewNop())
+	if err != nil {
+		t.Fatalf("建立 Lua engine 失敗: %v", err)
+	}
+
+	handleResurrectionResponse(targetSess, target, true, &Deps{
+		World:     ws,
+		Scripting: engine,
+		Death:     &fakeResurrectionDeathManager{},
+		Log:       zap.NewNop(),
+	})
+
+	if !hasHandlerOpcode(drainHandlerTestPackets(targetSess), packet.S_OPCODE_RESURRECTION) {
+		t.Fatal("yiwei sendPacketsAll 會把復活封包送給被復活玩家自己")
+	}
+	if !hasHandlerOpcode(drainHandlerTestPackets(sameSess), packet.S_OPCODE_RESURRECTION) {
+		t.Fatal("同 ShowID 玩家應收到復活封包")
+	}
+	if hasHandlerOpcode(drainHandlerTestPackets(otherSess), packet.S_OPCODE_RESURRECTION) {
+		t.Fatal("不同 ShowID 玩家不應收到復活封包")
+	}
+}
+
 type fakeResurrectionDeathManager struct {
 	clearTombCalled bool
 }
@@ -131,4 +212,13 @@ func outQueueHasOpcode(sess *l1net.Session, opcode byte) bool {
 			return false
 		}
 	}
+}
+
+func hasHandlerOpcode(packets [][]byte, opcode byte) bool {
+	for _, pkt := range packets {
+		if len(pkt) > 0 && pkt[0] == opcode {
+			return true
+		}
+	}
+	return false
 }

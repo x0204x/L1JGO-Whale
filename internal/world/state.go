@@ -134,6 +134,11 @@ type PlayerInfo struct {
 	// 24 小時冷卻；0 = 從未領過。值對應 Java 角色資料的「下次任務道具可領時間」。
 	NextHansBagAt int64
 
+	// 動態 HTML 對話即時更新狀態（搭配客戶端 @dynamic patch）。
+	// nil = 沒有 live dialog；非 nil = LiveDialogSystem 會定期 re-render 並重送對話。
+	// 玩家任何 NPC 動作（包含關閉對話）都會清空此欄位。
+	LiveDialog *LiveDialogState
+
 	LastMoveTime int64 // time.Now().UnixNano() of last accepted move (0 = no throttle)
 
 	TempCharGfx int32 // 0=use ClassID; >0=current polymorph GFX sprite
@@ -791,6 +796,44 @@ func (s *State) GetNearbyPlayersInShow(x, y int32, mapID int16, excludeSession u
 	return result
 }
 
+// GetNearbyPlayersInShowRange 同 GetNearbyPlayersInShow，但使用指定 Chebyshev 半徑。
+func (s *State) GetNearbyPlayersInShowRange(x, y int32, mapID int16, excludeSession uint64, viewerShowID int32, radius int32) []*PlayerInfo {
+	if radius < 0 {
+		radius = 0
+	}
+	s.aoiBuf = s.aoi.GetNearbyIntoRange(x, y, mapID, radius, s.aoiBuf)
+	nearbyIDs := s.aoiBuf
+	result := make([]*PlayerInfo, 0, len(nearbyIDs))
+	for _, sid := range nearbyIDs {
+		if sid == excludeSession {
+			continue
+		}
+		p := s.bySession[sid]
+		if p == nil {
+			continue
+		}
+		if p.ShowID != viewerShowID {
+			continue
+		}
+		dx := p.X - x
+		dy := p.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= radius {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
 // ChangePlayerHeading 更新玩家朝向。
 func (s *State) ChangePlayerHeading(player *PlayerInfo, heading int16) {
 	player.Heading = heading
@@ -969,6 +1012,38 @@ func (s *State) GetNearbyNpcsForVis(x, y int32, mapID int16) []*NpcInfo {
 	for _, nid := range nearbyIDs {
 		npc := s.npcs[nid]
 		if npc == nil {
+			continue
+		}
+		// 跳過已完成刪除階段的死亡 NPC（DeleteTimer 已歸零）
+		if npc.Dead && npc.DeleteTimer <= 0 {
+			continue
+		}
+		dx := npc.X - x
+		dy := npc.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= 20 {
+			result = append(result, npc)
+		}
+	}
+	return result
+}
+
+func (s *State) GetNearbyNpcsForVisInShow(x, y int32, mapID int16, showID int32) []*NpcInfo {
+	s.npcAoiBuf = s.npcAoi.GetNearbyInto(x, y, mapID, s.npcAoiBuf)
+	nearbyIDs := s.npcAoiBuf
+	result := make([]*NpcInfo, 0, len(nearbyIDs))
+	for _, nid := range nearbyIDs {
+		npc := s.npcs[nid]
+		if npc == nil || npc.ShowID != showID {
 			continue
 		}
 		// 跳過已完成刪除階段的死亡 NPC（DeleteTimer 已歸零）
@@ -1215,6 +1290,34 @@ func (s *State) GetNearbyPets(x, y int32, mapID int16) []*PetInfo {
 	return result
 }
 
+func (s *State) GetNearbyPetsInShow(x, y int32, mapID int16, showID int32) []*PetInfo {
+	s.npcAoiBuf = s.npcAoi.GetNearbyInto(x, y, mapID, s.npcAoiBuf)
+	nearbyIDs := s.npcAoiBuf
+	var result []*PetInfo
+	for _, nid := range nearbyIDs {
+		pet := s.pets[nid]
+		if pet == nil || pet.Dead || pet.ShowID != showID {
+			continue
+		}
+		dx := pet.X - x
+		dy := pet.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= 20 {
+			result = append(result, pet)
+		}
+	}
+	return result
+}
+
 // --- Ground item methods ---
 
 // AddGroundItem registers a ground item in the world.
@@ -1242,6 +1345,31 @@ func (s *State) GetNearbyGroundItems(x, y int32, mapID int16) []*GroundItem {
 	var result []*GroundItem
 	for _, item := range s.groundItems {
 		if item.MapID != mapID {
+			continue
+		}
+		dx := item.X - x
+		dy := item.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= 20 {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func (s *State) GetNearbyGroundItemsInShow(x, y int32, mapID int16, viewerShowID int32) []*GroundItem {
+	var result []*GroundItem
+	for _, item := range s.groundItems {
+		if item.MapID != mapID || item.ShowID != viewerShowID {
 			continue
 		}
 		dx := item.X - x
@@ -1326,11 +1454,38 @@ func (s *State) GetNearbyGroundEffects(x, y int32, mapID int16) []*GroundEffect 
 	return result
 }
 
+func (s *State) GetNearbyGroundEffectsInShow(x, y int32, mapID int16, showID int32) []*GroundEffect {
+	s.effectAoiBuf = s.effectAoi.GetNearbyInto(x, y, mapID, s.effectAoiBuf)
+	nearbyIDs := s.effectAoiBuf
+	result := make([]*GroundEffect, 0, len(nearbyIDs))
+	for _, id := range nearbyIDs {
+		effect := s.groundEffects[id]
+		if effect == nil || effect.MapID != mapID || effect.ShowID != showID {
+			continue
+		}
+		if chebyshevDistance32(effect.X, effect.Y, x, y) <= 20 {
+			result = append(result, effect)
+		}
+	}
+	return result
+}
+
 func (s *State) HasGroundEffectAt(x, y int32, mapID int16, npcID int32) bool {
 	s.effectAoiBuf = s.effectAoi.GetNearbyInto(x, y, mapID, s.effectAoiBuf)
 	for _, id := range s.effectAoiBuf {
 		effect := s.groundEffects[id]
 		if effect != nil && effect.MapID == mapID && effect.X == x && effect.Y == y && effect.NpcID == npcID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *State) HasGroundEffectAtInShow(x, y int32, mapID int16, npcID int32, showID int32) bool {
+	s.effectAoiBuf = s.effectAoi.GetNearbyInto(x, y, mapID, s.effectAoiBuf)
+	for _, id := range s.effectAoiBuf {
+		effect := s.groundEffects[id]
+		if effect != nil && effect.MapID == mapID && effect.ShowID == showID && effect.X == x && effect.Y == y && effect.NpcID == npcID {
 			return true
 		}
 	}

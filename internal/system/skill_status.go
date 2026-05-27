@@ -85,13 +85,16 @@ func (s *SkillSystem) applyShockStunToPlayer(sess *net.Session, caster, target *
 	if caster.CharID == target.CharID {
 		return true
 	}
+	if caster.ShowID != target.ShowID {
+		return true
+	}
 	if !s.hasTwoHandSwordEquipped(caster) {
 		handler.SendSystemMessage(sess, "請使用雙手劍")
 		return true
 	}
 	targetViewers := nearby
 	if s.deps != nil && s.deps.World != nil {
-		targetViewers = s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+		targetViewers = s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, 0, target.ShowID)
 	}
 	if target.HasBuff(87) {
 		handler.BroadcastToPlayers(targetViewers, handler.BuildSkillEffect(target.CharID, 4434))
@@ -119,14 +122,14 @@ func (s *SkillSystem) ApplyNpcShockStun(caster *world.NpcInfo, target *world.Pla
 	if caster == nil || target == nil || skill == nil {
 		return
 	}
-	if target.Dead || target.MapID != caster.MapID || isGMInvisible(target) || target.AbsoluteBarrier {
+	if target.Dead || target.MapID != caster.MapID || target.ShowID != caster.ShowID || isGMInvisible(target) || target.AbsoluteBarrier {
 		return
 	}
 	if skill.Ranged > 0 && chebyshevDist(caster.X, caster.Y, target.X, target.Y) > int32(skill.Ranged) {
 		return
 	}
 	targetGfx := npcShockStunTargetGfx(skill)
-	nearby := s.deps.World.GetNearbyPlayersAt(caster.X, caster.Y, caster.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(caster.X, caster.Y, caster.MapID, 0, caster.ShowID)
 	s.clearShockStunSleepEffects(target)
 	s.clearShockStunEraseMagic(target)
 	if target.HasBuff(50) || target.HasBuff(157) || !checkNpcCasterShockStunSuccess(caster, target, leverage) {
@@ -208,7 +211,7 @@ func (s *SkillSystem) ApplyNpcAreaShockStun(caster *world.NpcInfo, targets []*wo
 		return
 	}
 	for _, target := range targets {
-		if target == nil || target.HasBuff(87) || isGMInvisible(target) {
+		if target == nil || target.ShowID != caster.ShowID || target.HasBuff(87) || isGMInvisible(target) {
 			continue
 		}
 		dur := areaShockStunDurationSeconds()
@@ -233,6 +236,13 @@ func shockStunRange(skill *data.SkillInfo) int32 {
 	return 1
 }
 
+func (s *SkillSystem) shockStunLineOfSightBlocked(player *world.PlayerInfo, x, y int32) bool {
+	if s == nil || s.deps == nil || s.deps.MapData == nil || player == nil {
+		return false
+	}
+	return !s.deps.MapData.HasLineOfSight(player.MapID, player.X, player.Y, x, y)
+}
+
 func (s *SkillSystem) shockStunInvalidTargetBeforeConsume(player *world.PlayerInfo, skill *data.SkillInfo, targetID int32) bool {
 	if s == nil || s.deps == nil || s.deps.World == nil || player == nil || skill == nil {
 		return false
@@ -241,22 +251,55 @@ func (s *SkillSystem) shockStunInvalidTargetBeforeConsume(player *world.PlayerIn
 		return false
 	}
 	if target := s.deps.World.GetByCharID(targetID); target != nil {
-		if target.Dead || target.MapID != player.MapID || isGMInvisible(target) || target.AbsoluteBarrier {
+		if target.Dead || target.MapID != player.MapID || target.ShowID != player.ShowID || isGMInvisible(target) || target.AbsoluteBarrier {
 			return true
 		}
-		return chebyshevDist(player.X, player.Y, target.X, target.Y) > shockStunRange(skill)
+		if chebyshevDist(player.X, player.Y, target.X, target.Y) > shockStunRange(skill) {
+			return true
+		}
+		return s.shockStunLineOfSightBlocked(player, target.X, target.Y)
 	}
 	if npc := s.deps.World.GetNpc(targetID); npc != nil {
-		if npc.Dead || npc.MapID != player.MapID {
+		if npc.Dead || npc.MapID != player.MapID || npc.ShowID != player.ShowID || shockStunRejectedNpcTargetBeforeConsume(npc) || shockStunHiddenNpcTargetBlocked(npc) {
 			return true
 		}
-		return chebyshevDist(player.X, player.Y, npc.X, npc.Y) > shockStunRange(skill)
+		if chebyshevDist(player.X, player.Y, npc.X, npc.Y) > shockStunRange(skill) {
+			return true
+		}
+		return s.shockStunLineOfSightBlocked(player, npc.X, npc.Y)
 	}
 	return true
 }
 
 func isGMInvisible(player *world.PlayerInfo) bool {
 	return player.AccessLevel >= 200 && player.Invisible
+}
+
+func shockStunHiddenNpcTargetBlocked(npc *world.NpcInfo) bool {
+	if npc == nil {
+		return false
+	}
+	return npc.HiddenStatus == world.NpcHiddenSink || npc.HiddenStatus == world.NpcHiddenFly
+}
+
+func shockStunRejectedNpcTargetBeforeConsume(npc *world.NpcInfo) bool {
+	if npc == nil {
+		return false
+	}
+	switch npc.Impl {
+	case "L1Effect", "L1Illusory", "L1Doll", "L1Hierarch":
+		return true
+	case "L1Door":
+		return npc.MaxHP == 0 || npc.MaxHP == 1
+	}
+	return false
+}
+
+func shockStunNpcProbabilityTargetFailure(npc *world.NpcInfo) bool {
+	if npc == nil {
+		return false
+	}
+	return npc.Impl == "L1Tower" || npc.Impl == "L1Door"
 }
 
 const shockStunEffectNpcID int32 = 81162
@@ -347,10 +390,7 @@ func shockStunIntMagicHit(intel int16) int {
 }
 
 func shockStunBaseIntMagicHit(caster *world.PlayerInfo) int {
-	baseInt := int(caster.Intel) - caster.EquipBonuses.AddInt
-	for _, buff := range caster.ActiveBuffs {
-		baseInt -= int(buff.DeltaIntel)
-	}
+	baseInt := calcPlayerBaseIntLikeJava(caster)
 	if baseInt >= 25 && baseInt <= 44 {
 		return (baseInt - 15) / 10
 	}
@@ -408,9 +448,19 @@ func (s *SkillSystem) hasTwoHandSwordEquipped(player *world.PlayerInfo) bool {
 func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, npc *world.NpcInfo) {
 	ws := s.deps.World
 
+	if npc.MapID != player.MapID || npc.ShowID != player.ShowID {
+		return
+	}
+
 	dist := chebyshevDist(player.X, player.Y, npc.X, npc.Y)
 	if skill.SkillID == 87 {
+		if shockStunRejectedNpcTargetBeforeConsume(npc) || shockStunHiddenNpcTargetBlocked(npc) {
+			return
+		}
 		if dist > shockStunRange(skill) {
+			return
+		}
+		if s.shockStunLineOfSightBlocked(player, npc.X, npc.Y) {
 			return
 		}
 	} else {
@@ -426,9 +476,9 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 	player.Heading = CalcHeading(player.X, player.Y, npc.X, npc.Y)
 
 	// 對 NPC 施放 debuff 技能 → 累加仇恨（讓 NPC 追擊施法者）
-	AddHate(npc, sess.ID, 1)
+	AddPlayerHateLikeJava(ws, npc, player, 1)
 
-	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
 
 	if skill.SkillID != 87 {
 		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
@@ -476,10 +526,10 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 
 	case 87: // 衝擊之暈 — 需要雙手劍
 		s.queueShockStunOnAction(sess, npc.ID)
-		// Java `L1SkillUse.isTargetFailure()` 對 L1TowerInstance 回傳 true，
+		// Java `L1SkillUse.isTargetFailure()` 對 L1TowerInstance / L1DoorInstance 回傳 true，
 		// TYPE_PROBABILITY 流程在 iter 階段就 remove，沒有清睡眠、解 ERASE_MAGIC、
 		// 概率判定、套用 87 或送 4434；onAction 仍會在迴圈外觸發。
-		if npc.Impl == "L1Tower" {
+		if shockStunNpcProbabilityTargetFailure(npc) {
 			return
 		}
 		clearShockStunNpcSleepEffects(npc)
@@ -626,7 +676,7 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 		if !applyDamagePoisonToNpc(npc, sess.ID, 5, s.deps) {
 			return
 		}
-		AddHate(npc, sess.ID, 1)
+		AddPlayerHateLikeJava(ws, npc, player, 1)
 		npc.AddDebuff(11, 150) // 30 秒 = 150 ticks
 		if skill.CastGfx > 0 {
 			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))

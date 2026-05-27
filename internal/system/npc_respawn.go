@@ -36,7 +36,7 @@ func (s *NpcRespawnSystem) Update(_ time.Duration) {
 			if npc.DeleteTimer <= 0 {
 				// 屍體消失 — 從 AOI 網格移除 + 通知客戶端
 				s.world.NpcCorpseCleanup(npc)
-				nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+				nearby := s.world.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
 				rmData := handler.BuildRemoveObject(npc.ID)
 				handler.BroadcastToPlayers(nearby, rmData)
 			}
@@ -80,6 +80,7 @@ func (s *NpcRespawnSystem) respawnNpc(npc *world.NpcInfo) {
 	npc.PoisonDmgAmt = 0
 	npc.PoisonDmgTimer = 0
 	npc.PoisonAttackerSID = 0
+	ApplyNpcInitialHideLikeJava(npc)
 	removeShapeChangeFromNpc(npc)
 
 	// 重置聊天計時器（重生後重新觸發出現聊天）
@@ -96,7 +97,7 @@ func (s *NpcRespawnSystem) respawnNpc(npc *world.NpcInfo) {
 	s.world.NpcRespawn(npc)
 
 	// 通知附近玩家：顯示 NPC + 封鎖格子
-	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := s.world.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
 	for _, viewer := range nearby {
 		sendNpcPack(viewer.Session, npc)
 	}
@@ -150,7 +151,7 @@ func (s *NpcRespawnSystem) respawnMobGroup(leader *world.NpcInfo, group *data.Mo
 			groupInfo.Members = append(groupInfo.Members, mob)
 
 			// 通知附近玩家
-			nearby := s.world.GetNearbyPlayersAt(mob.X, mob.Y, mob.MapID)
+			nearby := s.world.GetNearbyPlayersInShow(mob.X, mob.Y, mob.MapID, 0, mob.ShowID)
 			for _, viewer := range nearby {
 				sendNpcPack(viewer.Session, mob)
 			}
@@ -194,6 +195,7 @@ func (s *NpcRespawnSystem) createMinion(tmpl *data.NpcTemplate, x, y int32, lead
 		AC:                tmpl.AC,
 		STR:               tmpl.STR,
 		DEX:               tmpl.DEX,
+		Intel:             tmpl.INT,
 		Exp:               tmpl.Exp,
 		Lawful:            tmpl.Lawful,
 		Size:              tmpl.Size,
@@ -205,9 +207,12 @@ func (s *NpcRespawnSystem) createMinion(tmpl *data.NpcTemplate, x, y int32, lead
 		Hard:              tmpl.Hard,
 		CantResurrect:     tmpl.CantResurrect,
 		Agro:              tmpl.Agro,
+		Family:            tmpl.Family,
+		AgroFamily:        tmpl.AgroFamily,
 		AtkDmg:            int32(tmpl.Level) + int32(tmpl.STR)/3,
 		Ranged:            tmpl.Ranged,
 		AtkSpeed:          atkSpeed,
+		AtkMagicSpeed:     tmpl.AtkMagicSpeed,
 		SubMagicSpeed:     tmpl.SubMagicSpeed,
 		MoveSpeed:         moveSpeed,
 		PoisonAtk:         tmpl.PoisonAtk,
@@ -221,6 +226,8 @@ func (s *NpcRespawnSystem) createMinion(tmpl *data.NpcTemplate, x, y int32, lead
 		SpawnY:            leader.SpawnY,
 		SpawnMapID:        leader.SpawnMapID,
 		IsMinion:          true,
+		ShowID:            leader.ShowID,
 	}
+	ApplyNpcMinionHideLikeJava(mob, leader)
 	return mob
 }

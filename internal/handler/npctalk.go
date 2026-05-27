@@ -88,6 +88,12 @@ func HandleNpcTalk(sess *net.Session, r *packet.Reader, deps *Deps) {
 		return
 	}
 
+	// 動態 HTML 對話（YAML+HTM 引擎） — 對應 data/dialogs/<npc_id>_xxx/ 目錄。
+	// 優先於舊的 npc_action_list.yaml 路徑（客戶端本地 HTML），找不到才 fallback。
+	if TryDispatchTalk(sess, player, objID, deps) {
+		return
+	}
+
 	// 任務 NPC 對話 — 依玩家任務進度顯示不同 htmlid
 	if handleQuestNpcTalk(sess, player, objID, npc.NpcID, deps) {
 		return

@@ -56,6 +56,22 @@ type QuestInstance struct {
 	npcs           []int32         // NPC InstanceID 列表（戰鬥怪，計入 round clear）
 	auxNpcs        []int32         // 輔助 NPC InstanceID 列表（商人/對話，不計入 round clear，副本結束時統一回收）
 	spawnedRounds  map[int32]bool  // 已觸發過出生的 round ID 集合
+	playedScenes   map[string]bool // 已播放過的 scene 識別字串（同一 trigger 只播一次）
+	sceneJobs      []SceneJob      // 在飛劇本台詞 job（DungeonSceneSystem 每 tick 推進）
+}
+
+// SceneJob 一筆待播放的劇本台詞（dungeon scene 系統使用）。
+//   - FireTick = QuestWorldSystem tick + (delay_ms / msPerTick)
+//   - PlayerChar = 觸發劇本的玩家（speaker=player 時用其 charID 廣播；speaker=npc 時不使用）
+//   - AnchorNpcID = speaker=npc 時冒泡的 NPC 模板 ID（runtime 解 instance ID）
+//   - Speaker = "npc" 或 "player"
+//   - Text = 對白內容
+type SceneJob struct {
+	FireTick     int64
+	PlayerCharID int32
+	AnchorNpcID  int32
+	Speaker      string
+	Text         string
 }
 
 // NewQuestInstance 建立新副本實例。
@@ -74,7 +90,62 @@ func NewQuestInstance(id, questID int32, mapID int16, timeLimit int32, outStop b
 		players:       make([]int32, 0, 4),
 		npcs:          make([]int32, 0, 16),
 		spawnedRounds: make(map[int32]bool),
+		playedScenes:  make(map[string]bool),
 	}
+}
+
+// ─── Scene 劇本管理 ────────────────────────────────────────────────────
+
+// MarkScenePlayed 標記指定 scene 已播放過；回 true 表示這次標記成功（之前未播）。
+func (q *QuestInstance) MarkScenePlayed(sceneKey string) bool {
+	if sceneKey == "" {
+		return true // 無 ID 的 scene 允許重播
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.playedScenes[sceneKey] {
+		return false
+	}
+	q.playedScenes[sceneKey] = true
+	return true
+}
+
+// EnqueueSceneJobs 把一批劇本台詞 job 推進佇列。
+func (q *QuestInstance) EnqueueSceneJobs(jobs []SceneJob) {
+	if len(jobs) == 0 {
+		return
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.sceneJobs = append(q.sceneJobs, jobs...)
+}
+
+// PopFiredSceneJobs 取出所有 FireTick <= now 的 job（從佇列移除）。
+// 回傳的 slice 已從佇列移除；剩下的 job 留下次再檢查。
+func (q *QuestInstance) PopFiredSceneJobs(now int64) []SceneJob {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.sceneJobs) == 0 {
+		return nil
+	}
+	fired := q.sceneJobs[:0:0]
+	remain := q.sceneJobs[:0]
+	for _, j := range q.sceneJobs {
+		if j.FireTick <= now {
+			fired = append(fired, j)
+		} else {
+			remain = append(remain, j)
+		}
+	}
+	q.sceneJobs = remain
+	return fired
+}
+
+// HasPendingSceneJobs 是否有未播完的劇本台詞。
+func (q *QuestInstance) HasPendingSceneJobs() bool {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	return len(q.sceneJobs) > 0
 }
 
 // MarkRoundSpawned 標記 round 已觸發過出生（避免重複出生）。

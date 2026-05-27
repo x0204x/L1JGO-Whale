@@ -37,7 +37,7 @@ func isCubeSkill(skillID int32) bool {
 }
 
 func (s *SkillSystem) executeGroundTargetSkill(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, targetX, targetY int32) {
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	if skill.SkillID == skillFireWall {
 		player.Heading = CalcHeading(player.X, player.Y, targetX, targetY)
 		handler.BroadcastToPlayers(nearby, handler.BuildChangeHeading(player.CharID, player.Heading))
@@ -67,7 +67,7 @@ func (s *SkillSystem) hasNearbySameCube(player *world.PlayerInfo, skillID int32)
 	if cubeType == 0 {
 		return false
 	}
-	for _, effect := range s.deps.World.GetNearbyGroundEffects(player.X, player.Y, player.MapID) {
+	for _, effect := range s.deps.World.GetNearbyGroundEffectsInShow(player.X, player.Y, player.MapID, player.ShowID) {
 		if effect.Type != cubeType {
 			continue
 		}
@@ -107,7 +107,7 @@ func (s *SkillSystem) spawnFireWallEffects(player *world.PlayerInfo, skill *data
 		}
 		x := baseX + combatHeadingDX[heading]
 		y := baseY + combatHeadingDY[heading]
-		if s.deps.World.HasGroundEffectAt(x, y, player.MapID, fireWallNpcID) {
+		if s.deps.World.HasGroundEffectAtInShow(x, y, player.MapID, fireWallNpcID, player.ShowID) {
 			continue
 		}
 		s.spawnGroundEffect(player, skill, fireWallNpcID, world.GroundEffectFireWall, x, y)
@@ -118,7 +118,7 @@ func (s *SkillSystem) spawnFireWallEffects(player *world.PlayerInfo, skill *data
 
 func (s *SkillSystem) countOwnerFireWalls(player *world.PlayerInfo) int {
 	count := 0
-	for _, effect := range s.deps.World.GetNearbyGroundEffects(player.X, player.Y, player.MapID) {
+	for _, effect := range s.deps.World.GetNearbyGroundEffectsInShow(player.X, player.Y, player.MapID, player.ShowID) {
 		if effect.Type == world.GroundEffectFireWall && effect.OwnerCharID == player.CharID {
 			count++
 		}
@@ -147,6 +147,7 @@ func (s *SkillSystem) spawnGroundEffectWithSkillID(player *world.PlayerInfo, ski
 		X:            x,
 		Y:            y,
 		MapID:        player.MapID,
+		ShowID:       player.ShowID,
 		OwnerCharID:  player.CharID,
 		OwnerSession: player.SessionID,
 		OwnerName:    player.Name,
@@ -162,35 +163,59 @@ func (s *SkillSystem) spawnGroundEffectWithSkillID(player *world.PlayerInfo, ski
 }
 
 func (s *SkillSystem) spawnGroundEffectFromNpc(caster *world.NpcInfo, skill *data.SkillInfo, npcID int32, typ world.GroundEffectType, x, y int32) {
-	if s.deps.Npcs == nil {
+	if s == nil || s.deps == nil || skill == nil {
 		return
 	}
-	tpl := s.deps.Npcs.Get(npcID)
+	spawnNpcGroundEffectLikeJava(s.deps.World, s.deps.Npcs, caster, skill.SkillID, npcID, typ, x, y, skill.BuffDuration*groundEffectTickSec)
+}
+
+func (s *SkillSystem) broadcastGroundEffect(effect *world.GroundEffect) {
+	nearby := s.deps.World.GetNearbyPlayersInShow(effect.X, effect.Y, effect.MapID, 0, effect.ShowID)
+	broadcastGroundEffectToPlayers(nearby, effect)
+}
+
+func spawnNpcGroundEffectLikeJava(ws *world.State, npcs *data.NpcTable, caster *world.NpcInfo, skillID, npcID int32, typ world.GroundEffectType, x, y int32, ticksLeft int) (*world.GroundEffect, bool) {
+	if ws == nil || npcs == nil || caster == nil || npcID == 0 {
+		return nil, false
+	}
+	tpl := npcs.Get(npcID)
 	if tpl == nil {
-		return
+		return nil, false
+	}
+	if ticksLeft <= 0 {
+		ticksLeft = groundEffectTickSec
 	}
 	effect := &world.GroundEffect{
 		ID:          world.NextGroundEffectID(),
-		SkillID:     skill.SkillID,
+		SkillID:     skillID,
 		NpcID:       npcID,
 		GfxID:       tpl.GfxID,
 		Type:        typ,
 		X:           x,
 		Y:           y,
 		MapID:       caster.MapID,
+		ShowID:      caster.ShowID,
 		OwnerCharID: caster.ID,
 		OwnerName:   caster.Name,
-		TicksLeft:   skill.BuffDuration * groundEffectTickSec,
+		TicksLeft:   ticksLeft,
 	}
-	if effect.TicksLeft <= 0 {
-		effect.TicksLeft = groundEffectTickSec
-	}
-	s.deps.World.AddGroundEffect(effect)
-	s.broadcastGroundEffect(effect)
+	ws.AddGroundEffect(effect)
+	broadcastGroundEffectInShow(ws, effect, caster.ShowID)
+	return effect, true
 }
 
-func (s *SkillSystem) broadcastGroundEffect(effect *world.GroundEffect) {
-	nearby := s.deps.World.GetNearbyPlayersAt(effect.X, effect.Y, effect.MapID)
+func broadcastGroundEffectInShow(ws *world.State, effect *world.GroundEffect, showID int32) {
+	if ws == nil || effect == nil {
+		return
+	}
+	nearby := ws.GetNearbyPlayersInShow(effect.X, effect.Y, effect.MapID, 0, showID)
+	broadcastGroundEffectToPlayers(nearby, effect)
+}
+
+func broadcastGroundEffectToPlayers(nearby []*world.PlayerInfo, effect *world.GroundEffect) {
+	if effect == nil {
+		return
+	}
 	for _, viewer := range nearby {
 		handler.SendGroundEffectPack(viewer.Session, effect)
 		if viewer.Known != nil {

@@ -259,10 +259,6 @@ NON_CANCELLABLE = {
     -- 特殊 debuff（不可被相消術解除）
     [112] = true,  -- Armor Break（破壞盔甲）
     [208] = true,  -- Bone Break（骷髏毀壞）
-    [226] = true,  -- Gigantic（巨人化）
-    [228] = true,  -- Power Grip（力量支配）
-    [230] = true,  -- Desperado（亡命之徒）
-
     -- 龍騎士覺醒
     [185] = true,  -- Awaken Antharas（安乘覺醒）
     [190] = true,  -- Awaken Fafurion（法利昂覺醒）

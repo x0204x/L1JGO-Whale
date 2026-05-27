@@ -17,7 +17,7 @@ const (
 // PetInvItem represents an equipment item held by a pet.
 type PetInvItem struct {
 	ItemID   int32
-	ObjectID int32  // same as InvItem.ObjectID (for packet reference)
+	ObjectID int32 // same as InvItem.ObjectID (for packet reference)
 	Name     string
 	GfxID    int32
 	Count    int32
@@ -29,10 +29,10 @@ type PetInvItem struct {
 // PetInfo holds in-memory data for a pet currently spawned in-world.
 // Accessed only from the game loop goroutine — no locks needed.
 type PetInfo struct {
-	ID          int32  // NPC-range object ID for packets (allocated from NPC ID space)
-	OwnerCharID int32  // CharID of the player who owns this pet
-	ItemObjID   int32  // Amulet item ObjectID — primary key linking to DB
-	NpcID       int32  // Current NPC template ID (changes on evolution)
+	ID          int32 // NPC-range object ID for packets (allocated from NPC ID space)
+	OwnerCharID int32 // CharID of the player who owns this pet
+	ItemObjID   int32 // Amulet item ObjectID — primary key linking to DB
+	NpcID       int32 // Current NPC template ID (changes on evolution)
 	Name        string
 	Level       int16
 	HP          int32
@@ -50,6 +50,7 @@ type PetInfo struct {
 	X       int32
 	Y       int32
 	MapID   int16
+	ShowID  int32
 	Heading int16
 
 	Status PetStatus // current AI behavior mode

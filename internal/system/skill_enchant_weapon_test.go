@@ -67,6 +67,176 @@ func TestSkillEnchantWeaponStrengthHelmHalvesMpConsume(t *testing.T) {
 	}
 }
 
+func TestSkillWeaponItemEnchantBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(t *testing.T, s *SkillSystem, player *world.PlayerInfo)
+	}{
+		{
+			name: "blessed armor",
+			run: func(t *testing.T, s *SkillSystem, player *world.PlayerInfo) {
+				t.Helper()
+				armor := player.Inv.AddItemWithID(7101, 20089, 1, "小藤甲", 0, 1000, false, 1)
+				s.executeArmorEnchant(player.Session, player, &data.SkillInfo{
+					SkillID:      21,
+					BuffDuration: 1,
+					ActionID:     19,
+					CastGfx:      748,
+				}, armor.ObjectID)
+			},
+		},
+		{
+			name: "create magical weapon",
+			run: func(t *testing.T, s *SkillSystem, player *world.PlayerInfo) {
+				t.Helper()
+				weapon := player.Inv.AddItemWithID(7102, 31, 1, "長劍", 0, 1000, false, 1)
+				s.executeCreateMagicalWeapon(player.Session, player, &data.SkillInfo{
+					SkillID:      8,
+					BuffDuration: 1,
+					ActionID:     19,
+					CastGfx:      748,
+				}, weapon.ObjectID)
+			},
+		},
+		{
+			name: "bring stone",
+			run: func(t *testing.T, s *SkillSystem, player *world.PlayerInfo) {
+				t.Helper()
+				stone := player.Inv.AddItemWithID(7103, 40320, 1, "黑魔石", 40320, 10, true, 1)
+				player.Level = 200
+				player.Wis = 50
+				s.executeBringStone(player.Session, player, &data.SkillInfo{
+					SkillID:      100,
+					BuffDuration: 1,
+					ActionID:     19,
+					CastGfx:      748,
+				}, stone.ObjectID)
+			},
+		},
+		{
+			name: "enchant weapon",
+			run: func(t *testing.T, s *SkillSystem, player *world.PlayerInfo) {
+				t.Helper()
+				weapon := player.Inv.AddItemWithID(7104, 31, 1, "長劍", 0, 1000, false, 1)
+				s.executeTargetedWeaponEnchant(player.Session, player, &data.SkillInfo{
+					SkillID:      12,
+					BuffDuration: 1800,
+					ActionID:     19,
+					CastGfx:      748,
+				}, weapon.ObjectID)
+			},
+		},
+		{
+			name: "bless weapon",
+			run: func(t *testing.T, s *SkillSystem, player *world.PlayerInfo) {
+				t.Helper()
+				weapon := player.Inv.AddItemWithID(7105, 31, 1, "長劍", 0, 1000, false, 1)
+				weapon.Equipped = true
+				player.Equip.Set(world.SlotWeapon, weapon)
+				s.executeBlessWeaponEnchant(player.Session, player, &data.SkillInfo{
+					SkillID:      48,
+					BuffDuration: 1200,
+					ActionID:     19,
+					CastGfx:      748,
+				}, player.CharID)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ws := world.NewState()
+			player := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      "caster",
+				X:         100,
+				Y:         100,
+				MapID:     4,
+				ShowID:    9,
+			})
+			sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 2,
+				Session:   newSkillTestSession(t, 2),
+				CharID:    1002,
+				Name:      "same-show",
+				X:         101,
+				Y:         100,
+				MapID:     4,
+				ShowID:    9,
+			})
+			otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 3,
+				Session:   newSkillTestSession(t, 3),
+				CharID:    1003,
+				Name:      "other-show",
+				X:         101,
+				Y:         101,
+				MapID:     4,
+				ShowID:    10,
+			})
+			s := newEnchantWeaponTestSystem(t, ws)
+
+			tc.run(t, s, player)
+
+			samePackets := drainSkillTestPackets(sameShow.Session)
+			otherPackets := drainSkillTestPackets(otherShow.Session)
+			if !hasActionGfxPacket(samePackets, player.CharID, 19) {
+				t.Fatalf("同 ShowID 玩家應收到 %s 施法動作", tc.name)
+			}
+			if !hasSkillEffectPacket(samePackets, player.CharID, 748) {
+				t.Fatalf("同 ShowID 玩家應收到 %s 施法特效", tc.name)
+			}
+			if hasActionGfxPacket(otherPackets, player.CharID, 19) {
+				t.Fatalf("不同 ShowID 玩家不應收到 %s 施法動作", tc.name)
+			}
+			if hasSkillEffectPacket(otherPackets, player.CharID, 748) {
+				t.Fatalf("不同 ShowID 玩家不應收到 %s 施法特效", tc.name)
+			}
+		})
+	}
+}
+
+func TestSkillBlessWeaponRejectsDifferentShowTargetLikeJava(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		ShowID:    20,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "other-show-target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		ShowID:    21,
+	})
+	weapon := target.Inv.AddItemWithID(7201, 31, 1, "長劍", 0, 1000, false, 1)
+	weapon.Equipped = true
+	target.Equip.Set(world.SlotWeapon, weapon)
+	s := newEnchantWeaponTestSystem(t, ws)
+
+	s.executeBlessWeaponEnchant(caster.Session, caster, &data.SkillInfo{
+		SkillID:      48,
+		BuffDuration: 1200,
+		ActionID:     19,
+		CastGfx:      748,
+	}, target.CharID)
+
+	if weapon.DmgByMagic != 0 || weapon.DmgMagicExpiry != 0 {
+		t.Fatalf("不同 ShowID 目標不應被祝福魔法武器套用，dmg=%d expiry=%d", weapon.DmgByMagic, weapon.DmgMagicExpiry)
+	}
+}
+
 func TestSkillDetectionStrengthHelmHalvesMpConsume(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{

@@ -39,8 +39,10 @@ func applyDungeonTeleportEffect(player *world.PlayerInfo) {
 
 // HandleMove processes C_MOVE (opcode 29).
 // Java C_MoveChar 依語系處理 heading：
-//   language=3 (Taiwan): heading ^= 0x49，且忽略客戶端 X/Y，使用伺服器座標
-//   language=5 (China) 等其他語系: heading 不做 XOR，使用客戶端傳來的 X/Y
+//
+//	language=3 (Taiwan): heading ^= 0x49，且忽略客戶端 X/Y，使用伺服器座標
+//	language=5 (China) 等其他語系: heading 不做 XOR，使用客戶端傳來的 X/Y
+//
 // 我們統一使用伺服器座標（安全性考量），但 heading 解碼必須依語系區分。
 func HandleMove(sess *net.Session, r *packet.Reader, deps *Deps) {
 	_ = r.ReadH() // client X（安全考量統一忽略，使用伺服器端座標）
@@ -184,14 +186,16 @@ func HandleMove(sess *net.Session, r *packet.Reader, deps *Deps) {
 	// 廣播移動封包 + 格子封鎖（匹配 Java C_MoveChar: broadcastPacketAll）。
 	// 只做 1 次 GetNearbyPlayers 查詢（原本 16 次）。
 	// 玩家進出視野由 VisibilitySystem（Phase 3, 每 400ms）獨立處理。
-	nearby := ws.GetNearbyPlayers(destX, destY, player.MapID, sess.ID)
+	nearby := ws.GetNearbyPlayersInShow(destX, destY, player.MapID, sess.ID, player.ShowID)
 	data := BuildMoveObject(player.CharID, curX, curY, heading)
 	BroadcastToPlayers(nearby, data)
 }
 
 // rejectMove 碰撞拒絕：回彈玩家位置 + 重發所有附近實體。
 // 對應 Java L1PcUnlock.Pc_Unlock() 流程：
-//   S_OwnCharPack → removeAllKnownObjects → updateObject → S_CharVisualUpdate
+//
+//	S_OwnCharPack → removeAllKnownObjects → updateObject → S_CharVisualUpdate
+//
 // 只發 S_OwnCharPack 會讓客戶端清除附近物件渲染，必須立即重發所有可見實體。
 func rejectMove(sess *net.Session, player *world.PlayerInfo, ws *world.State, deps *Deps) {
 	// 1. 回彈：告知客戶端正確座標
@@ -205,7 +209,7 @@ func rejectMove(sess *net.Session, player *world.PlayerInfo, ws *world.State, de
 	px, py := player.X, player.Y
 
 	// 3. 重發所有附近玩家 + 封鎖格子 + 填入 Known
-	nearbyPlayers := ws.GetNearbyPlayers(px, py, player.MapID, sess.ID)
+	nearbyPlayers := ws.GetNearbyPlayersInShow(px, py, player.MapID, sess.ID, player.ShowID)
 	for _, other := range nearbyPlayers {
 		SendPutObject(sess, other)
 		if player.Known != nil {
@@ -214,7 +218,7 @@ func rejectMove(sess *net.Session, player *world.PlayerInfo, ws *world.State, de
 	}
 
 	// 4. 重發所有附近 NPC + 封鎖格子
-	nearbyNpcs := ws.GetNearbyNpcs(px, py, player.MapID)
+	nearbyNpcs := ws.GetNearbyNpcsInShow(px, py, player.MapID, player.ShowID)
 	for _, n := range nearbyNpcs {
 		SendNpcPack(sess, n)
 		if player.Known != nil {
@@ -223,7 +227,7 @@ func rejectMove(sess *net.Session, player *world.PlayerInfo, ws *world.State, de
 	}
 
 	// 5. 重發所有附近召喚獸 + 封鎖格子
-	nearbySummons := ws.GetNearbySummons(px, py, player.MapID)
+	nearbySummons := ws.GetNearbySummonsInShow(px, py, player.MapID, player.ShowID)
 	for _, s := range nearbySummons {
 		isOwner := s.OwnerCharID == player.CharID
 		masterName := ""
@@ -237,7 +241,7 @@ func rejectMove(sess *net.Session, player *world.PlayerInfo, ws *world.State, de
 	}
 
 	// 6. 重發所有附近魔法娃娃 + 封鎖格子
-	nearbyDolls := ws.GetNearbyDolls(px, py, player.MapID)
+	nearbyDolls := ws.GetNearbyDollsInShow(px, py, player.MapID, player.ShowID)
 	for _, d := range nearbyDolls {
 		masterName := ""
 		if m := ws.GetByCharID(d.OwnerCharID); m != nil {
@@ -250,7 +254,7 @@ func rejectMove(sess *net.Session, player *world.PlayerInfo, ws *world.State, de
 	}
 
 	// 7. 重發所有附近隨身祭司
-	nearbyHierarchs := ws.GetNearbyHierarchs(px, py, player.MapID)
+	nearbyHierarchs := ws.GetNearbyHierarchsInShow(px, py, player.MapID, player.ShowID)
 	for _, h := range nearbyHierarchs {
 		masterName := ""
 		if m := ws.GetByCharID(h.OwnerCharID); m != nil {
@@ -263,7 +267,7 @@ func rejectMove(sess *net.Session, player *world.PlayerInfo, ws *world.State, de
 	}
 
 	// 8. 重發所有附近隨從 + 封鎖格子
-	nearbyFollowers := ws.GetNearbyFollowers(px, py, player.MapID)
+	nearbyFollowers := ws.GetNearbyFollowersInShow(px, py, player.MapID, player.ShowID)
 	for _, f := range nearbyFollowers {
 		SendFollowerPack(sess, f)
 		if player.Known != nil {
@@ -272,7 +276,7 @@ func rejectMove(sess *net.Session, player *world.PlayerInfo, ws *world.State, de
 	}
 
 	// 8. 重發所有附近寵物 + 封鎖格子
-	nearbyPets := ws.GetNearbyPets(px, py, player.MapID)
+	nearbyPets := ws.GetNearbyPetsInShow(px, py, player.MapID, player.ShowID)
 	for _, p := range nearbyPets {
 		isOwner := p.OwnerCharID == player.CharID
 		masterName := ""
@@ -286,7 +290,7 @@ func rejectMove(sess *net.Session, player *world.PlayerInfo, ws *world.State, de
 	}
 
 	// 9. 重發所有附近地面物品（地面物品不佔格子，不需封鎖）
-	nearbyGnd := ws.GetNearbyGroundItems(player.X, player.Y, player.MapID)
+	nearbyGnd := ws.GetNearbyGroundItemsInShow(player.X, player.Y, player.MapID, player.ShowID)
 	for _, g := range nearbyGnd {
 		SendDropItem(sess, g)
 		if player.Known != nil {
@@ -322,7 +326,7 @@ func HandleChangeDirection(sess *net.Session, r *packet.Reader, deps *Deps) {
 	deps.World.ChangePlayerHeading(player, heading)
 
 	// 廣播方向變更給附近玩家
-	nearby := deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	nearby := deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, sess.ID, player.ShowID)
 	chData := BuildChangeHeading(player.CharID, heading)
 	BroadcastToPlayers(nearby, chData)
 }

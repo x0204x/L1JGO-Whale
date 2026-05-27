@@ -1,7 +1,6 @@
 package scripting
 
 import (
-	"fmt"
 	"testing"
 
 	"go.uber.org/zap"
@@ -21,21 +20,18 @@ func TestCalcSkillDamageDisintegrateCanMagicCriticalLikeJava(t *testing.T) {
 		AttackerINT: 12,
 		TargetMR:    0,
 	}
-	const normalDamage = 109
-	criticalSeen := false
-
-	for seed := 1; seed <= 500; seed++ {
-		if err := engine.vm.DoString(fmt.Sprintf("math.randomseed(%d)", seed)); err != nil {
-			t.Fatalf("設定 Lua random seed 失敗: %v", err)
-		}
-		result := engine.CalcSkillDamage(ctx)
-		if result.Damage > normalDamage {
-			criticalSeen = true
-			break
-		}
+	if err := engine.vm.DoString("math.randomseed(1)"); err != nil {
+		t.Fatalf("設定 Lua random seed 失敗: %v", err)
 	}
+	normal := engine.CalcSkillDamage(ctx)
 
-	if !criticalSeen {
-		t.Fatal("Java DISINTEGRATE 即使是 10 級魔法仍可觸發魔法爆擊，Go Lua 應允許出現 1.5 倍傷害")
+	ctx.AttackerMagicCrit = 100
+	if err := engine.vm.DoString("math.randomseed(1)"); err != nil {
+		t.Fatalf("設定 Lua random seed 失敗: %v", err)
+	}
+	critical := engine.CalcSkillDamage(ctx)
+
+	if critical.Damage <= normal.Damage {
+		t.Fatalf("Java DISINTEGRATE 即使是 10 級魔法仍可依魔法爆擊加成觸發 1.5 倍傷害，normal=%d critical=%d", normal.Damage, critical.Damage)
 	}
 }

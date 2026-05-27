@@ -65,6 +65,7 @@ func (s *DollSystem) UseDoll(sess *net.Session, player *world.PlayerInfo, invIte
 		X:           player.X + int32(world.RandInt(5)) - 2,
 		Y:           player.Y + int32(world.RandInt(5)) - 2,
 		MapID:       player.MapID,
+		ShowID:      player.ShowID,
 		Heading:     player.Heading,
 		TimerTicks:  dollDef.Duration * 5, // 秒 → ticks（5 ticks/sec）
 	}
@@ -154,7 +155,7 @@ func (s *DollSystem) UseDoll(sess *net.Session, player *world.PlayerInfo, invIte
 
 	// 廣播外觀
 	masterName := player.Name
-	nearby := ws.GetNearbyPlayersAt(doll.X, doll.Y, doll.MapID)
+	nearby := companionViewersAt(ws, doll.X, doll.Y, doll.MapID, doll.ShowID)
 	for _, viewer := range nearby {
 		handler.SendDollPack(viewer.Session, doll, masterName)
 	}
@@ -176,14 +177,14 @@ func (s *DollSystem) DismissDoll(doll *world.DollInfo, player *world.PlayerInfo)
 	ws.RemoveDoll(doll.ID)
 
 	// 廣播移除
-	nearby := ws.GetNearbyPlayersAt(doll.X, doll.Y, doll.MapID)
+	nearby := companionViewersAt(ws, doll.X, doll.Y, doll.MapID, doll.ShowID)
 	for _, viewer := range nearby {
 		handler.SendRemoveObject(viewer.Session, doll.ID)
 	}
 
 	// 解散音效 + 清除計時器 + 更新狀態
 	handler.SendCompanionEffect(player.Session, doll.ID, 5936) // 解散音效
-	handler.SendDollTimer(player.Session, 0)                    // 清除計時器
+	handler.SendDollTimer(player.Session, 0)                   // 清除計時器
 	handler.SendPlayerStatus(player.Session, player)
 }
 

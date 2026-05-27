@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	immuneToHarmSkillID  int32 = 68
-	advanceSpiritSkillID int32 = 79
+	immuneToHarmSkillID   int32 = 68
+	advanceSpiritSkillID  int32 = 79
 	reductionArmorSkillID int32 = 88
 )
 
@@ -244,7 +244,7 @@ func (s *SkillSystem) applyBuffEffect(target *world.PlayerInfo, skill *data.Skil
 		if buff.DeltaDodge > 0 {
 			switch skill.SkillID {
 			case 90, 111:
-				handler.SendUpdateER(target.Session, target.Dodge)
+				handler.SendUpdateER(target.Session, calcPlayerErLikeYiwei(target))
 			case 160:
 				// 160 AQUA_PROTECTER：Java `skillmode/AQUA_PROTECTER.start()` 只 `setSkillEffect(160, ...)`，
 				// 不送任何 packet；ER +5 透過 `L1PcInstance.getEr():3399-3401` getter override 即時計算。
@@ -365,20 +365,23 @@ func (s *SkillSystem) cancelInvisibility(player *world.PlayerInfo) {
 	// 通知玩家自己已解除隱身
 	handler.SendInvisible(player.Session, player.CharID, false)
 
-	// 通知周圍玩家重新顯示此角色（下一 tick VisibilitySystem 也會處理，
-	// 但主動 SendPutObject 讓解除更即時）
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
-	for _, viewer := range nearby {
-		if viewer.CharID != player.CharID {
-			handler.SendPutObject(viewer.Session, player)
-		}
-	}
+	s.sendPlayerReappearToVisible(player)
 }
 
 // CancelInvisibility 匯出版本，供 combat/handler 呼叫。
 func (s *SkillSystem) CancelInvisibility(player *world.PlayerInfo) {
 	if player.Invisible {
 		s.cancelInvisibility(player)
+	}
+}
+
+func (s *SkillSystem) sendPlayerReappearToVisible(player *world.PlayerInfo) {
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, player.SessionID, player.ShowID)
+	for _, viewer := range nearby {
+		if viewer.CharID == player.CharID {
+			continue
+		}
+		handler.SendPutObject(viewer.Session, player)
 	}
 }
 
@@ -417,7 +420,7 @@ var counterMagicExempt = map[int32]bool{
 	155: true, 156: true, 158: true, 159: true, 161: true, 163: true, 164: true, 165: true,
 	166: true, 168: true, 169: true, 170: true, 171: true, 175: true, 176: true, 181: true,
 	185: true, 190: true, 194: true, 195: true, 201: true, 204: true, 209: true, 211: true,
-	213: true, 214: true, 216: true, 219: true, 228: true, 230: true,
+	213: true, 214: true, 216: true, 219: true,
 	10026: true, 10027: true, 10028: true, 10029: true, 41472: true,
 }
 
@@ -441,7 +444,7 @@ func (s *SkillSystem) tryCounterMagic(target *world.PlayerInfo, skillID int32) b
 		gfx = sk.CastGfx2
 	}
 	// 廣播觸發動畫給附近玩家 + 目標自己
-	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, 0, target.ShowID)
 	data := handler.BuildSkillEffect(target.CharID, gfx)
 	handler.BroadcastToPlayers(nearby, data)
 	return true
@@ -469,7 +472,7 @@ func (s *SkillSystem) removeBuffAndRevert(target *world.PlayerInfo, skillID int3
 		// 精準射擊（技能 174）：buff 被取消後送出 UPDATE_ER 還原客戶端 ER 顯示
 		// 對齊 Java L1SkillStop case STRIKER_GALE。
 		if skillID == 174 {
-			handler.SendUpdateER(target.Session, target.Dodge)
+			handler.SendUpdateER(target.Session, calcPlayerErLikeYiwei(target))
 		}
 		// 法利昂覺醒（190）外部移除（exclusions/解除）時連帶清除 Physical Power（169）。
 		// 對齊 Java `skillmode/AWAKEN_FAFURION.java:36-40 stop()` 的 `killSkillEffectTimer(169)`，
@@ -531,7 +534,7 @@ func (s *SkillSystem) revertBuffStats(target *world.PlayerInfo, buff *world.Acti
 		// Java SOLID_CARRIAGE.stop() line 47 與 DRESS_EVASION.stop() line 31 都送 S_PacketBox(UPDATE_ER, getEr())。
 		switch buff.SkillID {
 		case 90, 111:
-			handler.SendUpdateER(target.Session, target.Dodge)
+			handler.SendUpdateER(target.Session, calcPlayerErLikeYiwei(target))
 		case 160:
 			// 160 AQUA_PROTECTER：Java `skillmode/AQUA_PROTECTER.stop()` empty 不送任何 packet。
 			// Go 不送 dodge icon/UPDATE_ER 對齊 Java（同 apply 路徑）。
@@ -626,7 +629,7 @@ func (s *SkillSystem) ApplyBuffStats(player *world.PlayerInfo, buff *world.Activ
 // sendSpeedToAll 向自己和附近玩家發送速度封包。
 func (s *SkillSystem) sendSpeedToAll(target *world.PlayerInfo, speedType byte, duration uint16) {
 	sendSpeedPacket(target.Session, target.CharID, speedType, duration)
-	nearby := s.deps.World.GetNearbyPlayers(target.X, target.Y, target.MapID, target.SessionID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, target.SessionID, target.ShowID)
 	for _, other := range nearby {
 		sendSpeedPacket(other.Session, target.CharID, speedType, 0)
 	}
@@ -635,7 +638,7 @@ func (s *SkillSystem) sendSpeedToAll(target *world.PlayerInfo, speedType byte, d
 // sendBraveToAll 向自己和附近玩家發送勇敢封包。
 func (s *SkillSystem) sendBraveToAll(target *world.PlayerInfo, braveType byte, duration uint16) {
 	sendBravePacket(target.Session, target.CharID, braveType, duration)
-	nearby := s.deps.World.GetNearbyPlayers(target.X, target.Y, target.MapID, target.SessionID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, target.SessionID, target.ShowID)
 	for _, other := range nearby {
 		sendBravePacket(other.Session, target.CharID, braveType, 0)
 	}
@@ -721,12 +724,7 @@ func (s *SkillSystem) cancelAllBuffs(target *world.PlayerInfo) {
 	// 隱身解除通知 + 周圍玩家重新顯示
 	if needInvisRemove {
 		handler.SendInvisible(target.Session, target.CharID, false)
-		nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
-		for _, viewer := range nearby {
-			if viewer.CharID != target.CharID {
-				handler.SendPutObject(viewer.Session, target)
-			}
-		}
+		s.sendPlayerReappearToVisible(target)
 	}
 
 	// 重新檢查是否仍有非 buff 來源的麻痺（毒麻痺/詛咒麻痺）
@@ -822,7 +820,7 @@ func (s *SkillSystem) tickPlayerBuffs(p *world.PlayerInfo) {
 			// 精準射擊（技能 174）：到期後送出 UPDATE_ER 還原客戶端 ER 顯示
 			// 對齊 Java L1SkillStop case STRIKER_GALE。
 			if skillID == 174 {
-				handler.SendUpdateER(p.Session, p.Dodge)
+				handler.SendUpdateER(p.Session, calcPlayerErLikeYiwei(p))
 			}
 
 			// 法利昂覺醒（190）到期時連帶清除 Physical Power（169）
@@ -922,7 +920,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 	target := player
 	if targetID != 0 && targetID != player.CharID {
 		if other := ws.GetByCharID(targetID); other != nil {
-			if other.MapID != player.MapID || other.Dead {
+			if other.MapID != player.MapID || other.Dead || (skill.SkillID == 87 && other.ShowID != player.ShowID) {
 				return
 			}
 			maxRange := int32(20)
@@ -930,6 +928,9 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 				maxRange = shockStunRange(skill)
 			}
 			if chebyshevDist(player.X, player.Y, other.X, other.Y) > maxRange {
+				return
+			}
+			if skill.SkillID == 87 && s.shockStunLineOfSightBlocked(player, other.X, other.Y) {
 				return
 			}
 			target = other
@@ -945,7 +946,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 	// 魔法屏障攔截：對其他玩家施放非豁免技能時，檢查目標是否有 Counter Magic（buff 31）
 	if target.CharID != player.CharID && s.tryCounterMagic(target, skill.SkillID) {
 		// 技能被抵消，仍播放施法動畫但不產生效果
-		nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 		return
 	}
@@ -977,7 +978,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 				return
 			}
 			// 仍播放施法動畫（Java: 一般 debuff miss 會播放動畫）
-			nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+			nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 			handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 			if skill.CastGfx > 0 {
 				handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
@@ -986,7 +987,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		}
 	}
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 
 	// 廣播施法動畫
 	if skill.SkillID != 87 {
@@ -1203,12 +1204,12 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 	// 治療效果
 	if skill.Type == 16 || skill.DamageValue > 0 || skill.DamageDice > 0 {
 		casterINT := int(player.Intel)
-		casterSP := int(player.SP)
+		casterLawful := int(player.Lawful)
 
 		if skill.Area == -1 {
 			// 範圍治療
 			for _, p := range nearby {
-				heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterSP))
+				heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 				heal = s.applyElfWaterHealingModifiers(p, heal)
 				if heal > 0 && p.HP < p.MaxHP {
 					p.HP += heal
@@ -1220,7 +1221,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 			}
 		} else {
 			// 單目標治療
-			heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterSP))
+			heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 			heal = s.applyElfWaterHealingModifiers(target, heal)
 			if heal > 0 && target.HP < target.MaxHP {
 				target.HP += heal
@@ -1240,7 +1241,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 	// 使客戶端 ER 顯示變 0。Go 端 player.Dodge 為儲存值，無 getter override，需在 174 套用後
 	// 顯式送 UPDATE_ER(0)。對齊 Java 行為。
 	if skill.SkillID == 174 && target.Session != nil {
-		handler.SendUpdateER(target.Session, 0)
+		handler.SendUpdateER(target.Session, calcPlayerErLikeYiwei(target))
 	}
 
 	// 158 NATURES_TOUCH（生命之泉）：Java `L1SkillUse.java:2113-2118` 在恢復系技能清單
@@ -1260,4 +1261,5 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 	if skill.SysMsgHappen > 0 {
 		handler.SendServerMessage(target.Session, uint16(skill.SysMsgHappen))
 	}
+	s.sendYiweiPostCastStatusRefresh(target)
 }

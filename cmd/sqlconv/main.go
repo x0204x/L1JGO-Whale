@@ -50,12 +50,15 @@ type npcEntryYAML struct {
 	WeakAttr       int16  `yaml:"weak_attr"`
 	Ranged         int16  `yaml:"ranged"`
 	AtkSpeed       int16  `yaml:"atk_speed"`
+	AtkMagicSpeed  int16  `yaml:"atk_magic_speed,omitempty"`
 	SubMagicSpeed  int16  `yaml:"sub_magic_speed,omitempty"`
 	PassiveSpeed   int16  `yaml:"passive_speed"`
 	Undead         bool   `yaml:"undead"`
 	UndeadType     int16  `yaml:"undead_type"`
 	TurnUndeadable bool   `yaml:"turn_undeadable"`
 	Agro           bool   `yaml:"agro"`
+	Family         string `yaml:"family,omitempty"`
+	AgroFamily     int16  `yaml:"agro_family,omitempty"`
 	Tameable       bool   `yaml:"tameable"`
 }
 
@@ -356,6 +359,7 @@ type mobSkillEntryYAML struct {
 	SummonMin          int    `yaml:"summon_min"`
 	SummonMax          int    `yaml:"summon_max"`
 	PolyID             int32  `yaml:"poly_id"`
+	ReuseDelay         int    `yaml:"reuse_delay,omitempty"`
 }
 
 // --- NPC Action (dialog) ---
@@ -471,6 +475,13 @@ func parseFloat64(s string) float64 {
 }
 
 func parseBool01(s string) bool { return s != "" && s != "0" }
+
+func normalizeAgroFamily(family string, agroFamily int16) int16 {
+	if strings.TrimSpace(family) == "" && agroFamily == 1 {
+		return 0
+	}
+	return agroFamily
+}
 
 // ---------------------------------------------------------------------------
 // YAML writer
@@ -591,7 +602,7 @@ func convertNpc(sqlDir, outDir string) error {
 			// Yiwei: npcid(0) name(1) nameid(2) classname(3) note(4) impl(5)
 			// gfxid(6) lvl(7) hp(8) mp(9) ac(10) str(11) con(12) dex(13)
 			// wis(14) intel(15) mr(16) exp(17) lawful(18) size(19) weakAttr(20)
-			// ranged(21) tamable(22) passispeed(23) atkspeed(24) ...
+			// ranged(21) tamable(22) passispeed(23) atkspeed(24) atk_magic_speed(25) sub_magic_speed(26)
 			// undead(27) ... agro(30) ... IsTU(54)
 			if len(r) < 55 {
 				continue
@@ -618,19 +629,22 @@ func convertNpc(sqlDir, outDir string) error {
 				WeakAttr:       parseInt16(r[20]),
 				Ranged:         parseInt16(r[21]),
 				AtkSpeed:       parseInt16(r[24]),
+				AtkMagicSpeed:  parseInt16(r[25]),
 				SubMagicSpeed:  parseInt16(r[26]),
 				PassiveSpeed:   parseInt16(r[23]),
 				Undead:         parseBool01(r[27]),
 				UndeadType:     parseInt16(r[27]),
 				TurnUndeadable: parseBool01(r[54]),
 				Agro:           parseBool01(r[30]),
+				Family:         strings.TrimSpace(r[33]),
+				AgroFamily:     normalizeAgroFamily(r[33], parseInt16(r[34])),
 				Tameable:       parseBool01(r[22]),
 			}
 		} else {
 			// Taiwan: npcid(0) name(1) nameid(2) note(3) impl(4) gfxid(5)
 			// lvl(6) hp(7) mp(8) ac(9) str(10) con(11) dex(12) wis(13)
 			// intel(14) mr(15) exp(16) lawful(17) size(18) ... ranged(20)
-			// tamable(21) passispeed(22) atkspeed(23) ... undead(27) ... agro(30) ... IsTU(54)
+			// tamable(21) passispeed(22) atkspeed(23) atk_magic_speed(24) sub_magic_speed(25) undead(27) ... agro(30) ... IsTU(54)
 			if len(r) < 55 {
 				continue
 			}
@@ -656,12 +670,15 @@ func convertNpc(sqlDir, outDir string) error {
 				WeakAttr:       parseInt16(r[19]),
 				Ranged:         parseInt16(r[20]),
 				AtkSpeed:       parseInt16(r[23]),
+				AtkMagicSpeed:  parseInt16(r[24]),
 				SubMagicSpeed:  parseInt16(r[25]),
 				PassiveSpeed:   parseInt16(r[22]),
 				Undead:         parseBool01(r[27]),
 				UndeadType:     parseInt16(r[27]),
 				TurnUndeadable: parseBool01(r[54]),
 				Agro:           parseBool01(r[30]),
+				Family:         strings.TrimSpace(r[33]),
+				AgroFamily:     normalizeAgroFamily(r[33], parseInt16(r[34])),
 				Tameable:       parseBool01(r[21]),
 			}
 		}
@@ -1367,7 +1384,7 @@ func convertMobSkill(sqlDir, outDir string) error {
 			// SkillId(14) Gfxid(15) ActId(16) SummonId(17) SummonMin(18)
 			// SummonMax(19) PolyId(20) reuseDelay(21)
 			// Yiwei lacks: mpConsume, SkillArea
-			if len(r) < 21 {
+			if len(r) < 22 {
 				continue
 			}
 			entry = mobSkillEntryYAML{
@@ -1393,6 +1410,7 @@ func convertMobSkill(sqlDir, outDir string) error {
 				SummonMin:          parseInt(r[18]),
 				SummonMax:          parseInt(r[19]),
 				PolyID:             parseInt32(r[20]),
+				ReuseDelay:         parseInt(r[21]),
 			}
 		} else {
 			// Taiwan: mobid(0) actNo(1) mobname(2) Type(3) mpConsume(4)

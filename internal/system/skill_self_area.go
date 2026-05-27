@@ -101,28 +101,35 @@ func (s *SkillSystem) applySelfAreaSkillDamageToPlayerNoVisual(sess *net.Session
 
 func (s *SkillSystem) calcSelfAreaSkillNpcDamage(player *world.PlayerInfo, npc *world.NpcInfo, skill *data.SkillInfo) int32 {
 	ctx := scripting.SkillDamageContext{
-		SkillID:            int(skill.SkillID),
-		DamageValue:        skill.DamageValue,
-		DamageDice:         skill.DamageDice,
-		DamageDiceCount:    skill.DamageDiceCount,
-		SkillLevel:         skill.SkillLevel,
-		Attr:               skill.Attr,
-		AttackerLevel:      int(player.Level),
-		AttackerSTR:        int(player.Str),
-		AttackerDEX:        int(player.Dex),
-		AttackerINT:        int(player.Intel),
-		AttackerWIS:        int(player.Wis),
-		AttackerSP:         int(player.SP),
-		AttackerDmgMod:     int(player.DmgMod),
-		AttackerHitMod:     int(player.HitMod),
-		AttackerMagicLevel: calcMagicLevel(int(player.ClassType), int(player.Level)),
-		TargetAC:           int(npc.AC),
-		TargetLevel:        int(npc.Level),
-		TargetMR:           int(npc.MR),
-		TargetFireRes:      int(npc.FireRes),
-		TargetWaterRes:     int(npc.WaterRes),
-		TargetWindRes:      int(npc.WindRes),
-		TargetEarthRes:     int(npc.EarthRes),
+		SkillID:                  int(skill.SkillID),
+		DamageValue:              skill.DamageValue,
+		DamageDice:               skill.DamageDice,
+		DamageDiceCount:          skill.DamageDiceCount,
+		SkillLevel:               skill.SkillLevel,
+		Attr:                     skill.Attr,
+		AttackerLevel:            int(player.Level),
+		AttackerSTR:              int(player.Str),
+		AttackerBaseSTR:          calcPlayerBaseStrLikeJava(player),
+		AttackerDEX:              int(player.Dex),
+		AttackerBaseDEX:          calcPlayerBaseDexLikeJava(player),
+		AttackerINT:              int(player.Intel),
+		AttackerBaseINT:          calcPlayerBaseIntLikeJava(player),
+		AttackerWIS:              int(player.Wis),
+		AttackerSP:               int(player.SP),
+		AttackerTrueSP:           calcPlayerTrueSPLikeJava(player),
+		AttackerFullSP:           calcPlayerSPLikeJava(player),
+		AttackerDmgMod:           int(player.DmgMod),
+		AttackerHitMod:           int(player.HitMod),
+		AttackerMagicLevel:       calcMagicLevel(int(player.ClassType), int(player.Level)),
+		AttackerMagicCrit:        int(player.MagicCritical),
+		AttackerOriginalMagicHit: int(player.OriginalMagicHit),
+		TargetAC:                 int(npc.AC),
+		TargetLevel:              int(npc.Level),
+		TargetMR:                 int(npc.MR),
+		TargetFireRes:            int(npc.FireRes),
+		TargetWaterRes:           int(npc.WaterRes),
+		TargetWindRes:            int(npc.WindRes),
+		TargetEarthRes:           int(npc.EarthRes),
 	}
 	res := s.deps.Scripting.CalcSkillDamage(ctx)
 	return int32(res.Damage)
@@ -149,7 +156,7 @@ func (s *SkillSystem) applySelfAreaSkillDamageToNpcNoVisual(sess *net.Session, p
 	if npc.HP < 0 {
 		npc.HP = 0
 	}
-	AddHate(npc, sess.ID, dmg)
+	AddPlayerHateLikeJava(s.deps.World, npc, player, dmg)
 	hpRatio := int16(0)
 	if npc.MaxHP > 0 {
 		hpRatio = int16((npc.HP * 100) / npc.MaxHP)

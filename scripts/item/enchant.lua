@@ -1,5 +1,5 @@
 -- Enchant scroll formula (Java ref: Enchant.java)
--- ctx.scroll_bless: 0=normal, 1=blessed, 2=cursed
+-- ctx.scroll_bless: 0=blessed, 1=normal, 2=cursed  (對齊 Java/Go DB 慣例)
 -- ctx.enchant_lvl:  current enchant level of target equipment
 -- ctx.safe_enchant: safe enchant level from item template
 -- ctx.category:     1=weapon, 2=armor
@@ -17,7 +17,8 @@
 -- At +3~5: 50%(+1), 50%(+2)
 -- At +6+ or normal scroll: always +1
 local function random_e_level(enchant_lvl, scroll_bless)
-    if scroll_bless == 1 then
+    -- 祝福卷軸（bless=0）才會給 +1/+2/+3 變動量
+    if scroll_bless == 0 then
         if enchant_lvl <= 2 then
             local j = math.random(1, 100)
             if j <= 31 then return 1

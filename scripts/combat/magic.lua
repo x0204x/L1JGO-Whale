@@ -50,15 +50,9 @@ function calc_magic_damage(ctx)
         end
     end
 
-    -- Stage 1b: 職業魔法等級額外骰數（Java: diceCount2 = getMagicBonus() + getMagicLevel()）
-    local magic_level = atk.magic_level or 0
-    if magic_level > 0 and sk.damage_dice > 0 then
-        for i = 1, magic_level do
-            damage = damage + math.random(1, sk.damage_dice)
-        end
-    end
-
     -- Stage 2: INT + SP coefficient (Java: charaIntelligence)
+    local base_int = atk.base_int or atk.intel
+    if base_int <= 0 then base_int = atk.intel end
     local char_intel = atk.intel + atk.sp - 12
     if char_intel < 1 then char_intel = 1 end
 
@@ -72,13 +66,22 @@ function calc_magic_damage(ctx)
 
     -- Stage 5: Magic critical (Java: level 1-6 spells or DISINTEGRATE)
     if (sk.skill_level >= 1 and sk.skill_level <= 6) or sk.id == 77 then
-        if math.random(1, 100) <= 10 then
+        local crit_chance = table_lookup(INT_CRIT, atk.intel) + (atk.magic_critical or 0)
+        if base_int >= 45 then crit_chance = crit_chance + 1 end
+        if crit_chance > 0 and math.random(1, 100) < crit_chance then
             damage = math.floor(damage * 1.5)
         end
     end
 
+    local pure_int = pure_stat_bonus(base_int)
+    if pure_int > 0 then
+        damage = damage + pure_int * 2
+    end
+
     -- Stage 6: MR defense
-    damage = apply_mr_defense(damage, tgt.mr)
+    local magic_hit = table_lookup(INT_MAGIC_HIT, atk.intel) + (atk.original_magic_hit or 0)
+    magic_hit = magic_hit + pure_stat_bonus(base_int)
+    damage = apply_mr_defense(damage, tgt.mr, magic_hit)
 
     if damage < 1 then damage = 1 end
     return { damage = damage, drain_mp = 0, hit_count = 1 }
@@ -97,7 +100,8 @@ function calc_physical_skill(ctx)
     local sid = sk.id
 
     local str = atk.str
-    local dex = atk.dex
+    local base_str = atk.base_str or str
+    if base_str <= 0 then base_str = str end
     local level = atk.level
     local weapon_dmg = atk.weapon_dmg
     local hit_mod = atk.hit_mod or 0
@@ -105,10 +109,10 @@ function calc_physical_skill(ctx)
 
     if weapon_dmg <= 0 then weapon_dmg = 4 end
 
-    -- Hit calculation (same as melee)
+    -- Java physical skill melee path uses STR_HIT plus equipment/buff hit modifiers.
     local str_hit = table_lookup(STR_HIT, str)
-    local dex_hit = table_lookup(DEX_HIT, dex)
-    local hit_rate = level + str_hit + dex_hit + hit_mod
+    local pure_str = pure_stat_bonus(base_str)
+    local hit_rate = level + str_hit + pure_str + hit_mod
 
     local attack_roll = math.random(1, 20) + hit_rate - 10
     local defense = 10 - tgt.ac
@@ -131,7 +135,7 @@ function calc_physical_skill(ctx)
     if is_hit then
         local base = math.random(1, weapon_dmg)
         local str_dmg = table_lookup(STR_DMG, str)
-        damage = base + str_dmg + dmg_mod
+        damage = base + str_dmg + pure_str + dmg_mod
 
         -- Skill-specific bonuses
         -- 注：三重矢（132）已改走 combat.go 的 ExecuteRangedAttackOnNpc × 3
@@ -155,7 +159,9 @@ end
 function calc_mind_break(ctx)
     local atk = ctx.attacker
     local drain_mp = 5
-    local damage = math.floor(atk.sp * 3.8)
+    local true_sp = atk.true_sp or 0
+    local full_sp = atk.full_sp or (true_sp + (atk.sp or 0))
+    local damage = math.floor(full_sp * 3.8)
 
     if damage < 0 then damage = 0 end
     return { damage = damage, drain_mp = drain_mp, hit_count = 1 }
@@ -192,18 +198,17 @@ function calc_attr_resistance(attr, tgt)
 end
 
 ---------------------------------------------------------------------
--- MR defense calculation (PC->NPC formula from Java L1Magic)
--- MR <= 100: coefficient = 1 - 0.01 * floor(MR/2)
--- MR >  100: coefficient = 0.6 - 0.01 * floor(MR/10)
+-- MR defense calculation (PC caster formula from Java L1MagicPc.calcMrDefense)
 ---------------------------------------------------------------------
-function apply_mr_defense(damage, mr)
+function apply_mr_defense(damage, mr, magic_hit)
     if mr <= 0 then return damage end
+    magic_hit = magic_hit or 0
 
     local mr_coefficient
-    if mr <= 100 then
-        mr_coefficient = 1 - 0.01 * math.floor(mr / 2)
+    if mr < 100 then
+        mr_coefficient = 1 - 0.01 * math.floor((mr - magic_hit) / 2)
     else
-        mr_coefficient = 0.6 - 0.01 * math.floor(mr / 10)
+        mr_coefficient = 0.6 - 0.01 * math.floor((mr - magic_hit) / 10)
     end
 
     if mr_coefficient < 0 then mr_coefficient = 0 end
@@ -212,28 +217,51 @@ end
 
 ---------------------------------------------------------------------
 -- Heal amount calculation
--- calc_heal_amount(damage_value, damage_dice, damage_dice_count, intel, sp)
+-- calc_heal_amount(damage_value, damage_dice, damage_dice_count, intel, lawful, leverage)
 -- Returns heal amount (int)
 ---------------------------------------------------------------------
-function calc_heal_amount(damage_value, damage_dice, damage_dice_count, intel, sp)
-    local heal = damage_value
+function calc_heal_amount(damage_value, damage_dice, damage_dice_count, intel, lawful, leverage)
+    lawful = lawful or 0
+    leverage = leverage or 10
+    if leverage <= 0 then leverage = 10 end
 
-    if damage_dice > 0 and damage_dice_count > 0 then
-        for i = 1, damage_dice_count do
+    local magic_bonus = 0
+    if intel <= 5 then
+        magic_bonus = -2
+    elseif intel <= 8 then
+        magic_bonus = -1
+    elseif intel <= 11 then
+        magic_bonus = 0
+    elseif intel <= 14 then
+        magic_bonus = 1
+    elseif intel <= 17 then
+        magic_bonus = 2
+    elseif intel <= 24 then
+        magic_bonus = intel - 15
+    elseif intel <= 35 then
+        magic_bonus = 10
+    elseif intel <= 42 then
+        magic_bonus = 11
+    elseif intel <= 49 then
+        magic_bonus = 12
+    else
+        magic_bonus = 13
+    end
+    if magic_bonus > 10 then magic_bonus = 10 end
+
+    local heal = 0
+    local dice_count = damage_value + magic_bonus
+    if damage_dice > 0 and dice_count > 0 then
+        for i = 1, dice_count do
             heal = heal + math.random(1, damage_dice)
         end
-    elseif damage_dice > 0 then
-        heal = heal + math.random(1, damage_dice)
     end
 
-    -- SP bonus
-    heal = heal + sp
-
-    -- INT bonus: (INT - 12) / 4 if INT > 12
-    if intel > 12 then
-        heal = heal + math.floor((intel - 12) / 4)
+    if lawful > 0 then
+        heal = math.floor(heal * (1.0 + lawful / 32768.0))
     end
 
+    heal = math.floor(heal * (leverage / 10.0))
     if heal < 0 then heal = 0 end
     return heal
 end

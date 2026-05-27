@@ -70,10 +70,14 @@ func TickFishing(player *world.PlayerInfo, deps *Deps) {
 
 // SendFishingAction 發送釣魚動作封包。Exported for system package usage.
 func SendFishingAction(sess *net.Session, player *world.PlayerInfo, fishX, fishY int32) {
+	sess.Send(BuildFishingAction(player, fishX, fishY))
+}
+
+func BuildFishingAction(player *world.PlayerInfo, fishX, fishY int32) []byte {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_ACTION)
 	w.WriteD(player.CharID)
 	w.WriteC(fishingAction)
 	w.WriteH(uint16(fishX))
 	w.WriteH(uint16(fishY))
-	sess.Send(w.Bytes())
+	return w.Bytes()
 }

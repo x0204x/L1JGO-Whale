@@ -87,3 +87,62 @@ func TestSkillDragonKnightStatusThunderGrabBindsPlayerTarget(t *testing.T) {
 		t.Fatalf("奪命之雷應束縛玩家目標，Paralyzed=%v buff192=%v", target.Paralyzed, target.GetBuff(192))
 	}
 }
+
+func TestSkillDragonKnightStatusThunderGrabBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+		ShowID:    77,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    77,
+		HP:        100,
+		MaxHP:     100,
+	})
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "same_show",
+		X:         102,
+		Y:         100,
+		MapID:     900,
+		ShowID:    77,
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 4,
+		Session:   newSkillTestSession(t, 4),
+		CharID:    1004,
+		Name:      "other_show",
+		X:         102,
+		Y:         100,
+		MapID:     900,
+		ShowID:    88,
+	})
+	s := newSkillTestSystem(t, ws)
+
+	s.applyThunderGrabBind(caster, target)
+
+	if !hasSkillEffectPacket(drainSkillTestPackets(target.Session), target.CharID, 4184) {
+		t.Fatal("yiwei sendPacketsAll 會把奪命之雷特效送給目標自己")
+	}
+	if !hasSkillEffectPacket(drainSkillTestPackets(sameShow.Session), target.CharID, 4184) {
+		t.Fatal("同 ShowID 玩家應收到奪命之雷目標特效")
+	}
+	if hasSkillEffectPacket(drainSkillTestPackets(otherShow.Session), target.CharID, 4184) {
+		t.Fatal("不同 ShowID 玩家不應收到奪命之雷目標特效")
+	}
+}

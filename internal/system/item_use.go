@@ -33,6 +33,13 @@ func isPlayerItemUseBlocked(sess *net.Session, player *world.PlayerInfo) bool {
 	return false
 }
 
+func (s *ItemUseSystem) itemUseViewers(player *world.PlayerInfo, excludeSession uint64) []*world.PlayerInfo {
+	if s == nil || s.deps == nil || s.deps.World == nil || player == nil {
+		return nil
+	}
+	return s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, excludeSession, player.ShowID)
+}
+
 // ---------- 消耗品使用（藥水、食物） ----------
 
 // UseConsumable 處理消耗品使用。回傳 true 表示物品已被消耗。
@@ -644,7 +651,7 @@ func (s *ItemUseSystem) UseSpellBook(sess *net.Session, player *world.PlayerInfo
 
 	// 學習特效 (GFX 224)
 	handler.SendSkillEffect(sess, player.CharID, 224)
-	nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	nearby := s.itemUseViewers(player, sess.ID)
 	for _, other := range nearby {
 		handler.SendSkillEffect(other.Session, player.CharID, 224)
 	}
@@ -705,11 +712,7 @@ func (s *ItemUseSystem) UseTeleportScroll(sess *net.Session, r *packet.Reader, p
 		handler.SendWeightUpdate(sess, player)
 
 		// 出發特效
-		sendEffectOnPlayer(sess, player.CharID, 169)
-		bkNearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
-		for _, viewer := range bkNearby {
-			sendEffectOnPlayer(viewer.Session, player.CharID, 169)
-		}
+		s.BroadcastEffect(sess, player, 169)
 
 		handler.TeleportPlayer(sess, player, target.X, target.Y, target.MapID, 5, s.deps)
 
@@ -763,11 +766,7 @@ func (s *ItemUseSystem) UseTeleportScroll(sess *net.Session, r *packet.Reader, p
 		}
 
 		// 出發特效
-		sendEffectOnPlayer(sess, player.CharID, 169)
-		rdNearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
-		for _, viewer := range rdNearby {
-			sendEffectOnPlayer(viewer.Session, player.CharID, 169)
-		}
+		s.BroadcastEffect(sess, player, 169)
 
 		handler.TeleportPlayer(sess, player, newX, newY, curMap, 5, s.deps)
 
@@ -804,11 +803,7 @@ func (s *ItemUseSystem) UseHomeScroll(sess *net.Session, player *world.PlayerInf
 
 	// 出發特效 + 延遲 2 tick（400ms）傳送，讓客戶端播完特效動畫
 	// 特效在本 tick 末尾 flush 給客戶端，傳送在下一 tick 執行
-	sendEffectOnPlayer(sess, player.CharID, 169)
-	oldNearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
-	for _, viewer := range oldNearby {
-		sendEffectOnPlayer(viewer.Session, player.CharID, 169)
-	}
+	s.BroadcastEffect(sess, player, 169)
 	player.ScrollTPTick = 2
 	player.ScrollTPX = int32(loc.X)
 	player.ScrollTPY = int32(loc.Y)
@@ -839,11 +834,7 @@ func (s *ItemUseSystem) UseFixedTeleportScroll(sess *net.Session, player *world.
 	handler.SendWeightUpdate(sess, player)
 
 	// 出發特效 + 延遲 2 tick（400ms）傳送，讓客戶端播完特效動畫
-	sendEffectOnPlayer(sess, player.CharID, 169)
-	oldNearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
-	for _, viewer := range oldNearby {
-		sendEffectOnPlayer(viewer.Session, player.CharID, 169)
-	}
+	s.BroadcastEffect(sess, player, 169)
 	player.ScrollTPTick = 2
 	player.ScrollTPX = itemInfo.LocX
 	player.ScrollTPY = itemInfo.LocY
@@ -1123,7 +1114,7 @@ func (s *ItemUseSystem) ApplyHaste(sess *net.Session, player *world.PlayerInfo, 
 	player.HasteTicks = buff.TicksLeft
 
 	sendSpeedPacket(sess, player.CharID, 1, uint16(durationSec))
-	nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	nearby := s.itemUseViewers(player, sess.ID)
 	for _, other := range nearby {
 		sendSpeedPacket(other.Session, player.CharID, 1, 0)
 	}
@@ -1133,7 +1124,7 @@ func (s *ItemUseSystem) ApplyHaste(sess *net.Session, player *world.PlayerInfo, 
 // BroadcastEffect 向自己和附近玩家廣播特效。
 func (s *ItemUseSystem) BroadcastEffect(sess *net.Session, player *world.PlayerInfo, gfxID int32) {
 	sendEffectOnPlayer(sess, player.CharID, gfxID)
-	nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	nearby := s.itemUseViewers(player, sess.ID)
 	for _, other := range nearby {
 		sendEffectOnPlayer(other.Session, player.CharID, gfxID)
 	}
@@ -1173,7 +1164,7 @@ func (s *ItemUseSystem) applyBrave(sess *net.Session, player *world.PlayerInfo, 
 	player.BraveTicks = buff.TicksLeft
 
 	sendBravePacket(sess, player.CharID, braveType, uint16(durationSec))
-	nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	nearby := s.itemUseViewers(player, sess.ID)
 	for _, other := range nearby {
 		sendBravePacket(other.Session, player.CharID, braveType, 0)
 	}
@@ -1696,7 +1687,7 @@ func (s *ItemUseSystem) UseWand(sess *net.Session, player *world.PlayerInfo, inv
 // useCreateMonsterWand 創造怪物魔杖 — 在玩家位置隨機召喚一隻怪物。
 func (s *ItemUseSystem) useCreateMonsterWand(sess *net.Session, player *world.PlayerInfo, invItem *world.InvItem) {
 	// 廣播魔杖使用動作（Java: ACTION_Wand = 17）
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.itemUseViewers(player, 0)
 	actionData := handler.BuildActionGfx(player.CharID, 17)
 	handler.BroadcastToPlayers(nearby, actionData)
 
@@ -1749,6 +1740,7 @@ func (s *ItemUseSystem) useCreateMonsterWand(sess *net.Session, player *world.Pl
 		AC:                tmpl.AC,
 		STR:               tmpl.STR,
 		DEX:               tmpl.DEX,
+		Intel:             tmpl.INT,
 		Exp:               tmpl.Exp,
 		Lawful:            tmpl.Lawful,
 		Size:              tmpl.Size,
@@ -1760,9 +1752,12 @@ func (s *ItemUseSystem) useCreateMonsterWand(sess *net.Session, player *world.Pl
 		Hard:              tmpl.Hard,
 		CantResurrect:     tmpl.CantResurrect,
 		Agro:              tmpl.Agro,
+		Family:            tmpl.Family,
+		AgroFamily:        tmpl.AgroFamily,
 		AtkDmg:            int32(tmpl.Level) + int32(tmpl.STR)/3,
 		Ranged:            tmpl.Ranged,
 		AtkSpeed:          atkSpeed,
+		AtkMagicSpeed:     tmpl.AtkMagicSpeed,
 		SubMagicSpeed:     tmpl.SubMagicSpeed,
 		MoveSpeed:         moveSpeed,
 		PoisonAtk:         tmpl.PoisonAtk,
@@ -1811,7 +1806,7 @@ func (s *ItemUseSystem) useLightningWand(sess *net.Session, player *world.Player
 	const lightningGfx = 6598 // 閃電動畫 GFX ID
 
 	// 廣播魔杖使用動作（Java: ACTION_Wand = 17）
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.itemUseViewers(player, 0)
 	actionData := handler.BuildActionGfx(player.CharID, 17)
 	handler.BroadcastToPlayers(nearby, actionData)
 
@@ -1834,7 +1829,7 @@ func (s *ItemUseSystem) useLightningWand(sess *net.Session, player *world.Player
 		}
 
 		// 累加仇恨
-		AddHate(npc, player.SessionID, dmg)
+		AddPlayerHateLikeJava(s.deps.World, npc, player, dmg)
 
 		// 受傷動畫
 		dmgData := handler.BuildActionGfx(npc.ID, 2) // ACTION_Damage = 2
@@ -1928,7 +1923,7 @@ func (s *ItemUseSystem) usePolyMorphWand(sess *net.Session, player *world.Player
 	}
 
 	// 廣播魔杖使用動作（Java: ACTION_Wand = 17）
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.itemUseViewers(player, 0)
 	actionData := handler.BuildActionGfx(player.CharID, 17)
 	handler.BroadcastToPlayers(nearby, actionData)
 

@@ -45,7 +45,7 @@ func (s *DeathSystem) KillPlayer(player *world.PlayerInfo) {
 	s.deps.World.VacateEntity(player.MapID, player.X, player.Y, player.CharID)
 
 	// 廣播死亡動畫
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	for _, viewer := range nearby {
 		handler.SendActionGfx(viewer.Session, player.CharID, 8) // ACTION_Die = 8
 	}
@@ -123,7 +123,7 @@ func (s *DeathSystem) ProcessRestart(sess *net.Session, player *world.PlayerInfo
 	}
 
 	// 廣播從舊位置移除
-	nearby := s.deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, sess.ID, player.ShowID)
 	for _, other := range nearby {
 		handler.SendRemoveObject(other.Session, player.CharID)
 	}
@@ -158,7 +158,7 @@ func (s *DeathSystem) ProcessRestart(sess *net.Session, player *world.PlayerInfo
 	}
 
 	// 發送附近玩家 + 填入 Known
-	newNearby := s.deps.World.GetNearbyPlayers(rx, ry, rmap, sess.ID)
+	newNearby := s.deps.World.GetNearbyPlayersInShow(rx, ry, rmap, sess.ID, player.ShowID)
 	for _, other := range newNearby {
 		handler.SendPutObject(other.Session, player)
 		handler.SendPutObject(sess, other)
@@ -166,21 +166,21 @@ func (s *DeathSystem) ProcessRestart(sess *net.Session, player *world.PlayerInfo
 	}
 
 	// 發送附近 NPC + 填入 Known
-	nearbyNpcs := s.deps.World.GetNearbyNpcs(rx, ry, rmap)
+	nearbyNpcs := s.deps.World.GetNearbyNpcsInShow(rx, ry, rmap, player.ShowID)
 	for _, npc := range nearbyNpcs {
 		handler.SendNpcPack(sess, npc)
 		player.Known.Npcs[npc.ID] = world.KnownPos{X: npc.X, Y: npc.Y}
 	}
 
 	// 發送附近地面物品 + 填入 Known
-	nearbyGnd := s.deps.World.GetNearbyGroundItems(rx, ry, rmap)
+	nearbyGnd := s.deps.World.GetNearbyGroundItemsInShow(rx, ry, rmap, player.ShowID)
 	for _, g := range nearbyGnd {
 		handler.SendDropItem(sess, g)
 		player.Known.GroundItems[g.ID] = world.KnownPos{X: g.X, Y: g.Y}
 	}
 
 	// 發送附近召喚獸 + 填入 Known
-	nearbySums := s.deps.World.GetNearbySummons(rx, ry, rmap)
+	nearbySums := s.deps.World.GetNearbySummonsInShow(rx, ry, rmap, player.ShowID)
 	for _, sum := range nearbySums {
 		isOwner := sum.OwnerCharID == player.CharID
 		masterName := ""
@@ -192,7 +192,7 @@ func (s *DeathSystem) ProcessRestart(sess *net.Session, player *world.PlayerInfo
 	}
 
 	// 發送附近魔法娃娃 + 填入 Known
-	nearbyDolls := s.deps.World.GetNearbyDolls(rx, ry, rmap)
+	nearbyDolls := s.deps.World.GetNearbyDollsInShow(rx, ry, rmap, player.ShowID)
 	for _, doll := range nearbyDolls {
 		masterName := ""
 		if m := s.deps.World.GetByCharID(doll.OwnerCharID); m != nil {
@@ -202,15 +202,26 @@ func (s *DeathSystem) ProcessRestart(sess *net.Session, player *world.PlayerInfo
 		player.Known.Dolls[doll.ID] = world.KnownPos{X: doll.X, Y: doll.Y}
 	}
 
+	// 發送附近隨身祭司 + 填入 Known
+	nearbyHierarchs := s.deps.World.GetNearbyHierarchsInShow(rx, ry, rmap, player.ShowID)
+	for _, h := range nearbyHierarchs {
+		masterName := ""
+		if m := s.deps.World.GetByCharID(h.OwnerCharID); m != nil {
+			masterName = m.Name
+		}
+		handler.SendHierarchPack(sess, h, masterName)
+		player.Known.Hierarchs[h.ID] = world.KnownPos{X: h.X, Y: h.Y}
+	}
+
 	// 發送附近隨從 + 填入 Known
-	nearbyFollowers := s.deps.World.GetNearbyFollowers(rx, ry, rmap)
+	nearbyFollowers := s.deps.World.GetNearbyFollowersInShow(rx, ry, rmap, player.ShowID)
 	for _, f := range nearbyFollowers {
 		handler.SendFollowerPack(sess, f)
 		player.Known.Followers[f.ID] = world.KnownPos{X: f.X, Y: f.Y}
 	}
 
 	// 發送附近寵物 + 填入 Known
-	nearbyPets := s.deps.World.GetNearbyPets(rx, ry, rmap)
+	nearbyPets := s.deps.World.GetNearbyPetsInShow(rx, ry, rmap, player.ShowID)
 	for _, pet := range nearbyPets {
 		isOwner := pet.OwnerCharID == player.CharID
 		masterName := ""
@@ -259,6 +270,7 @@ func (s *DeathSystem) spawnPlayerTomb(player *world.PlayerInfo) {
 		X:            player.X,
 		Y:            player.Y,
 		MapID:        player.MapID,
+		ShowID:       player.ShowID,
 		OwnerCharID:  player.CharID,
 		OwnerSession: player.SessionID,
 		OwnerName:    player.Name,
@@ -270,7 +282,7 @@ func (s *DeathSystem) spawnPlayerTomb(player *world.PlayerInfo) {
 	s.deps.World.AddGroundEffect(tomb)
 	player.TombEffectID = tomb.ID
 
-	nearby := s.deps.World.GetNearbyPlayersAt(tomb.X, tomb.Y, tomb.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(tomb.X, tomb.Y, tomb.MapID, 0, tomb.ShowID)
 	actionData := handler.BuildActionGfx(tomb.ID, 4) // yiwei: gfx 13600 墓碑生成後播放 action 4
 	for _, viewer := range nearby {
 		handler.SendGroundEffectPack(viewer.Session, tomb)
@@ -291,7 +303,7 @@ func clearPlayerTomb(ws *world.State, player *world.PlayerInfo) {
 	if tomb == nil {
 		return
 	}
-	nearby := ws.GetNearbyPlayersAt(tomb.X, tomb.Y, tomb.MapID)
+	nearby := ws.GetNearbyPlayersInShow(tomb.X, tomb.Y, tomb.MapID, 0, tomb.ShowID)
 	actionData := handler.BuildActionGfx(tomb.ID, 8)
 	removeData := handler.BuildRemoveObject(tomb.ID)
 	for _, viewer := range nearby {

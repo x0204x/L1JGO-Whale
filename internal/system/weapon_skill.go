@@ -150,7 +150,7 @@ func processWeaponSkillAoE(player *world.PlayerInfo, primaryTarget *world.NpcInf
 		}
 
 		// 武器技能傷害累加仇恨
-		AddHate(target, player.SessionID, int32(dmg))
+		AddPlayerHateLikeJava(ws, target, player, int32(dmg))
 
 		// 廣播受傷動畫
 		for _, viewer := range nearby {
@@ -185,9 +185,9 @@ func calcWeaponSkillDmgReduction(caster *world.PlayerInfo, target *world.NpcInfo
 		return 0
 	}
 
-	// MR 減傷（Java: mrFloor / mrCoefficient）
+	// MR 減傷（Java: L1WeaponSkill.calcDamageReduction）
 	mr := int(target.MR)
-	magicHit := int(caster.SP) // 簡化：用 SP 近似 magic_hit
+	magicHit := shockStunIntMagicHit(caster.Intel) + shockStunBaseIntMagicHit(caster) + int(caster.OriginalMagicHit)
 	var mrFloor float64
 	if mr < 100 {
 		mrFloor = math.Floor(float64(mr-magicHit) / 2)
@@ -255,7 +255,7 @@ func processBaphometStaff(player *world.PlayerInfo, npc *world.NpcInfo, nearby [
 		return 0
 	}
 
-	sp := int(player.SP)
+	sp := calcPlayerSPLikeJava(player)
 	intel := int(player.Intel)
 	bsk := 0.0
 	if player.HasBuff(55) { // Berserker
@@ -321,7 +321,7 @@ func processKiringku(player *world.PlayerInfo, npc *world.NpcInfo, weaponItemID 
 	kiringkuDmg += value
 
 	// INT 係數
-	spByItem := int(player.SP) // 簡化
+	spByItem := int(player.SP)
 	charaIntel := int(player.Intel) + spByItem - 12
 	if charaIntel < 1 {
 		charaIntel = 1
@@ -385,7 +385,7 @@ func processAreaSkillWeapon(player *world.PlayerInfo, npc *world.NpcInfo, weapon
 		return 0
 	}
 
-	sp := int(player.SP)
+	sp := calcPlayerSPLikeJava(player)
 	intel := int(player.Intel)
 	bsk := 0.0
 	if player.HasBuff(55) { // Berserker

@@ -23,7 +23,7 @@ func (s *GroundItemSystem) Phase() coresys.Phase { return coresys.PhasePostUpdat
 func (s *GroundItemSystem) Update(_ time.Duration) {
 	expired := s.world.TickGroundItems()
 	for _, g := range expired {
-		nearby := s.world.GetNearbyPlayersAt(g.X, g.Y, g.MapID)
+		nearby := s.world.GetNearbyPlayersInShow(g.X, g.Y, g.MapID, 0, g.ShowID)
 		data := handler.BuildRemoveObject(g.ID)
 		handler.BroadcastToPlayers(nearby, data)
 	}

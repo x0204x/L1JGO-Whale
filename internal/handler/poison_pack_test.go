@@ -54,6 +54,19 @@ func readPutObjectStatus(t *testing.T, pkt []byte) byte {
 	return r.ReadC()
 }
 
+func readPutObjectActionStatus(t *testing.T, pkt []byte) byte {
+	t.Helper()
+	if len(pkt) == 0 || pkt[0] != packet.S_OPCODE_PUT_OBJECT {
+		t.Fatalf("預期 S_PUT_OBJECT，got=%v", pkt)
+	}
+	r := packet.NewReader(pkt)
+	_ = r.ReadH()
+	_ = r.ReadH()
+	_ = r.ReadD()
+	_ = r.ReadH()
+	return r.ReadC()
+}
+
 func TestSendPutObjectIncludesPoisonStatusBit(t *testing.T) {
 	sess := newPoisonPackTestSession(t)
 	player := &world.PlayerInfo{
@@ -91,5 +104,26 @@ func TestSendNpcPackIncludesPoisonStatusBit(t *testing.T) {
 	status := readPutObjectStatus(t, readFlushedPacket(t, sess))
 	if status&0x01 == 0 {
 		t.Fatalf("中毒 NPC 的 S_PUT_OBJECT status 應帶 poison bit，status=0x%02x", status)
+	}
+}
+
+func TestSendNpcPackUsesSinkHiddenActionStatusLikeJava(t *testing.T) {
+	sess := newPoisonPackTestSession(t)
+	npc := &world.NpcInfo{
+		ID:           2001,
+		NpcID:        45161,
+		NameID:       "$318",
+		Name:         "史巴托",
+		X:            100,
+		Y:            100,
+		MapID:        4,
+		HiddenStatus: world.NpcHiddenSink,
+	}
+
+	SendNpcPack(sess, npc)
+
+	status := readPutObjectActionStatus(t, readFlushedPacket(t, sess))
+	if status != 13 {
+		t.Fatalf("Java S_NPCPack 會把遁地 NPC 的 action status 寫成 13，got=%d", status)
 	}
 }

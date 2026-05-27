@@ -29,12 +29,15 @@ type NpcTemplate struct {
 	Size           string `yaml:"size"`
 	Ranged         int16  `yaml:"ranged"`
 	AtkSpeed       int16  `yaml:"atk_speed"`
+	AtkMagicSpeed  int16  `yaml:"atk_magic_speed"`
 	SubMagicSpeed  int16  `yaml:"sub_magic_speed"`
 	PassiveSpeed   int16  `yaml:"passive_speed"`
 	Undead         bool   `yaml:"undead"`
 	UndeadType     int16  `yaml:"undead_type"`
 	TurnUndeadable *bool  `yaml:"turn_undeadable"`
 	Agro           bool   `yaml:"agro"`
+	Family         string `yaml:"family"`
+	AgroFamily     int16  `yaml:"agro_family"`
 	Tameable       bool   `yaml:"tameable"`
 	Hard           bool   `yaml:"hard"`
 	CantResurrect  bool   `yaml:"cant_resurrect"`

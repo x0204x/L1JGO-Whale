@@ -5,6 +5,7 @@ import (
 
 	"github.com/l1jgo/server/internal/data"
 	"github.com/l1jgo/server/internal/handler"
+	"github.com/l1jgo/server/internal/net/packet"
 	"github.com/l1jgo/server/internal/scripting"
 	"github.com/l1jgo/server/internal/world"
 	"go.uber.org/zap"
@@ -86,6 +87,155 @@ func TestMeleeAttackSkipsNpcBehindWall(t *testing.T) {
 	}
 }
 
+func TestMeleeAttackSkipsNpcInDifferentShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "attacker",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+		ShowID:    0,
+	})
+	npc := &world.NpcInfo{
+		ID:     2001,
+		Impl:   "L1Monster",
+		Name:   "other_show",
+		X:      101,
+		Y:      100,
+		MapID:  900,
+		ShowID: 100,
+		HP:     100,
+		MaxHP:  100,
+	}
+	ws.AddNpc(npc)
+	s := newCombatLOSTestSystem(t, ws, &fakePvPManager{})
+
+	s.processMeleeAttack(player.SessionID, npc.ID)
+
+	if hasOpcodePacket(drainSkillTestPackets(player.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("不同 ShowID 近戰不應送出攻擊封包")
+	}
+	if npc.HP != 100 {
+		t.Fatalf("不同 ShowID 近戰不應傷害 NPC，HP=%d", npc.HP)
+	}
+}
+
+func TestMeleeAttackBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	attacker := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "attacker",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "same_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "other_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    200,
+	})
+	npc := &world.NpcInfo{
+		ID:     2001,
+		Impl:   "L1Monster",
+		Name:   "dummy",
+		X:      101,
+		Y:      100,
+		MapID:  900,
+		ShowID: 100,
+		HP:     100,
+		MaxHP:  100,
+	}
+	ws.AddNpc(npc)
+	s := newCombatLOSTestSystem(t, ws, &fakePvPManager{})
+
+	s.processMeleeAttack(attacker.SessionID, npc.ID)
+
+	if !hasOpcodePacket(drainSkillTestPackets(sameShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("同 ShowID 觀眾應收到近戰攻擊封包")
+	}
+	if hasOpcodePacket(drainSkillTestPackets(otherShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("不同 ShowID 觀眾不應收到近戰攻擊封包")
+	}
+}
+
+func TestMeleeAttackFieldObjectBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	attacker := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "attacker",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "same_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "other_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    200,
+	})
+	npc := &world.NpcInfo{
+		ID:     2001,
+		NpcID:  90000,
+		Impl:   "L1FieldObject",
+		Name:   "field_object",
+		X:      101,
+		Y:      100,
+		MapID:  900,
+		ShowID: 100,
+		HP:     100,
+		MaxHP:  100,
+	}
+	ws.AddNpc(npc)
+	s := newCombatLOSTestSystem(t, ws, &fakePvPManager{})
+
+	s.processMeleeAttack(attacker.SessionID, npc.ID)
+
+	if !hasOpcodePacket(drainSkillTestPackets(sameShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("同 ShowID 觀眾應收到 field object 近戰動畫")
+	}
+	if hasOpcodePacket(drainSkillTestPackets(otherShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("不同 ShowID 觀眾不應收到 field object 近戰動畫")
+	}
+}
+
 func TestRangedAttackSkipsNpcBehindWall(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{
@@ -119,6 +269,217 @@ func TestRangedAttackSkipsNpcBehindWall(t *testing.T) {
 	}
 	if npc.HP != 100 {
 		t.Fatalf("隔牆遠攻不應該傷害 NPC，HP=%d", npc.HP)
+	}
+}
+
+func TestRangedAttackSkipsNpcInDifferentShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:     1,
+		Session:       newSkillTestSession(t, 1),
+		CharID:        1001,
+		Name:          "attacker",
+		X:             100,
+		Y:             100,
+		MapID:         900,
+		ShowID:        0,
+		CurrentWeapon: 20,
+	})
+	player.Equip.Set(world.SlotWeapon, &world.InvItem{ItemID: 190, ObjectID: 5001, Equipped: true})
+	npc := &world.NpcInfo{
+		ID:     2001,
+		Impl:   "L1Monster",
+		Name:   "other_show",
+		X:      101,
+		Y:      100,
+		MapID:  900,
+		ShowID: 100,
+		HP:     100,
+		MaxHP:  100,
+	}
+	ws.AddNpc(npc)
+	s := newCombatLOSTestSystem(t, ws, &fakePvPManager{})
+
+	s.processRangedAttack(player.SessionID, npc.ID)
+
+	if hasOpcodePacket(drainSkillTestPackets(player.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("不同 ShowID 遠攻不應送出攻擊封包")
+	}
+	if npc.HP != 100 {
+		t.Fatalf("不同 ShowID 遠攻不應傷害 NPC，HP=%d", npc.HP)
+	}
+}
+
+func TestRangedAttackBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	attacker := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:     1,
+		Session:       newSkillTestSession(t, 1),
+		CharID:        1001,
+		Name:          "attacker",
+		X:             100,
+		Y:             100,
+		MapID:         900,
+		ShowID:        100,
+		CurrentWeapon: 20,
+	})
+	attacker.Equip.Set(world.SlotWeapon, &world.InvItem{ItemID: 190, ObjectID: 5001, Equipped: true})
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "same_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "other_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    200,
+	})
+	npc := &world.NpcInfo{
+		ID:     2001,
+		Impl:   "L1Monster",
+		Name:   "dummy",
+		X:      101,
+		Y:      100,
+		MapID:  900,
+		ShowID: 100,
+		HP:     100,
+		MaxHP:  100,
+	}
+	ws.AddNpc(npc)
+	s := newCombatLOSTestSystem(t, ws, &fakePvPManager{})
+
+	s.processRangedAttack(attacker.SessionID, npc.ID)
+
+	if !hasOpcodePacket(drainSkillTestPackets(sameShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("同 ShowID 觀眾應收到遠攻封包")
+	}
+	if hasOpcodePacket(drainSkillTestPackets(otherShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("不同 ShowID 觀眾不應收到遠攻封包")
+	}
+}
+
+func TestRangedAttackFieldObjectBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	attacker := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:     1,
+		Session:       newSkillTestSession(t, 1),
+		CharID:        1001,
+		Name:          "attacker",
+		X:             100,
+		Y:             100,
+		MapID:         900,
+		ShowID:        100,
+		CurrentWeapon: 20,
+	})
+	attacker.Equip.Set(world.SlotWeapon, &world.InvItem{ItemID: 190, ObjectID: 5001, Equipped: true})
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "same_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "other_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    200,
+	})
+	npc := &world.NpcInfo{
+		ID:     2001,
+		NpcID:  90000,
+		Impl:   "L1FieldObject",
+		Name:   "field_object",
+		X:      101,
+		Y:      100,
+		MapID:  900,
+		ShowID: 100,
+		HP:     100,
+		MaxHP:  100,
+	}
+	ws.AddNpc(npc)
+	s := newCombatLOSTestSystem(t, ws, &fakePvPManager{})
+
+	s.processRangedAttack(attacker.SessionID, npc.ID)
+
+	if !hasOpcodePacket(drainSkillTestPackets(sameShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("同 ShowID 觀眾應收到 field object 遠攻動畫")
+	}
+	if hasOpcodePacket(drainSkillTestPackets(otherShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("不同 ShowID 觀眾不應收到 field object 遠攻動畫")
+	}
+}
+
+func TestScarecrowHitBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	ws := world.NewState()
+	attacker := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "attacker",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "same_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "other_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    200,
+	})
+	npc := &world.NpcInfo{
+		ID:     2001,
+		Impl:   "L1Scarecrow",
+		Name:   "scarecrow",
+		X:      101,
+		Y:      100,
+		MapID:  900,
+		ShowID: 100,
+		HP:     100,
+		MaxHP:  100,
+	}
+	ws.AddNpc(npc)
+	s := newCombatLOSTestSystem(t, ws, &fakePvPManager{})
+
+	s.processMeleeAttack(attacker.SessionID, npc.ID)
+
+	if !hasOpcodePacket(drainSkillTestPackets(sameShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("同 ShowID 觀眾應收到木人攻擊動畫")
+	}
+	if hasOpcodePacket(drainSkillTestPackets(otherShow.Session), packet.S_OPCODE_ATTACK) {
+		t.Fatalf("不同 ShowID 觀眾不應收到木人攻擊動畫")
 	}
 }
 

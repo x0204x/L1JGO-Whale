@@ -13,6 +13,8 @@ const (
 	fireWallDamageIntervalTicks    = 8
 	cubeEffectIntervalTicks        = 20
 	cubeBalanceDamageIntervalTicks = 25
+	poisonCloudIntervalTicks       = 5
+	poisonCloudDamage              = 100
 	cubeStatusTicks                = 40
 
 	cubeStatusIgnitionAlly  int32 = 1018
@@ -49,6 +51,14 @@ func (s *GroundEffectSystem) Update(_ time.Duration) {
 		if isCubeGroundEffect(effect.Type) {
 			effect.DamageTickAcc++
 			s.applyCubePulse(effect)
+			continue
+		}
+		if effect.Type == world.GroundEffectPoisonCloud {
+			effect.DamageTickAcc++
+			if effect.DamageTickAcc >= poisonCloudIntervalTicks {
+				effect.DamageTickAcc = 0
+				s.applyPoisonCloudDamage(effect)
+			}
 		}
 	}
 
@@ -117,7 +127,7 @@ func npcCubeQuakeImmune(npc *world.NpcInfo) bool {
 }
 
 func (s *GroundEffectSystem) applyCubePulse(effect *world.GroundEffect) {
-	nearby := s.world.GetNearbyPlayersAt(effect.X, effect.Y, effect.MapID)
+	nearby := s.world.GetNearbyPlayersInShow(effect.X, effect.Y, effect.MapID, 0, effect.ShowID)
 	for _, target := range nearby {
 		if target == nil || target.Dead {
 			continue
@@ -135,7 +145,7 @@ func (s *GroundEffectSystem) applyCubePulse(effect *world.GroundEffect) {
 		s.applyCubeEnemy(effect, target, nearby)
 	}
 
-	for _, npc := range s.world.GetNearbyNpcs(effect.X, effect.Y, effect.MapID) {
+	for _, npc := range s.world.GetNearbyNpcsInShow(effect.X, effect.Y, effect.MapID, effect.ShowID) {
 		if npc == nil || npc.Dead || npc.Impl == "L1Effect" {
 			continue
 		}
@@ -351,7 +361,7 @@ func (s *GroundEffectSystem) broadcastCubeGfx(effect *world.GroundEffect, target
 }
 
 func (s *GroundEffectSystem) broadcastRemove(effect *world.GroundEffect) {
-	nearby := s.world.GetNearbyPlayersAt(effect.X, effect.Y, effect.MapID)
+	nearby := s.world.GetNearbyPlayersInShow(effect.X, effect.Y, effect.MapID, 0, effect.ShowID)
 	data := handler.BuildRemoveObject(effect.ID)
 	for _, viewer := range nearby {
 		viewer.Session.Send(data)
@@ -362,7 +372,7 @@ func (s *GroundEffectSystem) broadcastRemove(effect *world.GroundEffect) {
 }
 
 func (s *GroundEffectSystem) applyFireWallDamage(effect *world.GroundEffect) {
-	nearby := s.world.GetNearbyPlayersAt(effect.X, effect.Y, effect.MapID)
+	nearby := s.world.GetNearbyPlayersInShow(effect.X, effect.Y, effect.MapID, 0, effect.ShowID)
 	for _, target := range nearby {
 		if target == nil || target.Dead || target.CharID == effect.OwnerCharID {
 			continue
@@ -400,7 +410,7 @@ func (s *GroundEffectSystem) applyFireWallDamage(effect *world.GroundEffect) {
 		sendHpUpdate(target.Session, target)
 	}
 
-	for _, npc := range s.world.GetNearbyNpcs(effect.X, effect.Y, effect.MapID) {
+	for _, npc := range s.world.GetNearbyNpcsInShow(effect.X, effect.Y, effect.MapID, effect.ShowID) {
 		if npc == nil || npc.Dead || npc.Impl == "L1Effect" {
 			continue
 		}
@@ -432,6 +442,19 @@ func (s *GroundEffectSystem) applyFireWallDamage(effect *world.GroundEffect) {
 				s.world.NpcDied(npc)
 			}
 		}
+	}
+}
+
+func (s *GroundEffectSystem) applyPoisonCloudDamage(effect *world.GroundEffect) {
+	nearby := s.world.GetNearbyPlayersInShow(effect.X, effect.Y, effect.MapID, 0, effect.ShowID)
+	for _, target := range nearby {
+		if target == nil || target.Dead || isGMInvisible(target) {
+			continue
+		}
+		if target.X != effect.X || target.Y != effect.Y {
+			continue
+		}
+		applyDamagePoisonToPlayer(target, 0, poisonCloudDamage, s.deps)
 	}
 }
 

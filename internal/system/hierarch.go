@@ -49,6 +49,7 @@ func (s *HierarchSystem) UseHierarch(sess *net.Session, player *world.PlayerInfo
 		X:             player.X + int32(world.RandInt(3)) - 1,
 		Y:             player.Y + int32(world.RandInt(3)) - 1,
 		MapID:         player.MapID,
+		ShowID:        player.ShowID,
 		Heading:       player.Heading,
 		HP:            def.HP,
 		MaxHP:         def.HP,
@@ -72,7 +73,7 @@ func (s *HierarchSystem) UseHierarch(sess *net.Session, player *world.PlayerInfo
 	ws.AddHierarch(h)
 
 	// 廣播外觀
-	nearby := ws.GetNearbyPlayersAt(h.X, h.Y, h.MapID)
+	nearby := companionViewersAt(ws, h.X, h.Y, h.MapID, h.ShowID)
 	for _, viewer := range nearby {
 		handler.SendHierarchPack(viewer.Session, h, player.Name)
 	}
@@ -90,7 +91,7 @@ func (s *HierarchSystem) dismissHierarch(h *world.HierarchInfo, player *world.Pl
 	ws.RemoveHierarch(h.ID)
 
 	// 廣播移除
-	nearby := ws.GetNearbyPlayersAt(h.X, h.Y, h.MapID)
+	nearby := companionViewersAt(ws, h.X, h.Y, h.MapID, h.ShowID)
 	for _, viewer := range nearby {
 		handler.SendRemoveObject(viewer.Session, h.ID)
 	}

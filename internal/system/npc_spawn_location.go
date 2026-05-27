@@ -31,12 +31,13 @@ type NpcSpawnRule struct {
 func FindNpcSpawnPoint(rule NpcSpawnRule, ws *world.State, maps npcSpawnMap, excludeID int32, rng *rand.Rand) (int32, int32, bool) {
 	var fallbackX, fallbackY int32
 	hasFallback := false
+	avoidPC := rule.AvoidPC
 	for i := 0; i < 50; i++ {
 		x, y := randomSpawnCandidate(rule, rng)
-		if isValidNpcSpawnPoint(rule.MapID, x, y, ws, maps, excludeID, rule.AvoidPC && !rule.RespawnScreen) {
+		if isValidNpcSpawnPoint(rule.MapID, x, y, ws, maps, excludeID, avoidPC) {
 			return x, y, true
 		}
-		if !hasFallback && isUsableNpcFallbackPoint(rule.MapID, x, y, ws, excludeID, rule.AvoidPC && !rule.RespawnScreen) {
+		if !hasFallback && isUsableNpcFallbackPoint(rule.MapID, x, y, ws, excludeID, avoidPC) {
 			fallbackX, fallbackY, hasFallback = x, y, true
 		}
 	}
@@ -44,10 +45,10 @@ func FindNpcSpawnPoint(rule NpcSpawnRule, ws *world.State, maps npcSpawnMap, exc
 	if isAreaSpawnRule(rule) {
 		for x := rule.LocX1; x < rule.LocX2; x++ {
 			for y := rule.LocY1; y < rule.LocY2; y++ {
-				if isValidNpcSpawnPoint(rule.MapID, x, y, ws, maps, excludeID, rule.AvoidPC && !rule.RespawnScreen) {
+				if isValidNpcSpawnPoint(rule.MapID, x, y, ws, maps, excludeID, avoidPC) {
 					return x, y, true
 				}
-				if !hasFallback && isUsableNpcFallbackPoint(rule.MapID, x, y, ws, excludeID, rule.AvoidPC && !rule.RespawnScreen) {
+				if !hasFallback && isUsableNpcFallbackPoint(rule.MapID, x, y, ws, excludeID, avoidPC) {
 					fallbackX, fallbackY, hasFallback = x, y, true
 				}
 			}
@@ -57,19 +58,19 @@ func FindNpcSpawnPoint(rule NpcSpawnRule, ws *world.State, maps npcSpawnMap, exc
 	maxRadius := spawnSearchRadius(rule)
 	for radius := int32(1); radius <= maxRadius; radius++ {
 		for _, pt := range ringCandidates(rule.X, rule.Y, radius) {
-			if isValidNpcSpawnPoint(rule.MapID, pt[0], pt[1], ws, maps, excludeID, rule.AvoidPC && !rule.RespawnScreen) {
+			if isValidNpcSpawnPoint(rule.MapID, pt[0], pt[1], ws, maps, excludeID, avoidPC) {
 				return pt[0], pt[1], true
 			}
-			if !hasFallback && isUsableNpcFallbackPoint(rule.MapID, pt[0], pt[1], ws, excludeID, rule.AvoidPC && !rule.RespawnScreen) {
+			if !hasFallback && isUsableNpcFallbackPoint(rule.MapID, pt[0], pt[1], ws, excludeID, avoidPC) {
 				fallbackX, fallbackY, hasFallback = pt[0], pt[1], true
 			}
 		}
 	}
 
-	if isValidNpcSpawnPoint(rule.MapID, rule.X, rule.Y, ws, maps, excludeID, rule.AvoidPC && !rule.RespawnScreen) {
+	if isValidNpcSpawnPoint(rule.MapID, rule.X, rule.Y, ws, maps, excludeID, avoidPC) {
 		return rule.X, rule.Y, true
 	}
-	if isUsableNpcFallbackPoint(rule.MapID, rule.X, rule.Y, ws, excludeID, rule.AvoidPC && !rule.RespawnScreen) {
+	if isUsableNpcFallbackPoint(rule.MapID, rule.X, rule.Y, ws, excludeID, avoidPC) {
 		return rule.X, rule.Y, true
 	}
 	if hasFallback {

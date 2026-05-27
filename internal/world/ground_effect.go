@@ -5,16 +5,18 @@ import "sync/atomic"
 type GroundEffectType byte
 
 const (
-	GroundEffectFireWall     GroundEffectType = 1
-	GroundEffectLifeStream   GroundEffectType = 2
-	GroundEffectCubeIgnition GroundEffectType = 3
-	GroundEffectCubeQuake    GroundEffectType = 4
-	GroundEffectCubeShock    GroundEffectType = 5
-	GroundEffectCubeBalance  GroundEffectType = 6
-	GroundEffectTomb         GroundEffectType = 7
-	GroundEffectShockStun    GroundEffectType = 8
-	GroundEffectThunderGrab  GroundEffectType = 9
+	GroundEffectFireWall       GroundEffectType = 1
+	GroundEffectLifeStream     GroundEffectType = 2
+	GroundEffectCubeIgnition   GroundEffectType = 3
+	GroundEffectCubeQuake      GroundEffectType = 4
+	GroundEffectCubeShock      GroundEffectType = 5
+	GroundEffectCubeBalance    GroundEffectType = 6
+	GroundEffectTomb           GroundEffectType = 7
+	GroundEffectShockStun      GroundEffectType = 8
+	GroundEffectThunderGrab    GroundEffectType = 9
 	GroundEffectFreezingBreath GroundEffectType = 10
+	GroundEffectPoisonCloud    GroundEffectType = 11
+	GroundEffectNpcEffect      GroundEffectType = 12
 )
 
 const (
@@ -41,6 +43,7 @@ type GroundEffect struct {
 	X             int32
 	Y             int32
 	MapID         int16
+	ShowID        int32
 	Heading       int16
 	LightSize     byte
 	OwnerCharID   int32

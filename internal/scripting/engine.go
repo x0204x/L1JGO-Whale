@@ -78,6 +78,7 @@ func (e *Engine) loadDir(dir string) error {
 type CombatContext struct {
 	AttackerLevel   int
 	AttackerSTR     int
+	AttackerBaseSTR int
 	AttackerDEX     int
 	AttackerWeapon  int // max weapon damage (0 = fist = 4)
 	AttackerHitMod  int // equipment hit modifier
@@ -86,6 +87,7 @@ type CombatContext struct {
 	TargetLevel     int
 	TargetMR        int
 	TargetClassType int // 目標職業（-1=NPC, 0-7=玩家職業）— AC 防禦加成用
+	TargetDodge     int // ER / ranged evasion
 }
 
 // RangedCombatContext holds pre-packed data for a ranged (bow) attack.
@@ -93,6 +95,7 @@ type RangedCombatContext struct {
 	AttackerLevel     int
 	AttackerSTR       int
 	AttackerDEX       int
+	AttackerBaseDEX   int
 	AttackerBowDmg    int // bow weapon damage
 	AttackerArrowDmg  int // arrow damage bonus
 	AttackerBowHitMod int // bow hit modifier (equipment + buffs)
@@ -101,6 +104,7 @@ type RangedCombatContext struct {
 	TargetLevel       int
 	TargetMR          int
 	TargetClassType   int // 目標職業（-1=NPC, 0-7=玩家職業）
+	TargetDodge       int // ER / ranged evasion
 }
 
 // CombatResult is returned by the Lua combat function.
@@ -123,6 +127,7 @@ func (e *Engine) CalcMeleeAttack(ctx CombatContext) CombatResult {
 	atk := e.vm.NewTable()
 	atk.RawSetString("level", lua.LNumber(ctx.AttackerLevel))
 	atk.RawSetString("str", lua.LNumber(ctx.AttackerSTR))
+	atk.RawSetString("base_str", lua.LNumber(ctx.AttackerBaseSTR))
 	atk.RawSetString("dex", lua.LNumber(ctx.AttackerDEX))
 	atk.RawSetString("weapon_dmg", lua.LNumber(ctx.AttackerWeapon))
 	atk.RawSetString("hit_mod", lua.LNumber(ctx.AttackerHitMod))
@@ -134,6 +139,7 @@ func (e *Engine) CalcMeleeAttack(ctx CombatContext) CombatResult {
 	tgt.RawSetString("level", lua.LNumber(ctx.TargetLevel))
 	tgt.RawSetString("mr", lua.LNumber(ctx.TargetMR))
 	tgt.RawSetString("class_type", lua.LNumber(ctx.TargetClassType))
+	tgt.RawSetString("dodge", lua.LNumber(ctx.TargetDodge))
 	t.RawSetString("target", tgt)
 
 	if err := e.vm.CallByParam(lua.P{
@@ -174,6 +180,7 @@ func (e *Engine) CalcRangedAttack(ctx RangedCombatContext) CombatResult {
 	atk.RawSetString("level", lua.LNumber(ctx.AttackerLevel))
 	atk.RawSetString("str", lua.LNumber(ctx.AttackerSTR))
 	atk.RawSetString("dex", lua.LNumber(ctx.AttackerDEX))
+	atk.RawSetString("base_dex", lua.LNumber(ctx.AttackerBaseDEX))
 	atk.RawSetString("bow_dmg", lua.LNumber(ctx.AttackerBowDmg))
 	atk.RawSetString("arrow_dmg", lua.LNumber(ctx.AttackerArrowDmg))
 	atk.RawSetString("bow_hit_mod", lua.LNumber(ctx.AttackerBowHitMod))
@@ -185,6 +192,7 @@ func (e *Engine) CalcRangedAttack(ctx RangedCombatContext) CombatResult {
 	tgt.RawSetString("level", lua.LNumber(ctx.TargetLevel))
 	tgt.RawSetString("mr", lua.LNumber(ctx.TargetMR))
 	tgt.RawSetString("class_type", lua.LNumber(ctx.TargetClassType))
+	tgt.RawSetString("dodge", lua.LNumber(ctx.TargetDodge))
 	t.RawSetString("target", tgt)
 
 	if err := e.vm.CallByParam(lua.P{
@@ -222,18 +230,25 @@ type SkillDamageContext struct {
 	Attr            int // element: 0=none, 1=earth, 2=fire, 4=water, 8=wind, 16=light
 
 	// Attacker
-	AttackerLevel      int
-	AttackerSTR        int
-	AttackerDEX        int
-	AttackerINT        int
-	AttackerWIS        int
-	AttackerSP         int
-	AttackerDmgMod     int
-	AttackerHitMod     int
-	AttackerWeapon     int // weapon max damage (0 = fist)
-	AttackerHP         int
-	AttackerMaxHP      int
-	AttackerMagicLevel int // 職業魔法等級（get_magic_level 計算結果）
+	AttackerLevel            int
+	AttackerSTR              int
+	AttackerBaseSTR          int
+	AttackerDEX              int
+	AttackerBaseDEX          int
+	AttackerINT              int
+	AttackerBaseINT          int
+	AttackerWIS              int
+	AttackerSP               int
+	AttackerTrueSP           int
+	AttackerFullSP           int
+	AttackerDmgMod           int
+	AttackerHitMod           int
+	AttackerWeapon           int // weapon max damage (0 = fist)
+	AttackerHP               int
+	AttackerMaxHP            int
+	AttackerMagicLevel       int // 相容欄位；新路徑使用 AttackerTrueSP
+	AttackerMagicCrit        int
+	AttackerOriginalMagicHit int
 
 	// Target
 	TargetAC       int
@@ -275,16 +290,31 @@ func (e *Engine) CalcSkillDamage(ctx SkillDamageContext) SkillDamageResult {
 	atk := e.vm.NewTable()
 	atk.RawSetString("level", lua.LNumber(ctx.AttackerLevel))
 	atk.RawSetString("str", lua.LNumber(ctx.AttackerSTR))
+	atk.RawSetString("base_str", lua.LNumber(ctx.AttackerBaseSTR))
 	atk.RawSetString("dex", lua.LNumber(ctx.AttackerDEX))
+	atk.RawSetString("base_dex", lua.LNumber(ctx.AttackerBaseDEX))
 	atk.RawSetString("intel", lua.LNumber(ctx.AttackerINT))
+	atk.RawSetString("base_int", lua.LNumber(ctx.AttackerBaseINT))
 	atk.RawSetString("wis", lua.LNumber(ctx.AttackerWIS))
 	atk.RawSetString("sp", lua.LNumber(ctx.AttackerSP))
+	trueSP := ctx.AttackerTrueSP
+	if trueSP == 0 && ctx.AttackerMagicLevel != 0 {
+		trueSP = ctx.AttackerMagicLevel
+	}
+	fullSP := ctx.AttackerFullSP
+	if fullSP == 0 {
+		fullSP = trueSP + ctx.AttackerSP
+	}
+	atk.RawSetString("true_sp", lua.LNumber(trueSP))
+	atk.RawSetString("full_sp", lua.LNumber(fullSP))
 	atk.RawSetString("dmg_mod", lua.LNumber(ctx.AttackerDmgMod))
 	atk.RawSetString("hit_mod", lua.LNumber(ctx.AttackerHitMod))
 	atk.RawSetString("weapon_dmg", lua.LNumber(ctx.AttackerWeapon))
 	atk.RawSetString("hp", lua.LNumber(ctx.AttackerHP))
 	atk.RawSetString("max_hp", lua.LNumber(ctx.AttackerMaxHP))
 	atk.RawSetString("magic_level", lua.LNumber(ctx.AttackerMagicLevel))
+	atk.RawSetString("magic_critical", lua.LNumber(ctx.AttackerMagicCrit))
+	atk.RawSetString("original_magic_hit", lua.LNumber(ctx.AttackerOriginalMagicHit))
 	t.RawSetString("attacker", atk)
 
 	tgt := e.vm.NewTable()
@@ -532,8 +562,8 @@ func (e *Engine) GetPotionEffect(itemID int) *PotionEffect {
 // --- Heal Formula Bridge ---
 
 // CalcHeal calls Lua calc_heal_amount(skill_data, caster_data).
-func (e *Engine) CalcHeal(damageValue, damageDice, damageDiceCount, intel, sp int) int {
-	return e.callIntFunc("calc_heal_amount", damageValue, damageDice, damageDiceCount, intel, sp)
+func (e *Engine) CalcHeal(damageValue, damageDice, damageDiceCount, intel, lawful, leverage int) int {
+	return e.callIntFunc("calc_heal_amount", damageValue, damageDice, damageDiceCount, intel, lawful, leverage)
 }
 
 // --- Character Creation Bridge ---
@@ -793,7 +823,7 @@ func (e *Engine) CalcDeathExpPenalty(level, exp int) int {
 
 // EnchantContext holds data for enchant scroll calculation.
 type EnchantContext struct {
-	ScrollBless  int     // 0=normal, 1=blessed, 2=cursed
+	ScrollBless  int     // 0=blessed, 1=normal, 2=cursed (對齊 Java/DB 慣例)
 	EnchantLvl   int     // current enchant level
 	SafeEnchant  int     // safe enchant threshold
 	Category     int     // 1=weapon, 2=armor
@@ -851,19 +881,29 @@ func (e *Engine) CalcEnchant(ctx EnchantContext) EnchantResult {
 
 // MobSkillEntry holds a single mob skill passed into AI context.
 type MobSkillEntry struct {
-	SkillID       int
-	Type          int // 1=物理, 2=魔法, 3=召喚, 5=範圍衝暈
-	MpConsume     int
-	TriggerRandom int
-	TriggerHP     int
-	TriggerRange  int
-	ActID         int
-	GfxID         int   // mob-specific override for spell effect (0 = use skill's CastGfx)
-	Leverage      int   // 物理技能傷害倍率（type 1 用，damage = STR * leverage / 10）
-	ChangeTarget  int   // 0=攻擊目標, 1=不變, 2=自己, 3=隨機
-	SummonID      int32 // 召喚 NPC ID（type 3 用）
-	SummonMin     int   // 召喚最小數量
-	SummonMax     int   // 召喚最大數量
+	ActNo              int
+	SkillID            int
+	Type               int // 1=物理, 2=魔法, 3=召喚, 4=群體變形, 5=範圍衝暈
+	MpConsume          int
+	TriggerRandom      int
+	TriggerHP          int
+	TriggerCompanionHP int
+	TriggerRange       int
+	TriggerCount       int
+	ReuseDelay         int
+	TargetDist         int
+	Range              int
+	AreaWidth          int
+	AreaHeight         int
+	ActID              int
+	GfxID              int // mob-specific override for spell effect (0 = use skill's CastGfx)
+	Leverage           int // 物理技能傷害倍率（type 1 用，damage = STR * leverage / 10）
+	ChangeTarget       int // 0=攻擊目標, 1=不變, 2=自己, 3=隨機
+	CompanionTargetID  int32
+	SummonID           int32 // 召喚 NPC ID（type 3 用）
+	SummonMin          int   // 召喚最小數量
+	SummonMax          int   // 召喚最大數量
+	PolyID             int32 // 變形 GFX ID（type 4 用）
 }
 
 // AIContext holds pre-packed data for NPC AI decisions.
@@ -902,16 +942,25 @@ type AIContext struct {
 
 // AICommand is a single action returned by Lua AI.
 type AICommand struct {
-	Type         string // "attack", "ranged_attack", "skill", "move_toward", "wander", "lose_aggro", "idle", "flee", "summon", "area_shock_stun"
-	SkillID      int
-	ActID        int
-	GfxID        int   // mob-specific spell effect override (0 = use skill's CastGfx)
-	Leverage     int   // 物理技能傷害倍率（type 1 用）
-	Dir          int   // heading 0-7 for wander (-1 = continue current)
-	ChangeTarget int   // 0/1=攻擊目標, 2=自己
-	SummonID     int32 // 召喚 NPC ID
-	SummonMin    int
-	SummonMax    int
+	Type              string // "attack", "ranged_attack", "skill", "move_toward", "wander", "lose_aggro", "idle", "flee", "summon", "poly", "area_shock_stun"
+	ActNo             int
+	SkillType         int
+	SkillID           int
+	ActID             int
+	GfxID             int   // mob-specific spell effect override (0 = use skill's CastGfx)
+	Leverage          int   // 物理技能傷害倍率（type 1 用）
+	Dir               int   // heading 0-7 for wander (-1 = continue current)
+	ChangeTarget      int   // 0/1=攻擊目標, 2=自己
+	TriggerRange      int   // Yiwei mobskill TriRange，change_target=3 重新選目標時使用
+	ReuseDelay        int   // Yiwei mobskill reuseDelay, milliseconds
+	Range             int   // Yiwei mobskill range column
+	AreaWidth         int   // Yiwei mobskill area_width column
+	AreaHeight        int   // Yiwei mobskill area_height column
+	CompanionTargetID int32 // Yiwei TriCompanionHp 重新指定的 NPC 目標
+	SummonID          int32 // 召喚 NPC ID
+	SummonMin         int
+	SummonMax         int
+	PolyID            int32 // 變形 GFX ID
 }
 
 // RunNpcAI calls Lua npc_ai(ctx) and returns a list of commands.
@@ -967,19 +1016,29 @@ func (e *Engine) RunNpcAI(ctx AIContext) []AICommand {
 	skillsTbl := e.vm.NewTable()
 	for i, sk := range ctx.Skills {
 		row := e.vm.NewTable()
+		row.RawSetString("act_no", lua.LNumber(sk.ActNo))
 		row.RawSetString("skill_id", lua.LNumber(sk.SkillID))
 		row.RawSetString("mp_consume", lua.LNumber(sk.MpConsume))
 		row.RawSetString("trigger_random", lua.LNumber(sk.TriggerRandom))
 		row.RawSetString("trigger_hp", lua.LNumber(sk.TriggerHP))
+		row.RawSetString("trigger_companion_hp", lua.LNumber(sk.TriggerCompanionHP))
 		row.RawSetString("trigger_range", lua.LNumber(sk.TriggerRange))
+		row.RawSetString("trigger_count", lua.LNumber(sk.TriggerCount))
+		row.RawSetString("reuse_delay", lua.LNumber(sk.ReuseDelay))
+		row.RawSetString("target_dist", lua.LNumber(sk.TargetDist))
+		row.RawSetString("range", lua.LNumber(sk.Range))
+		row.RawSetString("area_width", lua.LNumber(sk.AreaWidth))
+		row.RawSetString("area_height", lua.LNumber(sk.AreaHeight))
 		row.RawSetString("act_id", lua.LNumber(sk.ActID))
 		row.RawSetString("gfx_id", lua.LNumber(sk.GfxID))
 		row.RawSetString("leverage", lua.LNumber(sk.Leverage))
 		row.RawSetString("type", lua.LNumber(sk.Type))
 		row.RawSetString("change_target", lua.LNumber(sk.ChangeTarget))
+		row.RawSetString("companion_target_id", lua.LNumber(sk.CompanionTargetID))
 		row.RawSetString("summon_id", lua.LNumber(sk.SummonID))
 		row.RawSetString("summon_min", lua.LNumber(sk.SummonMin))
 		row.RawSetString("summon_max", lua.LNumber(sk.SummonMax))
+		row.RawSetString("poly_id", lua.LNumber(sk.PolyID))
 		skillsTbl.RawSetInt(i+1, row)
 	}
 	t.RawSetString("skills", skillsTbl)
@@ -1006,16 +1065,25 @@ func (e *Engine) RunNpcAI(ctx AIContext) []AICommand {
 	rt.ForEach(func(_, v lua.LValue) {
 		if row, ok := v.(*lua.LTable); ok {
 			cmds = append(cmds, AICommand{
-				Type:         lStr(row, "type"),
-				SkillID:      lInt(row, "skill_id"),
-				ActID:        lInt(row, "act_id"),
-				GfxID:        lInt(row, "gfx_id"),
-				Leverage:     lInt(row, "leverage"),
-				Dir:          lInt(row, "dir"),
-				ChangeTarget: lInt(row, "change_target"),
-				SummonID:     int32(lInt(row, "summon_id")),
-				SummonMin:    lInt(row, "summon_min"),
-				SummonMax:    lInt(row, "summon_max"),
+				Type:              lStr(row, "type"),
+				ActNo:             lInt(row, "act_no"),
+				SkillType:         lInt(row, "skill_type"),
+				SkillID:           lInt(row, "skill_id"),
+				ActID:             lInt(row, "act_id"),
+				GfxID:             lInt(row, "gfx_id"),
+				Leverage:          lInt(row, "leverage"),
+				Dir:               lInt(row, "dir"),
+				ChangeTarget:      lInt(row, "change_target"),
+				TriggerRange:      lInt(row, "trigger_range"),
+				ReuseDelay:        lInt(row, "reuse_delay"),
+				Range:             lInt(row, "range"),
+				AreaWidth:         lInt(row, "area_width"),
+				AreaHeight:        lInt(row, "area_height"),
+				CompanionTargetID: int32(lInt(row, "companion_target_id")),
+				SummonID:          int32(lInt(row, "summon_id")),
+				SummonMin:         lInt(row, "summon_min"),
+				SummonMax:         lInt(row, "summon_max"),
+				PolyID:            int32(lInt(row, "poly_id")),
 			})
 		}
 	})
@@ -1044,6 +1112,7 @@ func (e *Engine) CalcNpcMelee(ctx CombatContext) CombatResult {
 	tgt.RawSetString("ac", lua.LNumber(ctx.TargetAC))
 	tgt.RawSetString("level", lua.LNumber(ctx.TargetLevel))
 	tgt.RawSetString("mr", lua.LNumber(ctx.TargetMR))
+	tgt.RawSetString("dodge", lua.LNumber(ctx.TargetDodge))
 	t.RawSetString("target", tgt)
 
 	if err := e.vm.CallByParam(lua.P{
@@ -1091,6 +1160,7 @@ func (e *Engine) CalcNpcRanged(ctx CombatContext) CombatResult {
 	tgt.RawSetString("ac", lua.LNumber(ctx.TargetAC))
 	tgt.RawSetString("level", lua.LNumber(ctx.TargetLevel))
 	tgt.RawSetString("mr", lua.LNumber(ctx.TargetMR))
+	tgt.RawSetString("dodge", lua.LNumber(ctx.TargetDodge))
 	t.RawSetString("target", tgt)
 
 	if err := e.vm.CallByParam(lua.P{

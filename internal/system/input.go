@@ -629,7 +629,7 @@ func (s *InputSystem) cleanupCompanions(player *world.PlayerInfo) {
 	// Remove summons
 	for _, sum := range ws.GetSummonsByOwner(player.CharID) {
 		ws.RemoveSummon(sum.ID)
-		nearby := ws.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+		nearby := ws.GetNearbyPlayersInShow(sum.X, sum.Y, sum.MapID, 0, sum.ShowID)
 		for _, viewer := range nearby {
 			sendCompanionEffectPacket(viewer.Session, sum.ID, 169) // death sound
 			sendRemoveCompanionPacket(viewer.Session, sum.ID)
@@ -639,7 +639,7 @@ func (s *InputSystem) cleanupCompanions(player *world.PlayerInfo) {
 	// Remove dolls (no bonus reversal — player is leaving world)
 	for _, doll := range ws.GetDollsByOwner(player.CharID) {
 		ws.RemoveDoll(doll.ID)
-		nearby := ws.GetNearbyPlayersAt(doll.X, doll.Y, doll.MapID)
+		nearby := ws.GetNearbyPlayersInShow(doll.X, doll.Y, doll.MapID, 0, doll.ShowID)
 		for _, viewer := range nearby {
 			sendCompanionEffectPacket(viewer.Session, doll.ID, 5936) // dismiss sound
 			sendRemoveCompanionPacket(viewer.Session, doll.ID)
@@ -649,7 +649,7 @@ func (s *InputSystem) cleanupCompanions(player *world.PlayerInfo) {
 	// Remove hierarch (no persistence — item-based, disappears on logout)
 	if h := ws.GetHierarchByOwner(player.CharID); h != nil {
 		ws.RemoveHierarch(h.ID)
-		nearby := ws.GetNearbyPlayersAt(h.X, h.Y, h.MapID)
+		nearby := ws.GetNearbyPlayersInShow(h.X, h.Y, h.MapID, 0, h.ShowID)
 		for _, viewer := range nearby {
 			sendCompanionEffectPacket(viewer.Session, h.ID, 5936)
 			sendRemoveCompanionPacket(viewer.Session, h.ID)
@@ -677,7 +677,7 @@ func (s *InputSystem) cleanupCompanions(player *world.PlayerInfo) {
 			cancel()
 		}
 		ws.RemovePet(pet.ID)
-		nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+		nearby := ws.GetNearbyPlayersInShow(pet.X, pet.Y, pet.MapID, 0, pet.ShowID)
 		for _, viewer := range nearby {
 			sendRemoveCompanionPacket(viewer.Session, pet.ID)
 		}
@@ -686,7 +686,7 @@ func (s *InputSystem) cleanupCompanions(player *world.PlayerInfo) {
 	// Remove follower — respawn original NPC at spawn location
 	if f := ws.GetFollowerByOwner(player.CharID); f != nil {
 		ws.RemoveFollower(f.ID)
-		nearby := ws.GetNearbyPlayersAt(f.X, f.Y, f.MapID)
+		nearby := ws.GetNearbyPlayersInShow(f.X, f.Y, f.MapID, 0, f.ShowID)
 		for _, viewer := range nearby {
 			sendRemoveCompanionPacket(viewer.Session, f.ID)
 		}
@@ -706,12 +706,13 @@ func (s *InputSystem) cleanupCompanions(player *world.PlayerInfo) {
 				X:          f.SpawnX,
 				Y:          f.SpawnY,
 				MapID:      f.SpawnMapID,
+				ShowID:     f.ShowID,
 				SpawnX:     f.SpawnX,
 				SpawnY:     f.SpawnY,
 				SpawnMapID: f.SpawnMapID,
 			}
 			ws.AddNpc(npc)
-			respawnNearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+			respawnNearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
 			for _, viewer := range respawnNearby {
 				sendNpcPackForInput(viewer.Session, npc)
 			}
@@ -746,6 +747,8 @@ func sendNpcPackForInput(sess *net.Session, npc *world.NpcInfo) {
 	status := byte(0)
 	if npc.Dead {
 		status = 8
+	} else {
+		status = world.NpcActionStatus(npc)
 	}
 	w.WriteC(status)
 	w.WriteC(byte(npc.Heading))

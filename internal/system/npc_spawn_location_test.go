@@ -91,3 +91,30 @@ func TestFindNpcSpawnPointRejectsOccupiedTile(t *testing.T) {
 		t.Fatalf("替代座標必須可通行，got (%d,%d)", x, y)
 	}
 }
+
+func TestFindNpcSpawnPointAvoidsPlayersEvenWhenRespawnScreenLikeJava(t *testing.T) {
+	ws := world.NewState()
+	ws.AddPlayer(&world.PlayerInfo{SessionID: 1, CharID: 1001, Name: "pc", X: 100, Y: 119, MapID: 1})
+	maps := fakeSpawnMap{passable: map[[2]int32]bool{
+		{100, 100}: true,
+		{100, 97}:  true,
+	}}
+
+	x, y, ok := FindNpcSpawnPoint(NpcSpawnRule{
+		MapID:         1,
+		X:             100,
+		Y:             100,
+		AvoidPC:       true,
+		RespawnScreen: true,
+	}, ws, maps, 0, rand.New(rand.NewSource(1)))
+
+	if !ok {
+		t.Fatal("respawn_screen=true 仍應可在避開玩家後找到生成座標")
+	}
+	if x == 100 && y == 100 {
+		t.Fatal("yiwei 會先套用 avoid_pc，再判斷 respawn_screen；不可直接生成在玩家畫面內")
+	}
+	if x != 100 || y != 97 {
+		t.Fatalf("應選擇第一個避開玩家畫面的可通行替代座標，got (%d,%d)", x, y)
+	}
+}

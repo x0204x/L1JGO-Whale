@@ -146,6 +146,14 @@ func TestSkillStatusCancelCancellationWorksOnSelfAndKeepsNonCancellableBuff(t *t
 	}
 }
 
+func TestSkillStatusRemovedWarriorSkillsAreNotCounterMagicExemptFor380C(t *testing.T) {
+	for _, skillID := range []int32{226, 228, 230} {
+		if counterMagicExempt[skillID] {
+			t.Fatalf("3.80C 已剔除的戰士技能 %d 不應留在反魔法豁免表", skillID)
+		}
+	}
+}
+
 func TestSkillStatusCancelNpcKeepsShockStunDebuffLikeJava(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{

@@ -28,7 +28,7 @@ func (s *PrivateShopSystem) SetupShop(player *world.PlayerInfo, sellList []*worl
 	player.ShopBuyList = buyList
 	player.ShopChat = shopChat
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.privateShopViewers(player)
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, 3)) // 先取消原有動作
 	shopData := handler.BuildShopAction(player.CharID, shopChat)
 	handler.BroadcastToPlayers(nearby, shopData)
@@ -42,7 +42,7 @@ func (s *PrivateShopSystem) CloseShop(player *world.PlayerInfo) {
 	player.ShopChat = nil
 	player.ShopTradingLocked = false
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.privateShopViewers(player)
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, 3))
 }
 
@@ -52,8 +52,12 @@ func (s *PrivateShopSystem) CancelShopNotTradable(player *world.PlayerInfo) {
 	player.ShopSellList = nil
 	player.ShopBuyList = nil
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.privateShopViewers(player)
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, 3))
+}
+
+func (s *PrivateShopSystem) privateShopViewers(player *world.PlayerInfo) []*world.PlayerInfo {
+	return s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 }
 
 // ExecuteBuy 執行從個人商店購買物品（業務驗證 + 物品/金幣轉移 + 售完清理）。

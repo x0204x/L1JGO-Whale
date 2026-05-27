@@ -96,7 +96,7 @@ func (s *CompanionAISystem) tickSummons() {
 			if dist > 5 {
 				sum.AggroTarget = 0
 				if sum.MoveTimer <= 0 {
-					s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, master.X, master.Y,
+					s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, sum.ShowID, master.X, master.Y,
 						func(id int32, x, y int32, h int16) { ws.UpdateSummonPosition(id, x, y, h) })
 					sum.MoveTimer = 2
 				}
@@ -104,7 +104,7 @@ func (s *CompanionAISystem) tickSummons() {
 			}
 			// Priority 2: Follow master if > 2 tiles and no target
 			if dist > 2 && sum.AggroTarget == 0 && sum.MoveTimer <= 0 {
-				s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, master.X, master.Y,
+				s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, sum.ShowID, master.X, master.Y,
 					func(id int32, x, y int32, h int16) { ws.UpdateSummonPosition(id, x, y, h) })
 				sum.MoveTimer = 2
 			}
@@ -122,7 +122,7 @@ func (s *CompanionAISystem) tickSummons() {
 			if dist > 5 {
 				sum.AggroTarget = 0
 				if sum.MoveTimer <= 0 {
-					s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, master.X, master.Y,
+					s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, sum.ShowID, master.X, master.Y,
 						func(id int32, x, y int32, h int16) { ws.UpdateSummonPosition(id, x, y, h) })
 					sum.MoveTimer = 2
 				}
@@ -134,7 +134,7 @@ func (s *CompanionAISystem) tickSummons() {
 			}
 			// Follow master
 			if dist > 2 && sum.MoveTimer <= 0 {
-				s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, master.X, master.Y,
+				s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, sum.ShowID, master.X, master.Y,
 					func(id int32, x, y int32, h int16) { ws.UpdateSummonPosition(id, x, y, h) })
 				sum.MoveTimer = 2
 			}
@@ -144,7 +144,7 @@ func (s *CompanionAISystem) tickSummons() {
 			if dist < 5 && sum.MoveTimer <= 0 {
 				awayX := sum.X + (sum.X - master.X)
 				awayY := sum.Y + (sum.Y - master.Y)
-				s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, awayX, awayY,
+				s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, sum.ShowID, awayX, awayY,
 					func(id int32, x, y int32, h int16) { ws.UpdateSummonPosition(id, x, y, h) })
 				sum.MoveTimer = 3
 			}
@@ -154,7 +154,7 @@ func (s *CompanionAISystem) tickSummons() {
 			if dist > 5 {
 				sum.AggroTarget = 0
 				if sum.MoveTimer <= 0 {
-					s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, master.X, master.Y,
+					s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, sum.ShowID, master.X, master.Y,
 						func(id int32, x, y int32, h int16) { ws.UpdateSummonPosition(id, x, y, h) })
 					sum.MoveTimer = 2
 				}
@@ -163,7 +163,7 @@ func (s *CompanionAISystem) tickSummons() {
 			// Guard position: attack nearby, return to home if drifted
 			homeDist := chebyshev32(sum.X, sum.Y, sum.HomeX, sum.HomeY)
 			if homeDist > 1 && sum.AggroTarget == 0 && sum.MoveTimer <= 0 {
-				s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, sum.HomeX, sum.HomeY,
+				s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, sum.ShowID, sum.HomeX, sum.HomeY,
 					func(id int32, x, y int32, h int16) { ws.UpdateSummonPosition(id, x, y, h) })
 				sum.MoveTimer = 2
 			}
@@ -182,7 +182,7 @@ func (s *CompanionAISystem) tickSummons() {
 		if sum == nil {
 			continue
 		}
-		nearby := ws.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+		nearby := companionViewersAt(ws, sum.X, sum.Y, sum.MapID, sum.ShowID)
 		for _, viewer := range nearby {
 			sendCompanionSoundEffect(viewer.Session, sum.ID, 169) // death sound
 			sendCompanionRemove(viewer.Session, sum.ID)
@@ -226,7 +226,7 @@ func (s *CompanionAISystem) summonAttackTarget(sum *world.SummonInfo) {
 	if dist > int32(sum.Ranged) || dist > 1 && sum.Ranged <= 1 {
 		// Move toward target instead of attacking
 		if sum.MoveTimer <= 0 {
-			s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, targetNpc.X, targetNpc.Y,
+			s.companionMoveToward(sum.ID, sum.X, sum.Y, sum.MapID, sum.ShowID, targetNpc.X, targetNpc.Y,
 				func(id int32, x, y int32, h int16) { ws.UpdateSummonPosition(id, x, y, h) })
 			sum.MoveTimer = 2
 		}
@@ -249,7 +249,7 @@ func (s *CompanionAISystem) summonAttackTarget(sum *world.SummonInfo) {
 	heading := calcNpcHeading(sum.X, sum.Y, targetNpc.X, targetNpc.Y)
 
 	// 廣播攻擊動畫
-	nearby := ws.GetNearbyPlayersAt(sum.X, sum.Y, sum.MapID)
+	nearby := companionViewersAt(ws, sum.X, sum.Y, sum.MapID, sum.ShowID)
 	atkData := buildNpcAttack(sum.ID, targetNpc.ID, dmg, heading)
 	handler.BroadcastToPlayers(nearby, atkData)
 
@@ -342,7 +342,7 @@ func (s *CompanionAISystem) tickDolls() {
 
 		// 距離 > 2 格 → 向主人移動
 		if dist > 2 && doll.MoveTimer <= 0 {
-			s.companionMoveToward(doll.ID, doll.X, doll.Y, doll.MapID, master.X, master.Y,
+			s.companionMoveToward(doll.ID, doll.X, doll.Y, doll.MapID, doll.ShowID, master.X, master.Y,
 				func(id int32, x, y int32, h int16) { ws.UpdateDollPosition(id, x, y, h) })
 			doll.MoveTimer = 2 // 2 ticks = 400ms
 		}
@@ -364,7 +364,7 @@ func (s *CompanionAISystem) tickDolls() {
 			sendDollTimerClear(master.Session)
 			handler.SendPlayerStatus(master.Session, master)
 		}
-		nearby := ws.GetNearbyPlayersAt(doll.X, doll.Y, doll.MapID)
+		nearby := companionViewersAt(ws, doll.X, doll.Y, doll.MapID, doll.ShowID)
 		for _, viewer := range nearby {
 			sendCompanionRemove(viewer.Session, doll.ID)
 		}
@@ -412,7 +412,7 @@ func (s *CompanionAISystem) dollTeleportToMaster(doll *world.DollInfo, master *w
 	ws := s.world
 
 	// 先對舊位置的觀察者發送移除封包
-	oldViewers := ws.GetNearbyPlayersAt(doll.X, doll.Y, doll.MapID)
+	oldViewers := companionViewersAt(ws, doll.X, doll.Y, doll.MapID, doll.ShowID)
 	for _, viewer := range oldViewers {
 		sendCompanionRemove(viewer.Session, doll.ID)
 	}
@@ -425,7 +425,7 @@ func (s *CompanionAISystem) dollTeleportToMaster(doll *world.DollInfo, master *w
 	ws.TeleportDoll(doll.ID, newX, newY, master.MapID, master.Heading)
 
 	// 對新位置的觀察者發送出生封包
-	newViewers := ws.GetNearbyPlayersAt(doll.X, doll.Y, doll.MapID)
+	newViewers := companionViewersAt(ws, doll.X, doll.Y, doll.MapID, doll.ShowID)
 	for _, viewer := range newViewers {
 		handler.SendDollPack(viewer.Session, doll, master.Name)
 	}
@@ -468,7 +468,7 @@ func (s *CompanionAISystem) tickFollowers() {
 			f.MoveTimer--
 		}
 		if dist > 2 && f.MoveTimer <= 0 {
-			s.companionMoveToward(f.ID, f.X, f.Y, f.MapID, master.X, master.Y,
+			s.companionMoveToward(f.ID, f.X, f.Y, f.MapID, f.ShowID, master.X, master.Y,
 				func(id int32, x, y int32, h int16) { ws.UpdateFollowerPosition(id, x, y, h) })
 			f.MoveTimer = 2
 		}
@@ -480,7 +480,7 @@ func (s *CompanionAISystem) tickFollowers() {
 		if f == nil {
 			continue
 		}
-		nearby := ws.GetNearbyPlayersAt(f.X, f.Y, f.MapID)
+		nearby := companionViewersAt(ws, f.X, f.Y, f.MapID, f.ShowID)
 		for _, viewer := range nearby {
 			sendCompanionRemove(viewer.Session, f.ID)
 		}
@@ -513,6 +513,7 @@ func (s *CompanionAISystem) respawnOriginalNpc(f *world.FollowerInfo) {
 		AC:                tmpl.AC,
 		STR:               tmpl.STR,
 		DEX:               tmpl.DEX,
+		Intel:             tmpl.INT,
 		Exp:               tmpl.Exp,
 		Lawful:            tmpl.Lawful,
 		Size:              tmpl.Size,
@@ -526,12 +527,13 @@ func (s *CompanionAISystem) respawnOriginalNpc(f *world.FollowerInfo) {
 		X:                 f.SpawnX,
 		Y:                 f.SpawnY,
 		MapID:             f.SpawnMapID,
+		ShowID:            f.ShowID,
 		SpawnX:            f.SpawnX,
 		SpawnY:            f.SpawnY,
 		SpawnMapID:        f.SpawnMapID,
 	}
 	s.world.AddNpc(npc)
-	nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := companionViewersAt(s.world, npc.X, npc.Y, npc.MapID, npc.ShowID)
 	for _, viewer := range nearby {
 		sendNpcPack(viewer.Session, npc)
 	}
@@ -601,7 +603,7 @@ func (s *CompanionAISystem) tickPets() {
 				if target := ws.GetPet(pet.AggroPetID); target != nil && !target.Dead {
 					td := chebyshev32(pet.X, pet.Y, target.X, target.Y)
 					if td > 1 && pet.MoveTimer <= 0 {
-						s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, target.X, target.Y,
+						s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, pet.ShowID, target.X, target.Y,
 							func(id int32, x, y int32, h int16) { ws.UpdatePetPosition(id, x, y, h) })
 						pet.MoveTimer = 2
 					}
@@ -616,7 +618,7 @@ func (s *CompanionAISystem) tickPets() {
 				s.petAttackTarget(pet)
 			}
 			if dist > 2 && pet.MoveTimer <= 0 {
-				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, master.X, master.Y,
+				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, pet.ShowID, master.X, master.Y,
 					func(id int32, x, y int32, h int16) { ws.UpdatePetPosition(id, x, y, h) })
 				pet.MoveTimer = 2
 			}
@@ -627,7 +629,7 @@ func (s *CompanionAISystem) tickPets() {
 				s.petAttackTarget(pet)
 			}
 			if dist > 2 && pet.MoveTimer <= 0 {
-				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, master.X, master.Y,
+				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, pet.ShowID, master.X, master.Y,
 					func(id int32, x, y int32, h int16) { ws.UpdatePetPosition(id, x, y, h) })
 				pet.MoveTimer = 2
 			}
@@ -637,7 +639,7 @@ func (s *CompanionAISystem) tickPets() {
 			if dist < 5 && pet.MoveTimer <= 0 {
 				awayX := pet.X + (pet.X - master.X)
 				awayY := pet.Y + (pet.Y - master.Y)
-				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, awayX, awayY,
+				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, pet.ShowID, awayX, awayY,
 					func(id int32, x, y int32, h int16) { ws.UpdatePetPosition(id, x, y, h) })
 				pet.MoveTimer = 3
 			}
@@ -646,7 +648,7 @@ func (s *CompanionAISystem) tickPets() {
 			// Guard position: attack nearby, return to home if drifted
 			homeDist := chebyshev32(pet.X, pet.Y, pet.HomeX, pet.HomeY)
 			if homeDist > 1 && pet.AggroTarget == 0 && pet.MoveTimer <= 0 {
-				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, pet.HomeX, pet.HomeY,
+				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, pet.ShowID, pet.HomeX, pet.HomeY,
 					func(id int32, x, y int32, h int16) { ws.UpdatePetPosition(id, x, y, h) })
 				pet.MoveTimer = 2
 			}
@@ -663,7 +665,7 @@ func (s *CompanionAISystem) tickPets() {
 				pet.Status = world.PetStatusRest
 				pet.AggroTarget = 0
 			} else if pet.MoveTimer <= 0 {
-				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, master.X, master.Y,
+				s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, pet.ShowID, master.X, master.Y,
 					func(id int32, x, y int32, h int16) { ws.UpdatePetPosition(id, x, y, h) })
 				pet.MoveTimer = 1
 			}
@@ -678,7 +680,7 @@ func (s *CompanionAISystem) tickPets() {
 		}
 		// Save to DB before removing
 		s.savePetToDB(pet)
-		nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+		nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 		for _, viewer := range nearby {
 			sendCompanionRemove(viewer.Session, pet.ID)
 		}
@@ -720,7 +722,7 @@ func (s *CompanionAISystem) petAttackTarget(pet *world.PetInfo) {
 	if dist > int32(pet.Ranged) || (dist > 1 && pet.Ranged <= 1) {
 		// Move toward target
 		if pet.MoveTimer <= 0 {
-			s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, targetNpc.X, targetNpc.Y,
+			s.companionMoveToward(pet.ID, pet.X, pet.Y, pet.MapID, pet.ShowID, targetNpc.X, targetNpc.Y,
 				func(id int32, x, y int32, h int16) { ws.UpdatePetPosition(id, x, y, h) })
 			pet.MoveTimer = 2
 		}
@@ -743,7 +745,7 @@ func (s *CompanionAISystem) petAttackTarget(pet *world.PetInfo) {
 	heading := calcNpcHeading(pet.X, pet.Y, targetNpc.X, targetNpc.Y)
 
 	// 廣播攻擊動畫
-	nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	petAtkData := buildNpcAttack(pet.ID, targetNpc.ID, dmg, heading)
 	handler.BroadcastToPlayers(nearby, petAtkData)
 
@@ -863,7 +865,7 @@ func (s *CompanionAISystem) petAttackPetTarget(pet *world.PetInfo) {
 	heading := calcNpcHeading(pet.X, pet.Y, target.X, target.Y)
 
 	// 廣播攻擊動畫
-	nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	petAtkData := buildNpcAttack(pet.ID, target.ID, dmg, heading)
 	handler.BroadcastToPlayers(nearby, petAtkData)
 
@@ -977,7 +979,7 @@ func (s *CompanionAISystem) tickHierarchs() {
 
 		// 距離 > 2 → 向主人移動
 		if dist > 2 && h.MoveTimer <= 0 {
-			s.companionMoveToward(h.ID, h.X, h.Y, h.MapID, master.X, master.Y,
+			s.companionMoveToward(h.ID, h.X, h.Y, h.MapID, h.ShowID, master.X, master.Y,
 				func(id int32, x, y int32, heading int16) { ws.UpdateHierarchPosition(id, x, y, heading) })
 			h.MoveTimer = 2
 		}
@@ -999,7 +1001,7 @@ func (s *CompanionAISystem) tickHierarchs() {
 		if master != nil {
 			sendCompanionSoundEffect(master.Session, h.ID, 5936) // 解散音效
 		}
-		nearby := ws.GetNearbyPlayersAt(h.X, h.Y, h.MapID)
+		nearby := companionViewersAt(ws, h.X, h.Y, h.MapID, h.ShowID)
 		for _, viewer := range nearby {
 			sendCompanionRemove(viewer.Session, h.ID)
 		}
@@ -1011,7 +1013,7 @@ func (s *CompanionAISystem) hierarchTeleportToMaster(h *world.HierarchInfo, mast
 	ws := s.world
 
 	// 對舊位置觀察者發送移除封包
-	oldViewers := ws.GetNearbyPlayersAt(h.X, h.Y, h.MapID)
+	oldViewers := companionViewersAt(ws, h.X, h.Y, h.MapID, h.ShowID)
 	for _, viewer := range oldViewers {
 		sendCompanionRemove(viewer.Session, h.ID)
 	}
@@ -1022,7 +1024,7 @@ func (s *CompanionAISystem) hierarchTeleportToMaster(h *world.HierarchInfo, mast
 	ws.TeleportHierarch(h.ID, newX, newY, master.MapID, master.Heading)
 
 	// 對新位置觀察者發送出生封包
-	newViewers := ws.GetNearbyPlayersAt(h.X, h.Y, h.MapID)
+	newViewers := companionViewersAt(ws, h.X, h.Y, h.MapID, h.ShowID)
 	for _, viewer := range newViewers {
 		handler.SendHierarchPack(viewer.Session, h, master.Name)
 	}
@@ -1051,7 +1053,7 @@ func (s *CompanionAISystem) hierarchAutoBuff(h *world.HierarchInfo, master *worl
 				h.MP -= 15
 
 				// 廣播祭司施法 GFX（6321 = 祭司治療音效）
-				nearby := s.world.GetNearbyPlayersAt(h.X, h.Y, h.MapID)
+				nearby := companionViewersAt(s.world, h.X, h.Y, h.MapID, h.ShowID)
 				gfxData := handler.BuildSkillEffect(h.ID, 6321)
 				handler.BroadcastToPlayers(nearby, gfxData)
 			}
@@ -1072,7 +1074,7 @@ func (s *CompanionAISystem) hierarchAutoBuff(h *world.HierarchInfo, master *worl
 
 			// 更新主人 HP + 治療特效
 			handler.SendPlayerStatus(master.Session, master)
-			nearby := s.world.GetNearbyPlayersAt(master.X, master.Y, master.MapID)
+			nearby := companionViewersAt(s.world, master.X, master.Y, master.MapID, h.ShowID)
 			gfxData := handler.BuildSkillEffect(master.CharID, 6321)
 			handler.BroadcastToPlayers(nearby, gfxData)
 		}
@@ -1087,7 +1089,14 @@ type updatePosFunc func(id int32, x, y int32, heading int16)
 
 // companionMoveToward moves a companion one step toward the target position.
 // Uses the same pathfinding logic as npcMoveToward.
-func (s *CompanionAISystem) companionMoveToward(objID int32, curX, curY int32, mapID int16, tx, ty int32, updatePos updatePosFunc) {
+func companionViewersAt(ws *world.State, x, y int32, mapID int16, showID int32) []*world.PlayerInfo {
+	if ws == nil {
+		return nil
+	}
+	return ws.GetNearbyPlayersInShow(x, y, mapID, 0, showID)
+}
+
+func (s *CompanionAISystem) companionMoveToward(objID int32, curX, curY int32, mapID int16, showID int32, tx, ty int32, updatePos updatePosFunc) {
 	dx := tx - curX
 	dy := ty - curY
 	if dx == 0 && dy == 0 {
@@ -1145,7 +1154,7 @@ func (s *CompanionAISystem) companionMoveToward(objID int32, curX, curY int32, m
 		updatePos(objID, c.x, c.y, h)
 
 		// Broadcast movement
-		nearby := ws.GetNearbyPlayersAt(c.x, c.y, mapID)
+		nearby := companionViewersAt(ws, c.x, c.y, mapID, showID)
 		for _, viewer := range nearby {
 			sendCompanionMovePacket(viewer.Session, objID, oldX, oldY, h)
 		}
@@ -1156,7 +1165,7 @@ func (s *CompanionAISystem) companionMoveToward(objID int32, curX, curY int32, m
 	if maps.IsPassableIgnoreOccupant(mapID, curX, curY, int(h)) {
 		oldX, oldY := curX, curY
 		updatePos(objID, mx, my, h)
-		nearby := ws.GetNearbyPlayersAt(mx, my, mapID)
+		nearby := companionViewersAt(ws, mx, my, mapID, showID)
 		for _, viewer := range nearby {
 			sendCompanionMovePacket(viewer.Session, objID, oldX, oldY, h)
 		}

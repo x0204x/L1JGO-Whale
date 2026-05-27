@@ -18,7 +18,7 @@ func calcMindBreakDamage(caster *world.PlayerInfo) int32 {
 	if caster == nil {
 		return 0
 	}
-	return int32(float64(caster.SP) * 3.8)
+	return int32(float64(calcPlayerSPLikeJava(caster)) * 3.8)
 }
 
 func applyMindBreakMPDrain(target *world.PlayerInfo) {
@@ -74,12 +74,7 @@ func (s *SkillSystem) revealInvisibleTarget(target *world.PlayerInfo) {
 	target.Invisible = false
 	handler.SendInvisible(target.Session, target.CharID, false)
 
-	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
-	for _, viewer := range nearby {
-		if viewer.CharID != target.CharID {
-			handler.SendPutObject(viewer.Session, target)
-		}
-	}
+	s.sendPlayerReappearToVisible(target)
 }
 
 const (
@@ -157,7 +152,7 @@ func (s *SkillSystem) applyBoneBreakParalysis(target *world.PlayerInfo) {
 	// wire byte 0x16（StunApply），並非 ParalysisApply(0x02)。S_Paralysis.java:79-85 切換顯示
 	// 「衝擊之暈」效果而非「身體完全麻痺」訊息。
 	handler.SendParalysis(target.Session, handler.StunApply)
-	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, 0, target.ShowID)
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, 13119))
 }
 

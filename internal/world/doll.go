@@ -15,6 +15,7 @@ type DollInfo struct {
 	X       int32
 	Y       int32
 	MapID   int16
+	ShowID  int32
 	Heading int16
 
 	TimerTicks int // remaining ticks alive
@@ -22,28 +23,28 @@ type DollInfo struct {
 
 	// Stat bonuses applied to master on summon (reversed on dismiss).
 	// Follows the delta pattern used by ActiveBuff.
-	BonusAC       int16
-	BonusDmg      int16
-	BonusHit      int16
-	BonusBowDmg   int16
-	BonusBowHit   int16
-	BonusSP       int16
-	BonusMR       int16
-	BonusHP       int16
-	BonusMP       int16
-	BonusHPR      int16
-	BonusMPR      int16
-	BonusFireRes  int16
-	BonusWaterRes int16
-	BonusWindRes  int16
-	BonusEarthRes int16
-	BonusDodge    int16
-	BonusSTR      int16
-	BonusDEX      int16
-	BonusCON      int16
-	BonusWIS      int16
-	BonusINT      int16
-	BonusCHA      int16
+	BonusAC        int16
+	BonusDmg       int16
+	BonusHit       int16
+	BonusBowDmg    int16
+	BonusBowHit    int16
+	BonusSP        int16
+	BonusMR        int16
+	BonusHP        int16
+	BonusMP        int16
+	BonusHPR       int16
+	BonusMPR       int16
+	BonusFireRes   int16
+	BonusWaterRes  int16
+	BonusWindRes   int16
+	BonusEarthRes  int16
+	BonusDodge     int16
+	BonusSTR       int16
+	BonusDEX       int16
+	BonusCON       int16
+	BonusWIS       int16
+	BonusINT       int16
+	BonusCHA       int16
 	BonusStunRes   int16
 	BonusFreezeRes int16
 
@@ -162,6 +163,33 @@ func (s *State) GetNearbyDolls(x, y int32, mapID int16) []*DollInfo {
 	for _, nid := range nearbyIDs {
 		doll := s.dolls[nid]
 		if doll == nil {
+			continue
+		}
+		dx := doll.X - x
+		dy := doll.Y - y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		dist := dx
+		if dy > dist {
+			dist = dy
+		}
+		if dist <= 20 {
+			result = append(result, doll)
+		}
+	}
+	return result
+}
+
+func (s *State) GetNearbyDollsInShow(x, y int32, mapID int16, showID int32) []*DollInfo {
+	nearbyIDs := s.npcAoi.GetNearby(x, y, mapID)
+	var result []*DollInfo
+	for _, nid := range nearbyIDs {
+		doll := s.dolls[nid]
+		if doll == nil || doll.ShowID != showID {
 			continue
 		}
 		dx := doll.X - x

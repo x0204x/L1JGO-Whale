@@ -191,7 +191,7 @@ func (s *RegenSystem) lifeStreamHPBonus(p *world.PlayerInfo) int32 {
 	if s.world == nil {
 		return 0
 	}
-	for _, effect := range s.world.GetNearbyGroundEffects(p.X, p.Y, p.MapID) {
+	for _, effect := range s.world.GetNearbyGroundEffectsInShow(p.X, p.Y, p.MapID, p.ShowID) {
 		if effect.Type == world.GroundEffectLifeStream && chebyshevDist(effect.X, effect.Y, p.X, p.Y) < 4 {
 			return 3
 		}

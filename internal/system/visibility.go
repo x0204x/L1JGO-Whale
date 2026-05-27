@@ -53,7 +53,7 @@ func (s *VisibilitySystem) Update(_ time.Duration) {
 // --- 玩家 AOI ---
 
 func (s *VisibilitySystem) updatePlayerVisibility(p *world.PlayerInfo) {
-	nearby := s.world.GetNearbyPlayers(p.X, p.Y, p.MapID, p.SessionID)
+	nearby := s.world.GetNearbyPlayersInShow(p.X, p.Y, p.MapID, p.SessionID, p.ShowID)
 
 	// 建立當前可見集合
 	currentSet := make(map[int32]struct{}, len(nearby))
@@ -105,7 +105,7 @@ func (s *VisibilitySystem) updatePlayerVisibility(p *world.PlayerInfo) {
 // --- NPC AOI ---
 
 func (s *VisibilitySystem) updateNpcVisibility(p *world.PlayerInfo) {
-	nearby := s.world.GetNearbyNpcsForVis(p.X, p.Y, p.MapID)
+	nearby := s.world.GetNearbyNpcsForVisInShow(p.X, p.Y, p.MapID, p.ShowID)
 
 	currentSet := make(map[int32]struct{}, len(nearby))
 	for _, npc := range nearby {
@@ -120,6 +120,7 @@ func (s *VisibilitySystem) updateNpcVisibility(p *world.PlayerInfo) {
 			}
 			p.Known.Npcs[npc.ID] = world.KnownPos{X: npc.X, Y: npc.Y}
 		} else {
+			s.approachHiddenNpc(p, npc)
 			p.Known.Npcs[npc.ID] = world.KnownPos{X: npc.X, Y: npc.Y}
 		}
 	}
@@ -132,10 +133,17 @@ func (s *VisibilitySystem) updateNpcVisibility(p *world.PlayerInfo) {
 	}
 }
 
+func (s *VisibilitySystem) approachHiddenNpc(p *world.PlayerInfo, npc *world.NpcInfo) bool {
+	if !npcShouldAppearForPlayerLikeJava(npc, p) {
+		return false
+	}
+	return npcAppearOnGroundLikeJava(npc, s.world, p)
+}
+
 // --- 召喚獸 AOI ---
 
 func (s *VisibilitySystem) updateSummonVisibility(p *world.PlayerInfo) {
-	nearby := s.world.GetNearbySummons(p.X, p.Y, p.MapID)
+	nearby := s.world.GetNearbySummonsInShow(p.X, p.Y, p.MapID, p.ShowID)
 
 	currentSet := make(map[int32]struct{}, len(nearby))
 	for _, sum := range nearby {
@@ -165,7 +173,7 @@ func (s *VisibilitySystem) updateSummonVisibility(p *world.PlayerInfo) {
 // --- 魔法娃娃 AOI ---
 
 func (s *VisibilitySystem) updateDollVisibility(p *world.PlayerInfo) {
-	nearby := s.world.GetNearbyDolls(p.X, p.Y, p.MapID)
+	nearby := s.world.GetNearbyDollsInShow(p.X, p.Y, p.MapID, p.ShowID)
 
 	currentSet := make(map[int32]struct{}, len(nearby))
 	for _, doll := range nearby {
@@ -194,7 +202,7 @@ func (s *VisibilitySystem) updateDollVisibility(p *world.PlayerInfo) {
 // --- 隨身祭司 AOI ---
 
 func (s *VisibilitySystem) updateHierarchVisibility(p *world.PlayerInfo) {
-	nearby := s.world.GetNearbyHierarchs(p.X, p.Y, p.MapID)
+	nearby := s.world.GetNearbyHierarchsInShow(p.X, p.Y, p.MapID, p.ShowID)
 
 	currentSet := make(map[int32]struct{}, len(nearby))
 	for _, h := range nearby {
@@ -223,7 +231,7 @@ func (s *VisibilitySystem) updateHierarchVisibility(p *world.PlayerInfo) {
 // --- 隨從 AOI ---
 
 func (s *VisibilitySystem) updateFollowerVisibility(p *world.PlayerInfo) {
-	nearby := s.world.GetNearbyFollowers(p.X, p.Y, p.MapID)
+	nearby := s.world.GetNearbyFollowersInShow(p.X, p.Y, p.MapID, p.ShowID)
 
 	currentSet := make(map[int32]struct{}, len(nearby))
 	for _, f := range nearby {
@@ -248,7 +256,7 @@ func (s *VisibilitySystem) updateFollowerVisibility(p *world.PlayerInfo) {
 // --- 寵物 AOI ---
 
 func (s *VisibilitySystem) updatePetVisibility(p *world.PlayerInfo) {
-	nearby := s.world.GetNearbyPets(p.X, p.Y, p.MapID)
+	nearby := s.world.GetNearbyPetsInShow(p.X, p.Y, p.MapID, p.ShowID)
 
 	currentSet := make(map[int32]struct{}, len(nearby))
 	for _, pet := range nearby {
@@ -282,7 +290,7 @@ func (s *VisibilitySystem) updatePetVisibility(p *world.PlayerInfo) {
 // --- 地面物品 AOI ---
 
 func (s *VisibilitySystem) updateGroundItemVisibility(p *world.PlayerInfo) {
-	nearby := s.world.GetNearbyGroundItems(p.X, p.Y, p.MapID)
+	nearby := s.world.GetNearbyGroundItemsInShow(p.X, p.Y, p.MapID, p.ShowID)
 
 	currentSet := make(map[int32]struct{}, len(nearby))
 	for _, g := range nearby {
@@ -306,7 +314,7 @@ func (s *VisibilitySystem) updateGroundItemVisibility(p *world.PlayerInfo) {
 // --- 地面技能效果 AOI ---
 
 func (s *VisibilitySystem) updateGroundEffectVisibility(p *world.PlayerInfo) {
-	nearby := s.world.GetNearbyGroundEffects(p.X, p.Y, p.MapID)
+	nearby := s.world.GetNearbyGroundEffectsInShow(p.X, p.Y, p.MapID, p.ShowID)
 
 	currentSet := make(map[int32]struct{}, len(nearby))
 	for _, effect := range nearby {

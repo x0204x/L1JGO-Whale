@@ -12,12 +12,19 @@ func HandleAction(sess *net.Session, r *packet.Reader, deps *Deps) {
 	actionCode := r.ReadC()
 
 	player := deps.World.GetBySession(sess.ID)
-	if player == nil || player.Dead {
+	if player == nil || player.Dead || player.HasTeleport || player.Invisible {
+		return
+	}
+	if actionCode < 66 || actionCode > 69 {
+		return
+	}
+	if player.HasBuff(67) && player.TempCharGfx != 6080 && player.TempCharGfx != 6094 {
 		return
 	}
 
-	// Broadcast animation to all nearby players (not self — client plays it locally)
-	nearby := deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, sess.ID)
+	// yiwei C_ExtraCommand uses sendPacketsAll: send self, then same-ShowID visible players.
+	sendActionGfx(sess, player.CharID, actionCode)
+	nearby := deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, sess.ID, player.ShowID)
 	for _, viewer := range nearby {
 		sendActionGfx(viewer.Session, player.CharID, actionCode)
 	}

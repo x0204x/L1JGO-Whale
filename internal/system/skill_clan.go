@@ -145,7 +145,7 @@ func (s *SkillSystem) applyBraveAvatar(player *world.PlayerInfo) {
 	// `SendPlayerStatus`(S_STATUS) 不含 MR/SP。`applyBraveAvatar` 走獨立路徑非 `applyBuffEffect`，需手動補。
 	handler.SendMagicStatus(player.Session, byte(player.SP), uint16(player.MR))
 	handler.SendNoneTimeIcon(player.Session, true, 479)
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, 9009))
 }
 
@@ -191,6 +191,13 @@ func (s *SkillSystem) sendTrueTargetToClan(caster, target *world.PlayerInfo, tex
 	}
 }
 
+func (s *SkillSystem) clanSkillViewers(player *world.PlayerInfo) []*world.PlayerInfo {
+	if player == nil {
+		return nil
+	}
+	return s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
+}
+
 func (s *SkillSystem) executeClanTargetSkill(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, targetID int32, targetName string, consume bool) {
 	target := s.resolveClanSkillTarget(targetID, targetName)
 	if target == nil {
@@ -211,7 +218,7 @@ func (s *SkillSystem) executeClanTargetSkill(sess *net.Session, player *world.Pl
 		if consume {
 			s.consumeSkillResources(sess, player, skill)
 		}
-		nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		nearby := s.clanSkillViewers(player)
 		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 		target.PendingYesNoType = 729
 		target.PendingYesNoData = player.CharID
@@ -230,7 +237,7 @@ func (s *SkillSystem) executeClanTargetSkill(sess *net.Session, player *world.Pl
 			handler.SendParalysis(sess, handler.TeleportUnlock)
 			return
 		}
-		nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		nearby := s.clanSkillViewers(player)
 		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 		handler.TeleportPlayer(sess, player, target.X, target.Y, target.MapID, 5, s.deps)
 	}

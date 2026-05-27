@@ -21,10 +21,47 @@ func NewPvPSystem(deps *handler.Deps) *PvPSystem {
 	return &PvPSystem{deps: deps}
 }
 
+func buildPvPMeleeCombatContext(attacker, target *world.PlayerInfo, weaponDmg int) scripting.CombatContext {
+	return scripting.CombatContext{
+		AttackerLevel:   int(attacker.Level),
+		AttackerSTR:     int(attacker.Str),
+		AttackerBaseSTR: calcPlayerBaseStrLikeJava(attacker),
+		AttackerDEX:     int(attacker.Dex),
+		AttackerWeapon:  weaponDmg,
+		AttackerHitMod:  int(attacker.HitMod),
+		AttackerDmgMod:  int(attacker.DmgMod),
+		TargetAC:        int(target.AC),
+		TargetLevel:     int(target.Level),
+		TargetMR:        0,
+		TargetClassType: int(target.ClassType),
+	}
+}
+
+func buildPvPRangedCombatContext(attacker, target *world.PlayerInfo, bowDmg, arrowDmg int) scripting.RangedCombatContext {
+	return scripting.RangedCombatContext{
+		AttackerLevel:     int(attacker.Level),
+		AttackerSTR:       int(attacker.Str),
+		AttackerDEX:       int(attacker.Dex),
+		AttackerBaseDEX:   calcPlayerBaseDexLikeJava(attacker),
+		AttackerBowDmg:    bowDmg,
+		AttackerArrowDmg:  arrowDmg,
+		AttackerBowHitMod: int(attacker.BowHitMod),
+		AttackerBowDmgMod: int(attacker.BowDmgMod),
+		TargetAC:          int(target.AC),
+		TargetLevel:       int(target.Level),
+		TargetMR:          0,
+		TargetClassType:   int(target.ClassType),
+		TargetDodge:       int(calcPlayerErLikeYiwei(target)),
+	}
+}
+
 // HandlePvPAttack 處理近戰 PvP 攻擊。
 // Java: L1PcInstance.onAction() — Ctrl+左鍵攻擊玩家，3.80C 無 PK 模式開關。
 func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 	if target.Dead {
+		return
+	}
+	if attacker.ShowID != target.ShowID {
 		return
 	}
 
@@ -32,7 +69,7 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 
 	// 目標絕對屏障：免疫所有傷害（Java: L1AttackPc.dmg0 — AbsoluteBarrier 返回 true）
 	if target.AbsoluteBarrier {
-		nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+		nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, 0, target.ShowID)
 		for _, viewer := range nearby {
 			handler.SendAttackPacket(viewer.Session, attacker.CharID, target.CharID, 0, attacker.Heading)
 		}
@@ -41,7 +78,7 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 
 	// 安全區內只播放動畫，不造成傷害（Java: isSafetyZone 檢查）
 	if s.inSafetyZone(attacker) || s.inSafetyZone(target) {
-		nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+		nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, 0, target.ShowID)
 		for _, viewer := range nearby {
 			handler.SendAttackPacket(viewer.Session, attacker.CharID, target.CharID, 0, attacker.Heading)
 		}
@@ -67,17 +104,7 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 		}
 	}
 
-	ctx := scripting.CombatContext{
-		AttackerLevel:  int(attacker.Level),
-		AttackerSTR:    int(attacker.Str),
-		AttackerDEX:    int(attacker.Dex),
-		AttackerWeapon: weaponDmg,
-		AttackerHitMod: int(attacker.HitMod),
-		AttackerDmgMod: int(attacker.DmgMod),
-		TargetAC:       int(target.AC),
-		TargetLevel:    int(target.Level),
-		TargetMR:       0,
-	}
+	ctx := buildPvPMeleeCombatContext(attacker, target, weaponDmg)
 	result := s.deps.Scripting.CalcMeleeAttack(ctx)
 
 	damage := int32(result.Damage)
@@ -108,7 +135,7 @@ func (s *PvPSystem) HandlePvPAttack(attacker, target *world.PlayerInfo) {
 	damage = applyImmuneToHarmDamage(target, damage)
 	damage = applyReductionArmorDamage(target, damage, true)
 
-	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, 0, target.ShowID)
 
 	// 燃燒擊砍（182）：一次性 +10 + 廣播 S_EffectLocation + 消耗 buff（Java L1AttackPc.calcBuffDamage:2434-2438）
 	if damage > 0 {
@@ -205,6 +232,9 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 	if target.Dead {
 		return
 	}
+	if attacker.ShowID != target.ShowID {
+		return
+	}
 
 	attacker.Heading = handler.CalcHeading(attacker.X, attacker.Y, target.X, target.Y)
 
@@ -229,11 +259,8 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 	if target.AbsoluteBarrier {
 		handler.SendArrowAttackPacket(attacker.Session, attacker.CharID, target.CharID, 0, attacker.Heading,
 			attacker.X, attacker.Y, target.X, target.Y)
-		nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+		nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, attacker.SessionID, target.ShowID)
 		for _, viewer := range nearby {
-			if viewer.SessionID == attacker.SessionID {
-				continue
-			}
 			handler.SendArrowAttackPacket(viewer.Session, attacker.CharID, target.CharID, 0, attacker.Heading,
 				attacker.X, attacker.Y, target.X, target.Y)
 		}
@@ -244,11 +271,8 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 	if s.inSafetyZone(attacker) || s.inSafetyZone(target) {
 		handler.SendArrowAttackPacket(attacker.Session, attacker.CharID, target.CharID, 0, attacker.Heading,
 			attacker.X, attacker.Y, target.X, target.Y)
-		nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+		nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, attacker.SessionID, target.ShowID)
 		for _, viewer := range nearby {
-			if viewer.SessionID == attacker.SessionID {
-				continue
-			}
 			handler.SendArrowAttackPacket(viewer.Session, attacker.CharID, target.CharID, 0, attacker.Heading,
 				attacker.X, attacker.Y, target.X, target.Y)
 		}
@@ -289,18 +313,7 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 		}
 	}
 
-	ctx := scripting.RangedCombatContext{
-		AttackerLevel:     int(attacker.Level),
-		AttackerSTR:       int(attacker.Str),
-		AttackerDEX:       int(attacker.Dex),
-		AttackerBowDmg:    bowDmg,
-		AttackerArrowDmg:  arrowDmg,
-		AttackerBowHitMod: int(attacker.BowHitMod),
-		AttackerBowDmgMod: int(attacker.BowDmgMod),
-		TargetAC:          int(target.AC),
-		TargetLevel:       int(target.Level),
-		TargetMR:          0,
-	}
+	ctx := buildPvPRangedCombatContext(attacker, target, bowDmg, arrowDmg)
 	result := s.deps.Scripting.CalcRangedAttack(ctx)
 
 	damage := int32(result.Damage)
@@ -325,11 +338,8 @@ func (s *PvPSystem) HandlePvPFarAttack(attacker, target *world.PlayerInfo) {
 
 	handler.SendArrowAttackPacket(attacker.Session, attacker.CharID, target.CharID, damage, attacker.Heading,
 		attacker.X, attacker.Y, target.X, target.Y)
-	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, attacker.SessionID, target.ShowID)
 	for _, viewer := range nearby {
-		if viewer.SessionID == attacker.SessionID {
-			continue
-		}
 		handler.SendArrowAttackPacket(viewer.Session, attacker.CharID, target.CharID, damage, attacker.Heading,
 			attacker.X, attacker.Y, target.X, target.Y)
 	}
@@ -384,7 +394,7 @@ func (s *PvPSystem) AddLawfulFromNpc(killer *world.PlayerInfo, npcLawful int32) 
 	handler.ClampLawful(&killer.Lawful)
 
 	handler.SendLawful(killer.Session, killer.CharID, killer.Lawful)
-	nearby := s.deps.World.GetNearbyPlayers(killer.X, killer.Y, killer.MapID, killer.SessionID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(killer.X, killer.Y, killer.MapID, killer.SessionID, killer.ShowID)
 	for _, other := range nearby {
 		handler.SendLawful(other.Session, killer.CharID, killer.Lawful)
 	}
@@ -429,13 +439,13 @@ func (s *PvPSystem) triggerPinkName(attacker, victim *world.PlayerInfo) {
 	attacker.PinkNameTicks = s.deps.Scripting.GetPKTimers().PinkNameTicks
 
 	handler.SendPinkName(attacker.Session, attacker.CharID, 180)
-	nearby := s.deps.World.GetNearbyPlayers(attacker.X, attacker.Y, attacker.MapID, attacker.SessionID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(attacker.X, attacker.Y, attacker.MapID, attacker.SessionID, attacker.ShowID)
 	for _, other := range nearby {
 		handler.SendPinkName(other.Session, attacker.CharID, 180)
 	}
 
 	// 通知附近守衛
-	nearbyNpcs := s.deps.World.GetNearbyNpcs(attacker.X, attacker.Y, attacker.MapID)
+	nearbyNpcs := s.deps.World.GetNearbyNpcsInShow(attacker.X, attacker.Y, attacker.MapID, attacker.ShowID)
 	for _, guard := range nearbyNpcs {
 		if guard.Impl == "L1Guard" && !guard.Dead && guard.AggroTarget == 0 {
 			guard.AggroTarget = attacker.SessionID
@@ -450,7 +460,7 @@ func (s *PvPSystem) processPKKill(killer, victim *world.PlayerInfo) {
 		killer.PinkName = false
 		killer.PinkNameTicks = 0
 		handler.SendPinkName(killer.Session, killer.CharID, 0)
-		nearby := s.deps.World.GetNearbyPlayers(killer.X, killer.Y, killer.MapID, killer.SessionID)
+		nearby := s.deps.World.GetNearbyPlayersInShow(killer.X, killer.Y, killer.MapID, killer.SessionID, killer.ShowID)
 		for _, other := range nearby {
 			handler.SendPinkName(other.Session, killer.CharID, 0)
 		}
@@ -468,7 +478,7 @@ func (s *PvPSystem) processPKKill(killer, victim *world.PlayerInfo) {
 		killer.Lawful = pkResult.NewLawful
 
 		handler.SendLawful(killer.Session, killer.CharID, killer.Lawful)
-		nearby := s.deps.World.GetNearbyPlayers(killer.X, killer.Y, killer.MapID, killer.SessionID)
+		nearby := s.deps.World.GetNearbyPlayersInShow(killer.X, killer.Y, killer.MapID, killer.SessionID, killer.ShowID)
 		for _, other := range nearby {
 			handler.SendLawful(other.Session, killer.CharID, killer.Lawful)
 		}
@@ -557,6 +567,7 @@ func (s *PvPSystem) dropOneItem(victim *world.PlayerInfo) {
 		X:          victim.X,
 		Y:          victim.Y,
 		MapID:      victim.MapID,
+		ShowID:     victim.ShowID,
 	}
 	s.deps.World.AddGroundItem(gndItem)
 
@@ -564,7 +575,7 @@ func (s *PvPSystem) dropOneItem(victim *world.PlayerInfo) {
 	handler.SendRemoveInventoryItem(victim.Session, item.ObjectID)
 	handler.SendWeightUpdate(victim.Session, victim)
 
-	nearby := s.deps.World.GetNearbyPlayersAt(victim.X, victim.Y, victim.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(victim.X, victim.Y, victim.MapID, 0, victim.ShowID)
 	for _, viewer := range nearby {
 		handler.SendDropItem(viewer.Session, gndItem)
 	}

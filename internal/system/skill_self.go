@@ -34,7 +34,7 @@ func fireBlessWeaponAllowed(player *world.PlayerInfo, items *data.ItemTable) boo
 }
 
 func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo) {
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 
 	switch skill.SkillID {
 	case 2: // 日光術
@@ -53,7 +53,7 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 				// 通知被揭示者：你不再隱身
 				handler.SendInvisible(tgt.Session, tgt.CharID, false)
 				// 向附近玩家廣播角色出現（讓被揭示者重新顯示在其他人畫面上）
-				nearbyOfTarget := s.deps.World.GetNearbyPlayersAt(tgt.X, tgt.Y, tgt.MapID)
+				nearbyOfTarget := s.deps.World.GetNearbyPlayersInShow(tgt.X, tgt.Y, tgt.MapID, 0, tgt.ShowID)
 				for _, viewer := range nearbyOfTarget {
 					if viewer.CharID != tgt.CharID {
 						handler.SendPutObject(viewer.Session, tgt)
@@ -184,9 +184,10 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 	case 172: // 暴風疾走
 		for _, conflictID := range []int32{
 			handler.SkillStatusBrave, handler.SkillStatusElfBrave,
-			42,  // HOLY_WALK
+			52,  // HOLY_WALK
 			101, // MOVING_ACCELERATION
 			150, // WIND_WALK
+			155, // FIRE_BLESS
 			186, // BLOOD_LUST
 		} {
 			s.removeBuffAndRevert(player, conflictID)
@@ -213,10 +214,10 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 	// 自身範圍治療
 	if skill.Type == 16 && (skill.DamageValue > 0 || skill.DamageDice > 0) {
 		casterINT := int(player.Intel)
-		casterSP := int(player.SP)
+		casterLawful := int(player.Lawful)
 
 		if skill.Area == -1 {
-			heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterSP))
+			heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 			heal = s.applyElfWaterHealingModifiers(player, heal)
 			if heal > 0 && player.HP < player.MaxHP {
 				player.HP += heal
@@ -243,7 +244,7 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 				if skill.TargetTo == 8 && (partyMembers == nil || !partyMembers[p.CharID]) {
 					continue
 				}
-				h := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterSP))
+				h := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 				h = s.applyElfWaterHealingModifiers(p, h)
 				if h > 0 && p.HP < p.MaxHP {
 					p.HP += h
@@ -254,7 +255,7 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 				}
 			}
 		} else {
-			heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterSP))
+			heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 			heal = s.applyElfWaterHealingModifiers(player, heal)
 			if heal > 0 && player.HP < player.MaxHP {
 				player.HP += heal
@@ -299,4 +300,5 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 	if skill.SysMsgHappen > 0 {
 		handler.SendServerMessage(sess, uint16(skill.SysMsgHappen))
 	}
+	s.sendYiweiPostCastStatusRefresh(player)
 }

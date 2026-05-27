@@ -217,8 +217,12 @@ func UpdatePlayerLight(p *world.PlayerInfo, ws *world.State) {
 	// 發送給自己
 	sendLight(p.Session, p.CharID, newLight)
 
+	if p.Invisible {
+		return
+	}
+
 	// 廣播給附近玩家
-	nearby := ws.GetNearbyPlayers(p.X, p.Y, p.MapID, p.SessionID)
+	nearby := ws.GetNearbyPlayersInShow(p.X, p.Y, p.MapID, p.SessionID, p.ShowID)
 	data := BuildLight(p.CharID, newLight)
 	BroadcastToPlayers(nearby, data)
 }
@@ -245,7 +249,7 @@ func SendNpcPack(viewer *net.Session, npc *world.NpcInfo) {
 	w.WriteH(uint16(npc.Y))
 	w.WriteD(npc.ID)
 	w.WriteH(uint16(npc.GfxID))
-	w.WriteC(0) // status (0 = normal)
+	w.WriteC(world.NpcActionStatus(npc))
 	w.WriteC(byte(npc.Heading))
 	w.WriteC(npc.LightSize) // light
 	w.WriteC(0)             // move speed
@@ -351,8 +355,12 @@ func sendAttackPacket(viewer *net.Session, attackerID, targetID, damage int32, h
 // BuildAttackPacket 建構近戰攻擊封包位元組（不發送）。
 // 用於廣播場景：序列化一次、發送多次。
 func BuildAttackPacket(attackerID, targetID, damage int32, heading int16) []byte {
+	return BuildAttackPacketWithAction(attackerID, targetID, damage, heading, 1)
+}
+
+func BuildAttackPacketWithAction(attackerID, targetID, damage int32, heading int16, actionID byte) []byte {
 	w := packet.NewWriterWithOpcode(packet.S_OPCODE_ATTACK)
-	w.WriteC(1)
+	w.WriteC(actionID)
 	w.WriteD(attackerID)
 	w.WriteD(targetID)
 	w.WriteH(uint16(damage))
@@ -879,6 +887,44 @@ func SendNpcChatPacket(sess *net.Session, npcID int32, msg string) {
 	sess.Send(w.Bytes())
 }
 
+// BuildSceneLineFromNpc 建構劇本浮空對白封包（NPC 發話）。
+// 走 S_OPCODE_NPCSHOUT(161) type 0（一般浮空文字）— 客戶端會在指定 objID
+// 物件頭頂顯示文字，**不會**進入聊天歷史。供 DungeonSceneSystem 廣播。
+//   - npcInstanceID = NpcInfo.ID（runtime instance id，非 NpcID 模板 id）
+//   - prefix = NPC 顯示名稱（NameID 優先，後備 Name）
+//   - text = 對白內容
+//
+// 封包格式：writeC(161) + writeC(0) + writeD(objID) + writeS(prefix ": " text)
+func BuildSceneLineFromNpc(npcInstanceID int32, prefix, text string) []byte {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_NPCSHOUT)
+	w.WriteC(0) // type 0 = floating area chat
+	w.WriteD(npcInstanceID)
+	if prefix != "" {
+		w.WriteS(prefix + ": " + text)
+	} else {
+		w.WriteS(text)
+	}
+	return w.Bytes()
+}
+
+// BuildSceneLineFromPlayer 建構劇本浮空對白封包（玩家發話）。
+// 同樣走 S_OPCODE_NPCSHOUT(161) type 0；客戶端把玩家 objectID 當作普通物件，
+// 浮空文字會出現在該玩家頭頂，且**不會**進入聊天歷史。
+//   - playerCharID = PlayerInfo.CharID
+//   - playerName = 玩家顯示名稱
+//   - text = 對白內容
+func BuildSceneLineFromPlayer(playerCharID int32, playerName, text string) []byte {
+	w := packet.NewWriterWithOpcode(packet.S_OPCODE_NPCSHOUT)
+	w.WriteC(0)
+	w.WriteD(playerCharID)
+	if playerName != "" {
+		w.WriteS(playerName + ": " + text)
+	} else {
+		w.WriteS(text)
+	}
+	return w.Bytes()
+}
+
 // SendParalysis 發送麻痺/凍結/睡眠狀態封包。
 func SendParalysis(sess *net.Session, subtype byte) {
 	sendParalysis(sess, subtype)
@@ -1111,6 +1157,14 @@ func BroadcastToPlayers(viewers []*world.PlayerInfo, data []byte) {
 	for _, v := range viewers {
 		v.Session.Send(data)
 	}
+}
+
+func BroadcastToVisiblePlayers(ws *world.State, x, y int32, mapID int16, excludeSession uint64, showID int32, data []byte) {
+	if ws == nil {
+		return
+	}
+	nearby := ws.GetNearbyPlayersInShow(x, y, mapID, excludeSession, showID)
+	BroadcastToPlayers(nearby, data)
 }
 
 // SendGmMessage 發送 GM 訊息到指定 session。

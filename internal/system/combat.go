@@ -103,6 +103,12 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 
 	// 非戰鬥 NPC（商人等）：只播放攻擊動畫，不造成傷害
 	// Java: L1MerchantInstance.onAction() 只呼叫 attack.action()
+	if npcBlocksDirectPlayerAttackLikeJava(npc) {
+		return nil
+	}
+	if npc.ShowID != player.ShowID {
+		return nil
+	}
 	if !s.canPhysicalAttackReachTarget(player, npc.MapID, npc.X, npc.Y) {
 		return nil
 	}
@@ -117,7 +123,7 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 		}
 
 		player.Heading = CalcHeading(player.X, player.Y, npc.X, npc.Y)
-		nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+		nearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
 		for _, viewer := range nearby {
 			handler.SendAttackPacket(viewer.Session, player.CharID, npc.ID, 0, player.Heading)
 		}
@@ -186,6 +192,7 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 	ctx := scripting.CombatContext{
 		AttackerLevel:   int(player.Level),
 		AttackerSTR:     int(player.Str),
+		AttackerBaseSTR: calcPlayerBaseStrLikeJava(player),
 		AttackerDEX:     int(player.Dex),
 		AttackerWeapon:  weaponDmg,
 		AttackerHitMod:  int(player.HitMod),
@@ -215,7 +222,7 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 	damage = braveAuraDamage(player, damage)
 
 	// 取附近玩家用於廣播
-	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
 
 	// 燃燒擊砍（182）：一次性 +10 + 廣播 S_EffectLocation + 消耗 buff（Java L1AttackPc.calcBuffDamage:2434-2438）
 	if damage > 0 {
@@ -284,7 +291,8 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 		applyEnchantVenomPoisonToNpc(player, npc, s.deps)
 
 		// 受傷累加仇恨（Java: L1HateList.add）
-		AddHate(npc, sessID, damage)
+		AddPlayerHateLikeJava(ws, npc, player, damage)
+		TryNpcHideOnDamageLikeJava(npc, ws)
 
 		// 被攻擊聊天（Java: ChatTiming=UNDERATTACK，首次被攻擊時觸發）
 		StartNpcChat(npc, data.ChatTimingUnderAttack, s.deps.NpcChats)
@@ -365,6 +373,12 @@ func (s *CombatSystem) processRangedAttackForPlayer(player *world.PlayerInfo, ta
 	}
 
 	// 非戰鬥 NPC（商人等）：只播放攻擊動畫，不造成傷害
+	if npcBlocksDirectPlayerAttackLikeJava(npc) {
+		return nil
+	}
+	if npc.ShowID != player.ShowID {
+		return nil
+	}
 	if !s.canPhysicalAttackReachTarget(player, npc.MapID, npc.X, npc.Y) {
 		return nil
 	}
@@ -372,11 +386,8 @@ func (s *CombatSystem) processRangedAttackForPlayer(player *world.PlayerInfo, ta
 		player.Heading = CalcHeading(player.X, player.Y, npc.X, npc.Y)
 		handler.SendArrowAttackPacket(player.Session, player.CharID, npc.ID, 0, player.Heading,
 			player.X, player.Y, npc.X, npc.Y)
-		nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+		nearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, sessID, npc.ShowID)
 		for _, viewer := range nearby {
-			if viewer.SessionID == sessID {
-				continue
-			}
 			handler.SendArrowAttackPacket(viewer.Session, player.CharID, npc.ID, 0, player.Heading,
 				player.X, player.Y, npc.X, npc.Y)
 		}
@@ -474,6 +485,7 @@ func (s *CombatSystem) processRangedAttackForPlayer(player *world.PlayerInfo, ta
 		AttackerLevel:     int(player.Level),
 		AttackerSTR:       int(player.Str),
 		AttackerDEX:       int(player.Dex),
+		AttackerBaseDEX:   calcPlayerBaseDexLikeJava(player),
 		AttackerBowDmg:    bowDmg,
 		AttackerArrowDmg:  arrowDmg,
 		AttackerBowHitMod: int(player.BowHitMod),
@@ -495,7 +507,7 @@ func (s *CombatSystem) processRangedAttackForPlayer(player *world.PlayerInfo, ta
 	damage = darkElfPhysicalDamage(player, damage, "bow")
 	damage = braveAuraDamage(player, damage)
 
-	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, sessID, npc.ShowID)
 
 	// 武器技能觸發（命中時機率觸發額外傷害 + GFX）
 	if damage > 0 {
@@ -511,9 +523,6 @@ func (s *CombatSystem) processRangedAttackForPlayer(player *world.PlayerInfo, ta
 	handler.SendArrowAttackPacket(player.Session, player.CharID, npc.ID, damage, player.Heading,
 		player.X, player.Y, npc.X, npc.Y)
 	for _, viewer := range nearby {
-		if viewer.SessionID == sessID {
-			continue // 已發給自己
-		}
 		handler.SendArrowAttackPacket(viewer.Session, player.CharID, npc.ID, damage, player.Heading,
 			player.X, player.Y, npc.X, npc.Y)
 	}
@@ -545,7 +554,8 @@ func (s *CombatSystem) processRangedAttackForPlayer(player *world.PlayerInfo, ta
 		applyEnchantVenomPoisonToNpc(player, npc, s.deps)
 
 		// 受傷累加仇恨
-		AddHate(npc, sessID, damage)
+		AddPlayerHateLikeJava(ws, npc, player, damage)
+		TryNpcHideOnDamageLikeJava(npc, ws)
 
 		// 被攻擊聊天（Java: ChatTiming=UNDERATTACK，首次被攻擊時觸發）
 		StartNpcChat(npc, data.ChatTimingUnderAttack, s.deps.NpcChats)
@@ -874,6 +884,7 @@ func (s *CombatSystem) processScarecrowHit(player *world.PlayerInfo, npc *world.
 	ctx := scripting.CombatContext{
 		AttackerLevel:   int(player.Level),
 		AttackerSTR:     int(player.Str),
+		AttackerBaseSTR: calcPlayerBaseStrLikeJava(player),
 		AttackerDEX:     int(player.Dex),
 		AttackerWeapon:  weaponDmg,
 		AttackerHitMod:  int(player.HitMod),
@@ -890,7 +901,7 @@ func (s *CombatSystem) processScarecrowHit(player *world.PlayerInfo, npc *world.
 		damage = 0
 	}
 
-	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
 
 	// 廣播攻擊動畫
 	for _, viewer := range nearby {
@@ -994,7 +1005,7 @@ func damageEquippedWeaponDurability(player *world.PlayerInfo, deps *handler.Deps
 	handler.SendServerMessageArgs(player.Session, 268, itemLogName(wpn))
 	handler.SendItemStatusUpdate(player.Session, wpn, itemInfo)
 	if deps.World != nil {
-		nearby := deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		nearby := deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, 10712))
 	}
 	player.Dirty = true

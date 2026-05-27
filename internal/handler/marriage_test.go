@@ -32,7 +32,7 @@ func newMarriageTestSetup(t *testing.T) (*Deps, *world.PlayerInfo, *world.Player
 		MapID:     4,
 		X:         33975,
 		Y:         33363,
-		Heading:   0, // dx=0, dy=1 → 對象在 (33975, 33364)
+		Heading:   0, // yiwei FaceToFace: heading 0 → 對象在 (33975, 33362)
 		Inv:       world.NewInventory(),
 	}
 	a.Inv.AddItem(40901, 1, "ring", 0, 0, false, 0)
@@ -47,7 +47,8 @@ func newMarriageTestSetup(t *testing.T) (*Deps, *world.PlayerInfo, *world.Player
 		Level:     30,
 		MapID:     4,
 		X:         33975,
-		Y:         33364, // 在 alice 朝向方向
+		Y:         33362, // 在 alice 朝向方向
+		Heading:   4,
 		Inv:       world.NewInventory(),
 	}
 	b.Inv.AddItem(40902, 1, "ring", 0, 0, false, 0)
@@ -77,6 +78,17 @@ func TestHandleMarriageProposeSendsYesNoToTarget(t *testing.T) {
 	}
 	if hasServerMessageInSession(a.Session, 661) {
 		t.Fatalf("成功流程不應送 661 給求婚者")
+	}
+}
+
+func TestHandleMarriageProposeUsesYiweiFaceToFaceDirectionLikeJava(t *testing.T) {
+	deps, a, b := newMarriageTestSetup(t)
+
+	HandleMarriage(a.Session, buildProposePacket(0), deps)
+
+	if b.PendingYesNoType != 654 || b.PendingYesNoData != a.CharID {
+		t.Fatalf("yiwei heading 0 面前的玩家應收到求婚 Y/N，Pending=(%d,%d)",
+			b.PendingYesNoType, b.PendingYesNoData)
 	}
 }
 
@@ -129,7 +141,7 @@ func TestHandleMarriageProposeOutOfChurchUsesSystemMessage(t *testing.T) {
 	b := &world.PlayerInfo{
 		SessionID: 2, Session: newHandlerTestSession(t, 2),
 		CharID: 200, Name: "bob", Sex: 0, Level: 30,
-		MapID: 4, X: 32000, Y: 32001,
+		MapID: 4, X: 32000, Y: 31999, Heading: 4,
 		Inv: world.NewInventory(),
 	}
 	b.Inv.AddItem(40902, 1, "ring", 0, 0, false, 0)
@@ -196,4 +208,3 @@ func hasServerMessageInSession(sess *l1net.Session, msgID uint16) bool {
 	}
 	return false
 }
-

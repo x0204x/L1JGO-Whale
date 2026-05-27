@@ -25,10 +25,6 @@ func (s *SkillSystem) isResurrectionSkill(skill *data.SkillInfo) bool {
 // teleportToMatherBlockedBeforeConsume 對齊 Java `TELEPORT_TO_MATHER.start()` 第 23-35 行
 // 與 isEscapable 檢查，在 MP 消耗前返回。回傳 true 表示已送回饋封包並阻擋。
 func (s *SkillSystem) teleportToMatherBlockedBeforeConsume(sess *net.Session, player *world.PlayerInfo) bool {
-	if player.HasBuff(230) { // 亡命之徒
-		handler.SendServerMessage(sess, 1413)
-		return true
-	}
 	if player.HasBuff(4000) { // 束縛
 		handler.SendNormalChat(sess, 0, "\\fY已被束縛的效果無法瞬移")
 		return true
@@ -50,7 +46,7 @@ func (s *SkillSystem) teleportToMatherBlockedBeforeConsume(sess *net.Session, pl
 
 // executeResurrection 處理復活技能（18, 75, 131, 165）。
 func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, targetID int32) {
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 
 	// 廣播施法動畫
 	// Java `L1SkillUse.sendGrfx:1639` 對 TELEPORT/MASS_TELEPORT/TELEPORT_TO_MATHER 三項
@@ -79,7 +75,7 @@ func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.Playe
 				s.sendCastFail(sess)
 				return
 			}
-			if target.MapID != player.MapID {
+			if target.MapID != player.MapID || target.ShowID != player.ShowID {
 				return
 			}
 			// 儲存待復活資訊 → 發送同意對話框
@@ -101,6 +97,10 @@ func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.Playe
 			return
 		}
 		if npc := s.deps.World.GetNpc(targetID); npc != nil {
+			if npc.ShowID != player.ShowID {
+				s.sendCastFail(sess)
+				return
+			}
 			if s.resurrectNpcWithHP(npc, npc.MaxHP/4) {
 				return
 			}
@@ -119,7 +119,7 @@ func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.Playe
 				s.sendCastFail(sess)
 				return
 			}
-			if target.MapID != player.MapID {
+			if target.MapID != player.MapID || target.ShowID != player.ShowID {
 				return
 			}
 			if s.deps.World.IsPlayerAt(target.X, target.Y, target.MapID, target.SessionID) {
@@ -140,6 +140,10 @@ func (s *SkillSystem) executeResurrection(sess *net.Session, player *world.Playe
 			return
 		}
 		if npc := s.deps.World.GetNpc(targetID); npc != nil {
+			if npc.ShowID != player.ShowID {
+				s.sendCastFail(sess)
+				return
+			}
 			if s.callOfNatureResurrectNpc(npc) {
 				return
 			}
@@ -189,7 +193,7 @@ func (s *SkillSystem) resurrectPlayer(target *world.PlayerInfo, caster *world.Pl
 	handler.SendPlayerStatus(target.Session, target)
 	handler.SendPutObject(target.Session, target)
 
-	nearbyTarget := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+	nearbyTarget := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, 0, target.ShowID)
 	for _, viewer := range nearbyTarget {
 		if viewer.SessionID != target.SessionID {
 			handler.SendPutObject(viewer.Session, target)
@@ -259,7 +263,7 @@ func (s *SkillSystem) resurrectPetWithHP(sess *net.Session, player *world.Player
 	if pet == nil || !pet.Dead {
 		return false
 	}
-	if player.MapID != pet.MapID || chebyshevDist(player.X, player.Y, pet.X, pet.Y) > 20 {
+	if player.MapID != pet.MapID || player.ShowID != pet.ShowID || chebyshevDist(player.X, player.Y, pet.X, pet.Y) > 20 {
 		return false
 	}
 	if s.deps.World.IsPlayerAt(pet.X, pet.Y, pet.MapID, 0) {
@@ -278,7 +282,7 @@ func (s *SkillSystem) resurrectPetWithHP(sess *net.Session, player *world.Player
 	pet.Dirty = true
 	s.deps.World.PetRevive(pet)
 
-	nearbyPet := s.deps.World.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearbyPet := s.deps.World.GetNearbyPlayersInShow(pet.X, pet.Y, pet.MapID, 0, pet.ShowID)
 	for _, viewer := range nearbyPet {
 		handler.SendRemoveObject(viewer.Session, pet.ID)
 		if viewer.Known != nil {
@@ -306,14 +310,14 @@ func (s *SkillSystem) healCompanion(sess *net.Session, player *world.PlayerInfo,
 		return
 	}
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 
 	// 廣播施法動畫
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
 
 	// 計算治療量
 	if skill.DamageValue > 0 || skill.DamageDice > 0 {
-		heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, int(player.Intel), int(player.SP)))
+		heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, int(player.Intel), int(player.Lawful), 10))
 		if heal > 0 && *hp < maxHP {
 			*hp += heal
 			if *hp > maxHP {
@@ -334,11 +338,11 @@ func (s *SkillSystem) healCompanion(sess *net.Session, player *world.PlayerInfo,
 // Java: L1Character.resurrect() + L1PetInstance 特殊處理。
 // 返生術(61)恢復 25% HP，終極返生術(75)恢復 100% HP。
 func (s *SkillSystem) resurrectPet(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, pet *world.PetInfo) {
-	if player.MapID != pet.MapID || chebyshevDist(player.X, player.Y, pet.X, pet.Y) > 20 {
+	if player.MapID != pet.MapID || player.ShowID != pet.ShowID || chebyshevDist(player.X, player.Y, pet.X, pet.Y) > 20 {
 		return
 	}
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 
 	// 廣播施法動畫
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
@@ -364,7 +368,7 @@ func (s *SkillSystem) resurrectPet(sess *net.Session, player *world.PlayerInfo, 
 	s.deps.World.PetRevive(pet)
 
 	// 讓附近玩家重新認識寵物（Java: removeKnownObject → updateObject）
-	nearbyPet := s.deps.World.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearbyPet := s.deps.World.GetNearbyPlayersInShow(pet.X, pet.Y, pet.MapID, 0, pet.ShowID)
 	for _, viewer := range nearbyPet {
 		// 先移除再重新發送，確保客戶端正確更新
 		handler.SendRemoveObject(viewer.Session, pet.ID)
@@ -376,6 +380,6 @@ func (s *SkillSystem) resurrectPet(sess *net.Session, player *world.PlayerInfo, 
 
 	// 效果 GFX
 	if skill.CastGfx > 0 {
-		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(pet.ID, skill.CastGfx))
+		handler.BroadcastToPlayers(nearbyPet, handler.BuildSkillEffect(pet.ID, skill.CastGfx))
 	}
 }

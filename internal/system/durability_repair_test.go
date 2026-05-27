@@ -258,6 +258,62 @@ func TestDamageWeaponDurabilitySkipsWeaponCanBeDamagedFalse(t *testing.T) {
 	}
 }
 
+func TestDamageEquippedWeaponDurabilityBroadcastsOnlySameShowLikeJava(t *testing.T) {
+	items := loadDurabilityTestItems(t)
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "attacker",
+		X:         100,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "same_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    100,
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 3,
+		Session:   newSkillTestSession(t, 3),
+		CharID:    1003,
+		Name:      "other_show",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		ShowID:    200,
+	})
+	weapon := player.Inv.AddItemWithID(101, 1, 1, "sword", 0, 0, false, 1)
+	player.Equip.Set(world.SlotWeapon, weapon)
+
+	deps := &handler.Deps{
+		World: ws,
+		Items: items,
+		Log:   zap.NewNop(),
+	}
+	for i := 0; i < 1000 && weapon.Durability == 0; i++ {
+		damageEquippedWeaponDurability(player, deps, false)
+	}
+	if weapon.Durability == 0 {
+		t.Fatalf("測試前置失敗：1000 次耐久判定都未觸發損壞")
+	}
+
+	if !hasSkillEffectPacket(drainSkillTestPackets(sameShow.Session), player.CharID, 10712) {
+		t.Fatalf("同 ShowID 觀眾應收到武器損壞特效")
+	}
+	if hasSkillEffectPacket(drainSkillTestPackets(otherShow.Session), player.CharID, 10712) {
+		t.Fatalf("不同 ShowID 觀眾不應收到武器損壞特效")
+	}
+}
+
 func hasServerMessage(packets [][]byte, msgID uint16) bool {
 	for _, pkt := range packets {
 		if len(pkt) >= 3 && pkt[0] == packet.S_OPCODE_MESSAGE_CODE &&

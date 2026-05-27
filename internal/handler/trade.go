@@ -235,7 +235,7 @@ func findFaceToFace(player *world.PlayerInfo, deps *Deps) *world.PlayerInfo {
 	targetY := player.Y + headingDY[h]
 	oppositeH := (h + 4) % 8
 
-	nearby := deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, player.SessionID)
+	nearby := deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, player.SessionID, player.ShowID)
 	for _, other := range nearby {
 		if other.X == targetX && other.Y == targetY && other.Heading == oppositeH {
 			return other

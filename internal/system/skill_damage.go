@@ -31,7 +31,7 @@ func (s *SkillSystem) canSkillReachTarget(caster *world.PlayerInfo, skill *data.
 }
 
 func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, target *world.PlayerInfo) {
-	if target == nil || target.Dead || target.MapID != player.MapID {
+	if target == nil || target.Dead || target.MapID != player.MapID || target.ShowID != player.ShowID {
 		return
 	}
 
@@ -54,7 +54,7 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 	}
 
 	player.Heading = CalcHeading(player.X, player.Y, target.X, target.Y)
-	nearby := s.deps.World.GetNearbyPlayersAt(target.X, target.Y, target.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(target.X, target.Y, target.MapID, 0, target.ShowID)
 
 	if skill.SkillID == skillFoeSlayer {
 		s.executeFoeSlayerOnPlayer(sess, player, skill, target, nearby)
@@ -71,7 +71,7 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 				break
 			}
 		}
-		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		casterNearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
 		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))
 		return
@@ -130,7 +130,7 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 	}
 
 	if skill.Area > 0 {
-		for _, npc := range s.deps.World.GetNearbyNpcs(target.X, target.Y, target.MapID) {
+		for _, npc := range s.deps.World.GetNearbyNpcsInShow(target.X, target.Y, target.MapID, player.ShowID) {
 			if npc.Dead || chebyshevDist(target.X, target.Y, npc.X, npc.Y) > int32(skill.Area) {
 				continue
 			}
@@ -144,31 +144,38 @@ func (s *SkillSystem) executeAttackSkillOnPlayer(sess *net.Session, player *worl
 
 func (s *SkillSystem) buildPlayerSkillDamageContext(player, target *world.PlayerInfo, skill *data.SkillInfo) scripting.SkillDamageContext {
 	return scripting.SkillDamageContext{
-		SkillID:            int(skill.SkillID),
-		DamageValue:        skill.DamageValue,
-		DamageDice:         skill.DamageDice,
-		DamageDiceCount:    skill.DamageDiceCount,
-		SkillLevel:         skill.SkillLevel,
-		Attr:               skill.Attr,
-		AttackerLevel:      int(player.Level),
-		AttackerSTR:        int(player.Str),
-		AttackerDEX:        int(player.Dex),
-		AttackerINT:        int(player.Intel),
-		AttackerWIS:        int(player.Wis),
-		AttackerSP:         int(player.SP),
-		AttackerDmgMod:     int(player.DmgMod),
-		AttackerHitMod:     int(player.HitMod),
-		AttackerHP:         int(player.HP),
-		AttackerMaxHP:      int(player.MaxHP),
-		AttackerMagicLevel: calcMagicLevel(int(player.ClassType), int(player.Level)),
-		TargetAC:           int(target.AC),
-		TargetLevel:        int(target.Level),
-		TargetMR:           int(target.MR),
-		TargetFireRes:      int(target.FireRes),
-		TargetWaterRes:     int(target.WaterRes),
-		TargetWindRes:      int(target.WindRes),
-		TargetEarthRes:     int(target.EarthRes),
-		TargetMP:           int(target.MP),
+		SkillID:                  int(skill.SkillID),
+		DamageValue:              skill.DamageValue,
+		DamageDice:               skill.DamageDice,
+		DamageDiceCount:          skill.DamageDiceCount,
+		SkillLevel:               skill.SkillLevel,
+		Attr:                     skill.Attr,
+		AttackerLevel:            int(player.Level),
+		AttackerSTR:              int(player.Str),
+		AttackerBaseSTR:          calcPlayerBaseStrLikeJava(player),
+		AttackerDEX:              int(player.Dex),
+		AttackerBaseDEX:          calcPlayerBaseDexLikeJava(player),
+		AttackerINT:              int(player.Intel),
+		AttackerBaseINT:          calcPlayerBaseIntLikeJava(player),
+		AttackerWIS:              int(player.Wis),
+		AttackerSP:               int(player.SP),
+		AttackerTrueSP:           calcPlayerTrueSPLikeJava(player),
+		AttackerFullSP:           calcPlayerSPLikeJava(player),
+		AttackerDmgMod:           int(player.DmgMod),
+		AttackerHitMod:           int(player.HitMod),
+		AttackerHP:               int(player.HP),
+		AttackerMaxHP:            int(player.MaxHP),
+		AttackerMagicLevel:       calcMagicLevel(int(player.ClassType), int(player.Level)),
+		AttackerMagicCrit:        int(player.MagicCritical),
+		AttackerOriginalMagicHit: int(player.OriginalMagicHit),
+		TargetAC:                 int(target.AC),
+		TargetLevel:              int(target.Level),
+		TargetMR:                 int(target.MR),
+		TargetFireRes:            int(target.FireRes),
+		TargetWaterRes:           int(target.WaterRes),
+		TargetWindRes:            int(target.WindRes),
+		TargetEarthRes:           int(target.EarthRes),
+		TargetMP:                 int(target.MP),
 	}
 }
 
@@ -224,36 +231,49 @@ func (s *SkillSystem) applySkillDamageToPlayer(sess *net.Session, player, target
 }
 
 func (s *SkillSystem) applyAreaSkillDamageToNpc(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, npc *world.NpcInfo, nearby []*world.PlayerInfo) {
+	if npcBlocksSkillTargetLikeJava(npc, skill.SkillID) {
+		return
+	}
 	ctx := scripting.SkillDamageContext{
-		SkillID:            int(skill.SkillID),
-		DamageValue:        skill.DamageValue,
-		DamageDice:         skill.DamageDice,
-		DamageDiceCount:    skill.DamageDiceCount,
-		SkillLevel:         skill.SkillLevel,
-		Attr:               skill.Attr,
-		AttackerLevel:      int(player.Level),
-		AttackerSTR:        int(player.Str),
-		AttackerDEX:        int(player.Dex),
-		AttackerINT:        int(player.Intel),
-		AttackerWIS:        int(player.Wis),
-		AttackerSP:         int(player.SP),
-		AttackerDmgMod:     int(player.DmgMod),
-		AttackerHitMod:     int(player.HitMod),
-		AttackerHP:         int(player.HP),
-		AttackerMaxHP:      int(player.MaxHP),
-		AttackerMagicLevel: calcMagicLevel(int(player.ClassType), int(player.Level)),
-		TargetAC:           int(npc.AC),
-		TargetLevel:        int(npc.Level),
-		TargetMR:           int(npc.MR),
-		TargetFireRes:      int(npc.FireRes),
-		TargetWaterRes:     int(npc.WaterRes),
-		TargetWindRes:      int(npc.WindRes),
-		TargetEarthRes:     int(npc.EarthRes),
-		TargetMP:           int(npc.MP),
+		SkillID:                  int(skill.SkillID),
+		DamageValue:              skill.DamageValue,
+		DamageDice:               skill.DamageDice,
+		DamageDiceCount:          skill.DamageDiceCount,
+		SkillLevel:               skill.SkillLevel,
+		Attr:                     skill.Attr,
+		AttackerLevel:            int(player.Level),
+		AttackerSTR:              int(player.Str),
+		AttackerBaseSTR:          calcPlayerBaseStrLikeJava(player),
+		AttackerDEX:              int(player.Dex),
+		AttackerBaseDEX:          calcPlayerBaseDexLikeJava(player),
+		AttackerINT:              int(player.Intel),
+		AttackerBaseINT:          calcPlayerBaseIntLikeJava(player),
+		AttackerWIS:              int(player.Wis),
+		AttackerSP:               int(player.SP),
+		AttackerTrueSP:           calcPlayerTrueSPLikeJava(player),
+		AttackerFullSP:           calcPlayerSPLikeJava(player),
+		AttackerDmgMod:           int(player.DmgMod),
+		AttackerHitMod:           int(player.HitMod),
+		AttackerHP:               int(player.HP),
+		AttackerMaxHP:            int(player.MaxHP),
+		AttackerMagicLevel:       calcMagicLevel(int(player.ClassType), int(player.Level)),
+		AttackerMagicCrit:        int(player.MagicCritical),
+		AttackerOriginalMagicHit: int(player.OriginalMagicHit),
+		TargetAC:                 int(npc.AC),
+		TargetLevel:              int(npc.Level),
+		TargetMR:                 int(npc.MR),
+		TargetFireRes:            int(npc.FireRes),
+		TargetWaterRes:           int(npc.WaterRes),
+		TargetWindRes:            int(npc.WindRes),
+		TargetEarthRes:           int(npc.EarthRes),
+		TargetMP:                 int(npc.MP),
 	}
 	res := s.deps.Scripting.CalcSkillDamage(ctx)
 	dmg := int32(res.Damage)
 	if dmg < 0 {
+		dmg = 0
+	}
+	if npcRejectsDamageWhileHiddenLikeJava(npc) {
 		dmg = 0
 	}
 	// 副本武器需求檢查（火龍窟「必須裝備真死亡騎士烈炎之劍」）：玩家技能對副本怪傷害同樣受限。
@@ -277,7 +297,8 @@ func (s *SkillSystem) applyAreaSkillDamageToNpc(sess *net.Session, player *world
 	if npc.HP < 0 {
 		npc.HP = 0
 	}
-	AddHate(npc, sess.ID, dmg)
+	AddPlayerHateLikeJava(s.deps.World, npc, player, dmg)
+	TryNpcHideOnDamageLikeJava(npc, s.deps.World)
 	hpRatio := int16(0)
 	if npc.MaxHP > 0 {
 		hpRatio = int16((npc.HP * 100) / npc.MaxHP)
@@ -402,7 +423,10 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		}
 		return
 	}
-	if npc.MapID != player.MapID {
+	if npc.MapID != player.MapID || npc.ShowID != player.ShowID {
+		return
+	}
+	if npcBlocksSkillTargetLikeJava(npc, skill.SkillID) {
 		return
 	}
 
@@ -424,6 +448,9 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		s.sendCastFail(sess)
 		return
 	}
+	if npc.HiddenStatus == world.NpcHiddenSink && skillCanRevealSinkHiddenLikeJava(skill.SkillID) {
+		npcAppearOnGroundLikeJava(npc, ws, player)
+	}
 
 	player.Heading = CalcHeading(player.X, player.Y, npc.X, npc.Y)
 
@@ -444,7 +471,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 				break
 			}
 		}
-		casterNearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		casterNearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 4394))
 		handler.BroadcastToPlayers(casterNearby, handler.BuildSkillEffect(player.CharID, 11764))
 		return
@@ -469,32 +496,39 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 	// Lua 傷害計算 context 建構
 	buildCtx := func(n *world.NpcInfo) scripting.SkillDamageContext {
 		return scripting.SkillDamageContext{
-			SkillID:            int(skill.SkillID),
-			DamageValue:        skill.DamageValue,
-			DamageDice:         skill.DamageDice,
-			DamageDiceCount:    skill.DamageDiceCount,
-			SkillLevel:         skill.SkillLevel,
-			Attr:               skill.Attr,
-			AttackerLevel:      int(player.Level),
-			AttackerSTR:        int(player.Str),
-			AttackerDEX:        int(player.Dex),
-			AttackerINT:        int(player.Intel),
-			AttackerWIS:        int(player.Wis),
-			AttackerSP:         int(player.SP),
-			AttackerDmgMod:     int(player.DmgMod),
-			AttackerHitMod:     int(player.HitMod),
-			AttackerWeapon:     weaponDmg,
-			AttackerHP:         int(player.HP),
-			AttackerMaxHP:      int(player.MaxHP),
-			AttackerMagicLevel: calcMagicLevel(int(player.ClassType), int(player.Level)),
-			TargetAC:           int(n.AC),
-			TargetLevel:        int(n.Level),
-			TargetMR:           int(n.MR),
-			TargetFireRes:      int(n.FireRes),
-			TargetWaterRes:     int(n.WaterRes),
-			TargetWindRes:      int(n.WindRes),
-			TargetEarthRes:     int(n.EarthRes),
-			TargetMP:           int(n.MP),
+			SkillID:                  int(skill.SkillID),
+			DamageValue:              skill.DamageValue,
+			DamageDice:               skill.DamageDice,
+			DamageDiceCount:          skill.DamageDiceCount,
+			SkillLevel:               skill.SkillLevel,
+			Attr:                     skill.Attr,
+			AttackerLevel:            int(player.Level),
+			AttackerSTR:              int(player.Str),
+			AttackerBaseSTR:          calcPlayerBaseStrLikeJava(player),
+			AttackerDEX:              int(player.Dex),
+			AttackerBaseDEX:          calcPlayerBaseDexLikeJava(player),
+			AttackerINT:              int(player.Intel),
+			AttackerBaseINT:          calcPlayerBaseIntLikeJava(player),
+			AttackerWIS:              int(player.Wis),
+			AttackerSP:               int(player.SP),
+			AttackerTrueSP:           calcPlayerTrueSPLikeJava(player),
+			AttackerFullSP:           calcPlayerSPLikeJava(player),
+			AttackerDmgMod:           int(player.DmgMod),
+			AttackerHitMod:           int(player.HitMod),
+			AttackerWeapon:           weaponDmg,
+			AttackerHP:               int(player.HP),
+			AttackerMaxHP:            int(player.MaxHP),
+			AttackerMagicLevel:       calcMagicLevel(int(player.ClassType), int(player.Level)),
+			AttackerMagicCrit:        int(player.MagicCritical),
+			AttackerOriginalMagicHit: int(player.OriginalMagicHit),
+			TargetAC:                 int(n.AC),
+			TargetLevel:              int(n.Level),
+			TargetMR:                 int(n.MR),
+			TargetFireRes:            int(n.FireRes),
+			TargetWaterRes:           int(n.WaterRes),
+			TargetWindRes:            int(n.WindRes),
+			TargetEarthRes:           int(n.EarthRes),
+			TargetMP:                 int(n.MP),
 		}
 	}
 
@@ -509,7 +543,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 
 	// 心靈破壞（207）：特殊傷害公式 SP × 3.8（Java: MIND_BREAK.java）
 	if skill.SkillID == 207 {
-		res.Damage = int(float64(player.SP) * 3.8)
+		res.Damage = int(float64(calcPlayerSPLikeJava(player)) * 3.8)
 		res.DrainMP = 5 // 強制扣除目標 5 MP
 	}
 	if skill.SkillID == skillFinalBurn {
@@ -528,7 +562,10 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 	if skill.SkillID == 17 {
 		lineNpcs := ws.GetNpcsAlongLine(player.X, player.Y, npc.X, npc.Y, player.MapID)
 		for _, other := range lineNpcs {
-			if other.ID == npc.ID {
+			if other.ID == npc.ID || other.ShowID != player.ShowID {
+				continue
+			}
+			if npcBlocksSkillTargetLikeJava(other, skill.SkillID) {
 				continue
 			}
 			if !s.canSkillReachTarget(player, skill, other.MapID, other.X, other.Y) {
@@ -538,9 +575,12 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 			hits = append(hits, hitTarget{npc: other, dmg: int32(r.Damage), hitCount: r.HitCount, drainMP: int32(r.DrainMP)})
 		}
 	} else if skill.Area > 0 {
-		allNpcs := ws.GetNearbyNpcs(npc.X, npc.Y, npc.MapID)
+		allNpcs := ws.GetNearbyNpcsInShow(npc.X, npc.Y, npc.MapID, player.ShowID)
 		for _, other := range allNpcs {
 			if other.ID == npc.ID || other.Dead {
+				continue
+			}
+			if npcBlocksSkillTargetLikeJava(other, skill.SkillID) {
 				continue
 			}
 			if chebyshevDist(npc.X, npc.Y, other.X, other.Y) > int32(skill.Area) {
@@ -554,7 +594,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 		}
 	}
 
-	nearby := ws.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := ws.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 
 	if skill.SkillID == skillFoeSlayer {
 		s.executeFoeSlayerOnNpc(sess, player, skill, npc, nearby)
@@ -611,7 +651,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 
 		for h := 0; h < hitsToApply; h++ {
 			dmg := t.dmg
-			if blockDmg {
+			if blockDmg || npcRejectsDamageWhileHiddenLikeJava(t.npc) {
 				dmg = 0
 			}
 
@@ -664,7 +704,8 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 			}
 
 			// 技能傷害累加仇恨
-			AddHate(t.npc, sess.ID, dmg)
+			AddPlayerHateLikeJava(ws, t.npc, player, dmg)
+			TryNpcHideOnDamageLikeJava(t.npc, ws)
 
 			hpRatio := int16(0)
 			if t.npc.MaxHP > 0 {
@@ -751,7 +792,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 				}
 				t.npc.Paralyzed = true // broader gap: 應為 passispeed=0 而非 Paralyzed
 				t.npc.AddDebuff(192, bindSec*5)
-				nearby := s.deps.World.GetNearbyPlayersAt(t.npc.X, t.npc.Y, t.npc.MapID)
+				nearby := s.deps.World.GetNearbyPlayersInShow(t.npc.X, t.npc.Y, t.npc.MapID, 0, t.npc.ShowID)
 				handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(t.npc.ID, 4184))
 				s.spawnThunderGrabGroundEffect(player, t.npc.X, t.npc.Y, t.npc.MapID, bindSec)
 			}
@@ -771,7 +812,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 				dur := world.RandInt(2) + 1 // 1-2 秒
 				t.npc.Paralyzed = true
 				t.npc.AddDebuff(208, dur*5)
-				nearby := s.deps.World.GetNearbyPlayersAt(t.npc.X, t.npc.Y, t.npc.MapID)
+				nearby := s.deps.World.GetNearbyPlayersInShow(t.npc.X, t.npc.Y, t.npc.MapID, 0, t.npc.ShowID)
 				handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(t.npc.ID, 13119))
 			}
 		}
@@ -800,7 +841,7 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 // GFX：不走攻擊動畫，走 ActionGfx + SkillEffect（Java 明確排除 Turn Undead 的 S_UseAttackSkill）。
 func (s *SkillSystem) executeTurnUndead(sess *net.Session, player *world.PlayerInfo, skill *data.SkillInfo, npc *world.NpcInfo) {
 	ws := s.deps.World
-	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
 
 	// 施法動畫（Java: S_DoActionGFX）
 	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, byte(skill.ActionID)))
@@ -850,7 +891,7 @@ func (s *SkillSystem) executeTurnUndead(sess *net.Session, player *world.PlayerI
 	}
 
 	// 即死傷害累加仇恨
-	AddHate(npc, sess.ID, dmg)
+	AddPlayerHateLikeJava(ws, npc, player, dmg)
 
 	hpData := handler.BuildHpMeter(npc.ID, 0)
 	handler.BroadcastToPlayers(nearby, hpData)

@@ -118,7 +118,7 @@ func (s *PolymorphSystem) applyPoly(player *world.PlayerInfo, poly *data.Polymor
 
 	// 廣播外觀變更
 	if s.deps.World != nil {
-		nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+		nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 		for _, viewer := range nearby {
 			handler.SendChangeShape(viewer.Session, player.CharID, polyID, player.CurrentWeapon)
 		}
@@ -172,7 +172,7 @@ func (s *PolymorphSystem) UndoPoly(player *world.PlayerInfo) {
 	}
 
 	// 廣播原始外觀
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	for _, viewer := range nearby {
 		handler.SendChangeShape(viewer.Session, player.CharID, player.ClassID, player.CurrentWeapon)
 	}

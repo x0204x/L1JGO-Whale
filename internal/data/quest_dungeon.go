@@ -38,6 +38,44 @@ type DungeonDef struct {
 	Exit   *DungeonExitSpec  `yaml:"exit,omitempty"`
 	Rounds []DungeonRound    `yaml:"rounds,omitempty"`
 	Hooks  *DungeonHookSpec  `yaml:"hooks,omitempty"`
+	Scenes []DungeonScene    `yaml:"scenes,omitempty"` // 情境劇本（浮空對白，不入聊天歷史）
+}
+
+// SceneTrigger 是 Scene 觸發類型（與 Round 同類型分開，避免將來分歧）。
+type SceneTrigger string
+
+const (
+	SceneTriggerOnEnter      SceneTrigger = "on_enter"
+	SceneTriggerOnRoundClear SceneTrigger = "on_round_clear"
+	SceneTriggerOnTimer      SceneTrigger = "on_timer"
+)
+
+// SceneSpeaker 對白說話者類型。
+type SceneSpeaker string
+
+const (
+	SceneSpeakerNpc    SceneSpeaker = "npc"    // 由 AnchorNpc 發話（浮空在 NPC 上方）
+	SceneSpeakerPlayer SceneSpeaker = "player" // 由觸發劇本的玩家發話（浮空在玩家上方）
+)
+
+// DungeonScene 一段情境劇本。
+//   - 由 trigger 決定何時開始播放
+//   - 每條 Line 有獨立 delay（從 trigger 時間零點起算）
+//   - 文字以浮空（type=0）廣播，不進入聊天歷史
+type DungeonScene struct {
+	ID         string         `yaml:"id"`                    // 識別字串（除錯用，可空）
+	Trigger    SceneTrigger   `yaml:"trigger"`
+	Round      int32          `yaml:"round,omitempty"`       // trigger=on_round_clear 時對應的 round id
+	Timer      int32          `yaml:"timer,omitempty"`       // trigger=on_timer 時觸發秒數
+	AnchorNpc  int32          `yaml:"anchor_npc,omitempty"`  // NPC 對白定位（找該副本內第一個此 NpcID 的 NPC）
+	Lines      []DungeonSceneLine `yaml:"lines"`
+}
+
+// DungeonSceneLine 單一行對白。
+type DungeonSceneLine struct {
+	Delay   int32        `yaml:"delay"`         // ms（從 trigger 起算）
+	Speaker SceneSpeaker `yaml:"speaker"`
+	Text    string       `yaml:"text"`
 }
 
 // DungeonEntrySpec 進場條件（資料驅動 DSL）。
@@ -237,6 +275,47 @@ func validateDungeon(d *DungeonDef) error {
 			if hasArea && (s.Area[0] > s.Area[2] || s.Area[1] > s.Area[3]) {
 				return fmt.Errorf("round id=%d spawn[%d] area 範圍非法（左下需 <= 右上）", r.ID, j)
 			}
+		}
+	}
+
+	// scenes 驗證
+	for i := range d.Scenes {
+		sc := &d.Scenes[i]
+		switch sc.Trigger {
+		case SceneTriggerOnEnter:
+		case SceneTriggerOnRoundClear:
+			// round 可不指定（=任一輪清空）；指定時需要對應的 round 存在
+			if sc.Round != 0 {
+				if _, ok := roundIDs[sc.Round]; !ok {
+					return fmt.Errorf("scene[%d] on_round_clear round=%d 對應 round 不存在", i, sc.Round)
+				}
+			}
+		case SceneTriggerOnTimer:
+			if sc.Timer <= 0 {
+				return fmt.Errorf("scene[%d] on_timer 需要 timer > 0", i)
+			}
+		default:
+			return fmt.Errorf("scene[%d] 未知 trigger=%q", i, sc.Trigger)
+		}
+		if len(sc.Lines) == 0 {
+			return fmt.Errorf("scene[%d] lines 不可為空", i)
+		}
+		for j := range sc.Lines {
+			ln := &sc.Lines[j]
+			if ln.Delay < 0 {
+				return fmt.Errorf("scene[%d] line[%d] delay 不可為負", i, j)
+			}
+			switch ln.Speaker {
+			case SceneSpeakerNpc, SceneSpeakerPlayer:
+			default:
+				return fmt.Errorf("scene[%d] line[%d] 未知 speaker=%q", i, j, ln.Speaker)
+			}
+			if ln.Text == "" {
+				return fmt.Errorf("scene[%d] line[%d] text 不可為空", i, j)
+			}
+		}
+		if sc.AnchorNpc < 0 {
+			return fmt.Errorf("scene[%d] anchor_npc 不可為負", i)
 		}
 	}
 

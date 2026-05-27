@@ -126,6 +126,7 @@ func (s *PetSystem) UsePetCollar(sess *net.Session, player *world.PlayerInfo, in
 		X:           spawnX,
 		Y:           spawnY,
 		MapID:       player.MapID,
+		ShowID:      player.ShowID,
 		Heading:     player.Heading,
 		Status:      world.PetStatusRest,
 		AC:          tmpl.AC,
@@ -141,7 +142,7 @@ func (s *PetSystem) UsePetCollar(sess *net.Session, player *world.PlayerInfo, in
 	ws.AddPet(pet)
 
 	// 廣播外觀給附近玩家
-	nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	for _, viewer := range nearby {
 		isOwner := viewer.CharID == player.CharID
 		handler.SendPetPack(viewer.Session, pet, isOwner, player.Name)
@@ -155,7 +156,7 @@ func (s *PetSystem) UsePetCollar(sess *net.Session, player *world.PlayerInfo, in
 	if petType != nil {
 		msgID := petType.LevelUpMsgID(int(pet.Level))
 		if msgID > 0 {
-			broadcastNpcChat(ws, pet.ID, pet.X, pet.Y, pet.MapID, fmt.Sprintf("$%d", msgID))
+			broadcastNpcChat(ws, pet.ID, pet.X, pet.Y, pet.MapID, pet.ShowID, fmt.Sprintf("$%d", msgID))
 		}
 	}
 }
@@ -204,7 +205,7 @@ func (s *PetSystem) HandlePetNameChange(sess *net.Session, player *world.PlayerI
 	pet.Dirty = true
 
 	// 重新廣播更新後的外觀
-	nearby := s.deps.World.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby := companionViewersAt(s.deps.World, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	for _, viewer := range nearby {
 		isOwner := viewer.CharID == player.CharID
 		handler.SendPetPack(viewer.Session, pet, isOwner, player.Name)
@@ -216,7 +217,7 @@ func (s *PetSystem) changePetStatus(player *world.PlayerInfo, pet *world.PetInfo
 	if player.Level < pet.Level {
 		petType := s.deps.PetTypes.Get(pet.NpcID)
 		if petType != nil && petType.DefyMsgID > 0 {
-			broadcastNpcChat(s.deps.World, pet.ID, pet.X, pet.Y, pet.MapID,
+			broadcastNpcChat(s.deps.World, pet.ID, pet.X, pet.Y, pet.MapID, pet.ShowID,
 				fmt.Sprintf("$%d", petType.DefyMsgID))
 		}
 		return false
@@ -233,7 +234,7 @@ func (s *PetSystem) DismissPet(pet *world.PetInfo, player *world.PlayerInfo) {
 	ws.RemovePet(pet.ID)
 
 	// 廣播移除
-	nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	for _, viewer := range nearby {
 		handler.SendRemoveObject(viewer.Session, pet.ID)
 	}
@@ -268,6 +269,7 @@ func (s *PetSystem) DismissPet(pet *world.PetInfo, player *world.PlayerInfo) {
 			X:          pet.X,
 			Y:          pet.Y,
 			MapID:      pet.MapID,
+			ShowID:     pet.ShowID,
 			SpawnX:     pet.X,
 			SpawnY:     pet.Y,
 			SpawnMapID: pet.MapID,
@@ -320,7 +322,7 @@ func (s *PetSystem) CollectPet(pet *world.PetInfo, player *world.PlayerInfo) {
 	ws.RemovePet(pet.ID)
 
 	// 廣播移除
-	nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	for _, viewer := range nearby {
 		handler.SendRemoveObject(viewer.Session, pet.ID)
 	}
@@ -350,7 +352,7 @@ func (s *PetSystem) PetDie(pet *world.PetInfo) {
 	ws.PetDied(pet)
 
 	// 廣播死亡動畫
-	nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	for _, viewer := range nearby {
 		handler.SendActionGfx(viewer.Session, pet.ID, 8) // ACTION_Die = 8
 	}
@@ -458,8 +460,8 @@ func (s *PetSystem) collectPetItems(sess *net.Session, player *world.PlayerInfo,
 }
 
 // broadcastNpcChat 向附近玩家廣播 NPC 對話。
-func broadcastNpcChat(ws *world.State, npcID int32, x, y int32, mapID int16, msg string) {
-	nearby := ws.GetNearbyPlayersAt(x, y, mapID)
+func broadcastNpcChat(ws *world.State, npcID int32, x, y int32, mapID int16, showID int32, msg string) {
+	nearby := companionViewersAt(ws, x, y, mapID, showID)
 	for _, viewer := range nearby {
 		handler.SendNpcChatPacket(viewer.Session, npcID, msg)
 	}
@@ -528,9 +530,8 @@ func (s *PetSystem) GiveToPet(sess *net.Session, player *world.PlayerInfo, pet *
 		}
 		pet.Dirty = true
 		// 廣播治療特效音效 + 更新主人的 HP 條
-		nearby := s.deps.World.GetNearbyPlayers(pet.X, pet.Y, pet.MapID, 0)
 		effectData := handler.BuildSkillEffect(pet.ID, heal.effectGfx)
-		handler.BroadcastToPlayers(nearby, effectData)
+		handler.BroadcastToVisiblePlayers(s.deps.World, pet.X, pet.Y, pet.MapID, 0, pet.ShowID, effectData)
 		handler.SendPetHpMeter(sess, pet.ID, pet.HP, pet.MaxHP)
 		return
 	}
@@ -544,11 +545,10 @@ func (s *PetSystem) GiveToPet(sess *net.Session, player *world.PlayerInfo, pet *
 		pet.MoveSpeed = 1 // 加速狀態
 		pet.Dirty = true
 		// 廣播加速封包 + 音效（Java: S_SkillHaste + S_SkillSound(191)）
-		nearby := s.deps.World.GetNearbyPlayers(pet.X, pet.Y, pet.MapID, 0)
 		hasteData := buildPetHastePacket(pet.ID, 1, uint16(dur))
-		handler.BroadcastToPlayers(nearby, hasteData)
+		handler.BroadcastToVisiblePlayers(s.deps.World, pet.X, pet.Y, pet.MapID, 0, pet.ShowID, hasteData)
 		effectData := handler.BuildSkillEffect(pet.ID, 191) // 加速音效
-		handler.BroadcastToPlayers(nearby, effectData)
+		handler.BroadcastToVisiblePlayers(s.deps.World, pet.X, pet.Y, pet.MapID, 0, pet.ShowID, effectData)
 		return
 	}
 
@@ -696,7 +696,7 @@ func (s *PetSystem) TameNpc(sess *net.Session, player *world.PlayerInfo, npc *wo
 	}
 
 	// 移除野生 NPC
-	nearby := ws.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+	nearby := companionViewersAt(ws, npc.X, npc.Y, npc.MapID, npc.ShowID)
 	ws.RemoveNpc(npc.ID)
 	for _, viewer := range nearby {
 		handler.SendRemoveObject(viewer.Session, npc.ID)
@@ -758,6 +758,7 @@ func (s *PetSystem) TameNpc(sess *net.Session, player *world.PlayerInfo, npc *wo
 		X:           spawnX,
 		Y:           spawnY,
 		MapID:       player.MapID,
+		ShowID:      player.ShowID,
 		Heading:     player.Heading,
 		Status:      world.PetStatusRest,
 		AC:          tmpl.AC,
@@ -773,7 +774,7 @@ func (s *PetSystem) TameNpc(sess *net.Session, player *world.PlayerInfo, npc *wo
 	ws.AddPet(pet)
 
 	// 廣播外觀給附近玩家（重新查詢 nearby，因為 NPC 已移除可能有變化）
-	nearbyAfter := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearbyAfter := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	for _, viewer := range nearbyAfter {
 		isOwner := viewer.CharID == player.CharID
 		handler.SendPetPack(viewer.Session, pet, isOwner, player.Name)
@@ -855,7 +856,7 @@ func (s *PetSystem) evolvePet(sess *net.Session, player *world.PlayerInfo, pet *
 	}
 
 	// 廣播移除舊外觀
-	nearby := ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby := companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	for _, viewer := range nearby {
 		handler.SendRemoveObject(viewer.Session, pet.ID)
 	}
@@ -909,7 +910,7 @@ func (s *PetSystem) evolvePet(sess *net.Session, player *world.PlayerInfo, pet *
 	}
 
 	// 廣播新外觀 + 進化特效
-	nearby = ws.GetNearbyPlayersAt(pet.X, pet.Y, pet.MapID)
+	nearby = companionViewersAt(ws, pet.X, pet.Y, pet.MapID, pet.ShowID)
 	for _, viewer := range nearby {
 		isOwner := viewer.CharID == player.CharID
 		handler.SendPetPack(viewer.Session, pet, isOwner, player.Name)

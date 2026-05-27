@@ -6,6 +6,7 @@ import (
 	"github.com/l1jgo/server/internal/config"
 	"github.com/l1jgo/server/internal/core/event"
 	"github.com/l1jgo/server/internal/data"
+	"github.com/l1jgo/server/internal/dialog"
 	"github.com/l1jgo/server/internal/net"
 	"github.com/l1jgo/server/internal/net/packet"
 	"github.com/l1jgo/server/internal/persist"
@@ -829,6 +830,7 @@ type Deps struct {
 	CastleRepo    *persist.CastleRepo                  // 城堡動態狀態持久化
 	Castle        CastleManager                        // 城堡管理邏輯（filled after CastleSystem is created）
 	War           WarManager                           // 戰爭管理邏輯（filled after WarSystem is created）
+	Dialogs       *dialog.Manager                      // 動態 HTML 對話註冊表（YAML+HTM 載入）
 }
 
 // RegisterAll registers all packet handlers into the registry.

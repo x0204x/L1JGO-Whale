@@ -1,42 +1,101 @@
 -- L1J stat lookup tables
--- STR/DEX hit and damage bonuses, exp table
+-- Java: L1AttackList.java STRH/STRD/DEXH/DEXD/INTD/INTCRI, index 0-127.
 
--- STR hit bonus (index 1-59, representing STR 1-59)
-STR_HIT = {
-    -2, -2, -2, -2, -2, -2, -2,
-    -2, -1, -1, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4,
-    5, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8, 9, 9, 9,
-    10, 10, 10, 11, 11, 11, 12, 12, 12, 13, 13, 13,
-    14, 14, 14, 15, 15, 15, 16, 16, 16, 17, 17, 17
-}
+STR_HIT = { _max_index = 127 }
+for str = 0, 7 do
+    STR_HIT[str] = 4
+end
+local str_hit = 4
+for str = 8, 127 do
+    if str % 3 == 0 or str % 3 == 2 then
+        str_hit = str_hit + 1
+    end
+    STR_HIT[str] = str_hit
+end
 
--- DEX hit bonus (index 1-60)
-DEX_HIT = {
-    -2, -2, -2, -2, -2, -2, -1, -1, 0, 0,
-    1, 1, 2, 2, 3, 3, 4, 4, 5, 6,
-    7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-    17, 18, 19, 19, 19, 20, 20, 20, 21, 21,
-    21, 22, 22, 22, 23, 23, 23, 24, 24, 24,
-    25, 25, 25, 26, 26, 26, 27, 27, 27, 28
-}
+STR_DMG = { _max_index = 127 }
+for str = 0, 9 do
+    STR_DMG[str] = 2
+end
+local str_dmg = 2
+for str = 10, 127 do
+    if str % 2 == 0 then
+        str_dmg = str_dmg + 1
+    end
+    STR_DMG[str] = str_dmg
+end
 
--- STR damage bonus (index 1-50, simplified from Java's 0-127 table)
-STR_DMG = {
-    -6, -5, -4, -3, -3, -2, -2, -1, -1, 0,
-    0, 1, 1, 1, 2, 2, 3, 3, 4, 4,
-    5, 5, 5, 6, 6, 7, 7, 8, 8, 9,
-    9, 10, 10, 11, 12, 12, 12, 12, 13, 13,
-    13, 13, 14, 14, 14, 14, 15, 15, 15, 15
-}
+STR_CRIT = { _max_index = 127 }
+for str = 0, 39 do
+    STR_CRIT[str] = 0
+end
+for str = 40, 127 do
+    STR_CRIT[str] = math.floor((str - 30) / 10)
+end
 
--- DEX damage bonus (index 1-50, simplified)
-DEX_DMG = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 1, 2, 3, 4, 4, 4,
-    5, 5, 5, 6, 6, 6, 7, 7, 7, 8,
-    8, 8, 9, 9, 9, 10, 10, 10, 10, 11,
-    11, 11, 11, 12, 12, 12, 12, 13, 13, 13
-}
+DEX_HIT = { _max_index = 127 }
+for dex = 0, 7 do
+    DEX_HIT[dex] = -3
+end
+local dex_hit = -3
+for dex = 8, 127 do
+    dex_hit = dex_hit + 1
+    DEX_HIT[dex] = dex_hit
+end
+
+DEX_DMG = { _max_index = 127 }
+for dex = 0, 8 do
+    DEX_DMG[dex] = 2
+end
+local dex_dmg = 2
+for dex = 9, 127 do
+    if dex % 3 == 0 then
+        dex_dmg = dex_dmg + 1
+    end
+    DEX_DMG[dex] = dex_dmg
+end
+
+DEX_CRIT = { _max_index = 127 }
+for dex = 0, 39 do
+    DEX_CRIT[dex] = 0
+end
+for dex = 40, 127 do
+    DEX_CRIT[dex] = math.floor((dex - 30) / 10)
+end
+
+INT_DMG = { _max_index = 127 }
+for intel = 0, 14 do
+    INT_DMG[intel] = 0
+end
+local int_dmg = 0
+for intel = 15, 127 do
+    if intel % 5 == 0 then
+        int_dmg = int_dmg + 1
+    end
+    INT_DMG[intel] = int_dmg
+end
+
+INT_CRIT = { _max_index = 127 }
+for intel = 0, 34 do
+    INT_CRIT[intel] = 0
+end
+local int_crit = 0
+for intel = 35, 127 do
+    int_crit = math.floor((intel - 30) / 5)
+    INT_CRIT[intel] = int_crit
+end
+
+INT_MAGIC_HIT = { _max_index = 127 }
+for intel = 0, 22 do
+    INT_MAGIC_HIT[intel] = 0
+end
+local int_magic_hit = 0
+for intel = 23, 127 do
+    if intel % 3 == 2 then
+        int_magic_hit = int_magic_hit + 1
+    end
+    INT_MAGIC_HIT[intel] = int_magic_hit
+end
 
 -- Experience table (cumulative exp for each level)
 EXP_TABLE = {
@@ -92,11 +151,35 @@ EXP_TABLE = {
     [50] = 55810962,
 }
 
--- Helper: clamp value to table bounds
+-- Helper: clamp value to table bounds.
 function table_lookup(tbl, index)
-    if index < 1 then index = 1 end
-    if index > #tbl then index = #tbl end
-    return tbl[index]
+    local max_index = tbl._max_index or #tbl
+    if index < 0 then index = 0 end
+    if index > max_index then index = max_index end
+    local value = tbl[index]
+    if value ~= nil then return value end
+    return tbl[index + 1] or 0
+end
+
+function pure_stat_bonus(stat)
+    if stat >= 25 and stat <= 44 then
+        return math.floor((stat - 15) / 10)
+    end
+    if stat >= 45 then
+        return 5
+    end
+    return 0
+end
+
+function apply_er_evasion(is_hit, dodge)
+    if not is_hit then
+        return false
+    end
+    local er = dodge or 0
+    if er <= 0 then
+        return true
+    end
+    return math.random(1, 3000) > er
 end
 
 -- Get level from cumulative exp

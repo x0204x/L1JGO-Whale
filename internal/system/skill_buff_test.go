@@ -66,6 +66,50 @@ func TestSkillBuffCurePoisonSendsJavaSkillSound(t *testing.T) {
 	}
 }
 
+func TestSkillBuffSendsYiweiPostCastStatusRefreshToTarget(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		SP:        4,
+		MR:        18,
+		Dodge:     3,
+	})
+
+	s := newSkillBuffTestSystem(t, ws)
+	s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+		SkillID:      68,
+		ActionID:     19,
+		CastGfx:      228,
+		BuffDuration: 32,
+	}, target.CharID)
+
+	packets := drainSkillTestPackets(target.Session)
+	if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+		t.Fatalf("yiwei sendGrfx 目標補助魔法後會送 S_SPMR 給目標，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+		t.Fatalf("yiwei sendGrfx 目標補助魔法後會送 S_OwnCharStatus 給目標，packets=%v", packets)
+	}
+	if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(target)) {
+		t.Fatalf("yiwei sendGrfx 目標補助魔法後會送 S_PacketBox.UPDATE_ER 給目標，packets=%v", packets)
+	}
+}
+
 func TestSkillBuffWeakElementalBroadcastsNpcWeakAttrEffects(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
@@ -222,6 +266,9 @@ func TestSkillBuffDressEvasionUsesJavaUpdateERPacket(t *testing.T) {
 		Session:   newSkillTestSession(t, 1),
 		CharID:    1001,
 		Name:      "darkelf",
+		ClassType: 4,
+		Level:     52,
+		Dex:       18,
 		X:         100,
 		Y:         100,
 		MapID:     4,
@@ -230,11 +277,12 @@ func TestSkillBuffDressEvasionUsesJavaUpdateERPacket(t *testing.T) {
 
 	s.applyBuffEffect(player, &data.SkillInfo{SkillID: 111, BuffDuration: 960})
 
-	assertDressEvasionUpdateERPacket(t, drainSkillTestPackets(player.Session), 18)
+	// dark elf level 52 => 13, DEX 18 => 9, DRESS_EVASION => 18.
+	assertDressEvasionUpdateERPacket(t, drainSkillTestPackets(player.Session), 40)
 
 	s.removeBuffAndRevert(player, 111)
 
-	assertDressEvasionUpdateERPacket(t, drainSkillTestPackets(player.Session), 0)
+	assertDressEvasionUpdateERPacket(t, drainSkillTestPackets(player.Session), 22)
 }
 
 func assertDressEvasionUpdateERPacket(t *testing.T, packets [][]byte, wantER int16) {

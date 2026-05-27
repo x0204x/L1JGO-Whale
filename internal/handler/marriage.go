@@ -215,17 +215,7 @@ func findRingID(p *world.PlayerInfo) int32 {
 }
 
 func findNearbyPlayer(player *world.PlayerInfo, deps *Deps) *world.PlayerInfo {
-	dx, dy := HeadingOffset(player.Heading)
-	targetX := player.X + dx
-	targetY := player.Y + dy
-
-	nearby := deps.World.GetNearbyPlayers(player.X, player.Y, player.MapID, 0)
-	for _, other := range nearby {
-		if other.CharID != player.CharID && other.X == targetX && other.Y == targetY {
-			return other
-		}
-	}
-	return nil
+	return findFaceToFace(player, deps)
 }
 
 // HeadingOffset 根據朝向回傳偏移量。Exported for system package usage.

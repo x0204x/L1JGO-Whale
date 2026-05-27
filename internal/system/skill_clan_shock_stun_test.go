@@ -249,9 +249,11 @@ func TestSkillClanShockStunNonGmCasterDoesNotReceiveDurationMessageLikeJava(t *t
 }
 
 // Java SHOCK_STUN.start(L1PcInstance,...) 第 44-46 行：
-//   if (srcpc.isGm()) {
-//       srcpc.sendPackets(new S_ServerMessage("此次衝暈秒數為..."));
-//   }
+//
+//	if (srcpc.isGm()) {
+//	    srcpc.sendPackets(new S_ServerMessage("此次衝暈秒數為..."));
+//	}
+//
 // 使用 `srcpc.sendPackets`（caster only），不是 `sendPacketsAll`（broadcast），
 // 因此附近的 GM 觀察者不應收到此訊息。既有測試僅驗證 caster 收到，本測試補上
 // 「附近 GM 觀察者不收到」的負面回歸，鎖定 Go `SendNormalChat(sess, ...)` 不會誤廣播。
@@ -1626,6 +1628,543 @@ func TestSkillClanShockStunRangeFailureDoesNotConsumeMpLikeJava(t *testing.T) {
 	}
 }
 
+func TestSkillClanShockStunPlayerTargetBehindWallDoesNotConsumeMpLikeJava(t *testing.T) {
+	rand.Seed(1)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:        1,
+		Session:          newSkillTestSession(t, 1),
+		CharID:           1001,
+		Name:             "knight",
+		X:                100,
+		Y:                100,
+		MapID:            900,
+		Level:            99,
+		MP:               15,
+		MaxMP:            15,
+		OriginalMagicHit: 100,
+		KnownSpells:      []int32{87},
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "wall-target",
+		X:         104,
+		Y:         100,
+		MapID:     900,
+		Level:     1,
+	})
+	weapon := caster.Inv.AddItemWithID(7001, 52, 1, "雙手劍", 0, 1000, false, 1)
+	weapon.Equipped = true
+	caster.Equip.Set(world.SlotWeapon, weapon)
+	s := newSkillBuffTestSystem(t, ws)
+	attachShockStunItemTable(t, s)
+	attachShockStunNpcTable(t, s)
+	s.deps.MapData = newSkillLOSTestMap(t)
+	s.deps.Skills.Get(87).Ranged = 5
+
+	s.processSkill(handler.SkillRequest{
+		SessionID: caster.SessionID,
+		SkillID:   87,
+		TargetID:  target.CharID,
+	})
+
+	if caster.MP != 15 {
+		t.Fatalf("Java glanceCheck 擋下隔牆 SHOCK_STUN 時不應消耗 MP，MP=%d", caster.MP)
+	}
+	if target.HasBuff(87) || target.Paralyzed {
+		t.Fatalf("隔牆 SHOCK_STUN 不應套用 87，buff=%v Paralyzed=%v", target.GetBuff(87), target.Paralyzed)
+	}
+	if countSkillEffectPackets(drainSkillTestPackets(target.Session), target.CharID, 4434) != 0 {
+		t.Fatal("隔牆 SHOCK_STUN 不應送目標 4434 特效")
+	}
+	if effects := ws.GetNearbyGroundEffects(target.X, target.Y, target.MapID); len(effects) != 0 {
+		t.Fatalf("隔牆 SHOCK_STUN 不應建立 81162 效果 NPC，got=%d", len(effects))
+	}
+}
+
+func TestSkillClanShockStunNpcTargetBehindWallDoesNotConsumeMpLikeJava(t *testing.T) {
+	rand.Seed(1)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:        1,
+		Session:          newSkillTestSession(t, 1),
+		CharID:           1001,
+		Name:             "knight",
+		X:                100,
+		Y:                100,
+		MapID:            900,
+		Level:            99,
+		MP:               15,
+		MaxMP:            15,
+		OriginalMagicHit: 100,
+		KnownSpells:      []int32{87},
+	})
+	npc := &world.NpcInfo{
+		ID:    world.NextNpcID(),
+		NpcID: 45000,
+		Impl:  "L1Monster",
+		Name:  "wall-npc",
+		X:     104,
+		Y:     100,
+		MapID: 900,
+		Level: 1,
+		HP:    100,
+		MaxHP: 100,
+	}
+	ws.AddNpc(npc)
+	weapon := caster.Inv.AddItemWithID(7001, 52, 1, "雙手劍", 0, 1000, false, 1)
+	weapon.Equipped = true
+	caster.Equip.Set(world.SlotWeapon, weapon)
+	s := newSkillBuffTestSystem(t, ws)
+	attachShockStunItemTable(t, s)
+	attachShockStunNpcTable(t, s)
+	s.deps.MapData = newSkillLOSTestMap(t)
+	s.deps.Skills.Get(87).Ranged = 5
+
+	s.processSkill(handler.SkillRequest{
+		SessionID: caster.SessionID,
+		SkillID:   87,
+		TargetID:  npc.ID,
+	})
+
+	if caster.MP != 15 {
+		t.Fatalf("Java glanceCheck 擋下隔牆 NPC 目標 SHOCK_STUN 時不應消耗 MP，MP=%d", caster.MP)
+	}
+	if npc.HasDebuff(87) || npc.Paralyzed {
+		t.Fatalf("隔牆 NPC 目標 SHOCK_STUN 不應套用 87，debuff=%v Paralyzed=%v", npc.ActiveDebuffs[87], npc.Paralyzed)
+	}
+	if countSkillEffectPackets(drainSkillTestPackets(caster.Session), npc.ID, 4434) != 0 {
+		t.Fatal("隔牆 NPC 目標 SHOCK_STUN 不應送目標 4434 特效")
+	}
+	if effects := ws.GetNearbyGroundEffects(npc.X, npc.Y, npc.MapID); len(effects) != 0 {
+		t.Fatalf("隔牆 NPC 目標 SHOCK_STUN 不應建立 81162 效果 NPC，got=%d", len(effects))
+	}
+}
+
+func TestSkillClanShockStunPlayerTargetDifferentShowIDDoesNotConsumeMpLikeJava(t *testing.T) {
+	rand.Seed(1)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:        1,
+		Session:          newSkillTestSession(t, 1),
+		CharID:           1001,
+		Name:             "knight",
+		X:                100,
+		Y:                100,
+		MapID:            4,
+		ShowID:           100,
+		Level:            99,
+		MP:               15,
+		MaxMP:            15,
+		OriginalMagicHit: 100,
+		KnownSpells:      []int32{87},
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:  2,
+		Session:    newSkillTestSession(t, 2),
+		CharID:     1002,
+		Name:       "other-show",
+		X:          101,
+		Y:          100,
+		MapID:      4,
+		ShowID:     200,
+		Level:      1,
+		RegistStun: -100,
+	})
+	caster.Equip.Set(world.SlotWeapon, &world.InvItem{ObjectID: 5001, ItemID: 16, Equipped: true})
+	s := newSkillBuffTestSystem(t, ws)
+	attachShockStunItemTable(t, s)
+
+	s.processSkill(handler.SkillRequest{
+		SessionID: caster.SessionID,
+		SkillID:   87,
+		TargetID:  target.CharID,
+	})
+
+	if caster.MP != 15 {
+		t.Fatalf("Java isTarget 會以 showId 不同擋下 SHOCK_STUN，不應消耗 MP，MP=%d", caster.MP)
+	}
+	if target.HasBuff(87) || target.Paralyzed {
+		t.Fatalf("不同 showId 目標不應套用 87，buff=%v Paralyzed=%v", target.GetBuff(87), target.Paralyzed)
+	}
+	if countSkillEffectPackets(drainSkillTestPackets(target.Session), target.CharID, 4434) != 0 {
+		t.Fatal("不同 showId 目標不應收到 SHOCK_STUN 4434 特效")
+	}
+	if effects := ws.GetNearbyGroundEffects(target.X, target.Y, target.MapID); len(effects) != 0 {
+		t.Fatalf("不同 showId 目標不應建立 81162 效果 NPC，got=%d", len(effects))
+	}
+}
+
+func TestSkillClanShockStunNpcTargetDifferentShowIDDoesNotConsumeMpLikeJava(t *testing.T) {
+	rand.Seed(1)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:        1,
+		Session:          newSkillTestSession(t, 1),
+		CharID:           1001,
+		Name:             "knight",
+		X:                100,
+		Y:                100,
+		MapID:            4,
+		ShowID:           100,
+		Level:            99,
+		MP:               15,
+		MaxMP:            15,
+		OriginalMagicHit: 100,
+		KnownSpells:      []int32{87},
+	})
+	npc := &world.NpcInfo{
+		ID:     world.NextNpcID(),
+		NpcID:  45000,
+		Impl:   "L1Monster",
+		Name:   "other-show-npc",
+		X:      101,
+		Y:      100,
+		MapID:  4,
+		ShowID: 200,
+		Level:  1,
+		HP:     100,
+		MaxHP:  100,
+	}
+	ws.AddNpc(npc)
+	caster.Equip.Set(world.SlotWeapon, &world.InvItem{ObjectID: 5001, ItemID: 16, Equipped: true})
+	s := newSkillBuffTestSystem(t, ws)
+	attachShockStunItemTable(t, s)
+	attachShockStunNpcTable(t, s)
+
+	s.processSkill(handler.SkillRequest{
+		SessionID: caster.SessionID,
+		SkillID:   87,
+		TargetID:  npc.ID,
+	})
+
+	if caster.MP != 15 {
+		t.Fatalf("Java isTarget 會以 NPC showId 不同擋下 SHOCK_STUN，不應消耗 MP，MP=%d", caster.MP)
+	}
+	if npc.HasDebuff(87) || npc.Paralyzed {
+		t.Fatalf("不同 showId NPC 不應套用 87，debuff=%v Paralyzed=%v", npc.ActiveDebuffs[87], npc.Paralyzed)
+	}
+	if countSkillEffectPackets(drainSkillTestPackets(caster.Session), npc.ID, 4434) != 0 {
+		t.Fatal("不同 showId NPC 不應收到 SHOCK_STUN 4434 特效")
+	}
+	if effects := ws.GetNearbyGroundEffects(npc.X, npc.Y, npc.MapID); len(effects) != 0 {
+		t.Fatalf("不同 showId NPC 不應建立 81162 效果 NPC，got=%d", len(effects))
+	}
+}
+
+func TestSkillClanShockStunNpcHiddenTargetDoesNotConsumeMpLikeJava(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		hidden int
+	}{
+		{name: "sink", hidden: world.NpcHiddenSink},
+		{name: "fly", hidden: world.NpcHiddenFly},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rand.Seed(1)
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID:        1,
+				Session:          newSkillTestSession(t, 1),
+				CharID:           1001,
+				Name:             "knight",
+				X:                100,
+				Y:                100,
+				MapID:            4,
+				Level:            99,
+				MP:               15,
+				MaxMP:            15,
+				OriginalMagicHit: 100,
+				KnownSpells:      []int32{87},
+			})
+			npc := &world.NpcInfo{
+				ID:           world.NextNpcID(),
+				NpcID:        45000,
+				Impl:         "L1Monster",
+				Name:         "hidden-npc",
+				X:            101,
+				Y:            100,
+				MapID:        4,
+				Level:        1,
+				HP:           100,
+				MaxHP:        100,
+				HiddenStatus: tc.hidden,
+			}
+			ws.AddNpc(npc)
+			caster.Equip.Set(world.SlotWeapon, &world.InvItem{ObjectID: 5001, ItemID: 16, Equipped: true})
+			s := newSkillBuffTestSystem(t, ws)
+			attachShockStunItemTable(t, s)
+			attachShockStunNpcTable(t, s)
+
+			s.processSkill(handler.SkillRequest{
+				SessionID: caster.SessionID,
+				SkillID:   87,
+				TargetID:  npc.ID,
+			})
+
+			if caster.MP != 15 {
+				t.Fatalf("Java isTarget 會擋下 hidden NPC SHOCK_STUN，不應消耗 MP，MP=%d", caster.MP)
+			}
+			if npc.HasDebuff(87) || npc.Paralyzed {
+				t.Fatalf("hidden NPC 不應套用 87，debuff=%v Paralyzed=%v", npc.ActiveDebuffs[87], npc.Paralyzed)
+			}
+			if countSkillEffectPackets(drainSkillTestPackets(caster.Session), npc.ID, 4434) != 0 {
+				t.Fatal("hidden NPC 不應收到 SHOCK_STUN 4434 特效")
+			}
+			if effects := ws.GetNearbyGroundEffects(npc.X, npc.Y, npc.MapID); len(effects) != 0 {
+				t.Fatalf("hidden NPC 不應建立 81162 效果 NPC，got=%d", len(effects))
+			}
+		})
+	}
+}
+
+func TestSkillClanShockStunNpcHiddenTargetDirectPathReturnsBeforeOnActionLikeJava(t *testing.T) {
+	rand.Seed(1)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:        1,
+		Session:          newSkillTestSession(t, 1),
+		CharID:           1001,
+		Name:             "knight",
+		X:                100,
+		Y:                100,
+		MapID:            4,
+		Level:            99,
+		OriginalMagicHit: 100,
+	})
+	npc := &world.NpcInfo{
+		ID:            2001,
+		NpcID:         45000,
+		Impl:          "L1Monster",
+		Name:          "hidden-npc",
+		X:             101,
+		Y:             100,
+		MapID:         4,
+		Level:         1,
+		HP:            100,
+		MaxHP:         100,
+		HiddenStatus:  world.NpcHiddenSink,
+		Sleeped:       true,
+		ActiveDebuffs: map[int32]int{66: 100, 153: 100},
+	}
+	ws.AddNpc(npc)
+	s := newSkillTestSystem(t, ws)
+	combat := &shockStunCombatSpy{}
+	s.deps.Combat = combat
+	attachShockStunItemTable(t, s)
+	caster.Equip.Set(world.SlotWeapon, &world.InvItem{ObjectID: 5001, ItemID: 16, Equipped: true})
+	skill := &data.SkillInfo{SkillID: 87, BuffDuration: 6, Target: "buff", ActionID: 19, CastGfx: 4434, Ranged: 1}
+
+	s.executeNpcDebuffSkill(caster.Session, caster, skill, npc)
+
+	if npc.HasDebuff(87) || npc.Paralyzed {
+		t.Fatalf("hidden NPC 目標 SHOCK_STUN 不應套用 87，debuff=%v Paralyzed=%v", npc.HasDebuff(87), npc.Paralyzed)
+	}
+	if len(combat.requests) != 0 {
+		t.Fatalf("hidden NPC 目標 SHOCK_STUN 不應進入 runSkill 觸發 onAction，requests=%d", len(combat.requests))
+	}
+	if !npc.Sleeped || !npc.HasDebuff(66) || !npc.HasDebuff(153) {
+		t.Fatalf("hidden NPC 目標 SHOCK_STUN 不應清除既有狀態，Sleeped=%v debuff66=%v debuff153=%v", npc.Sleeped, npc.HasDebuff(66), npc.HasDebuff(153))
+	}
+	if effects := ws.GetNearbyGroundEffects(npc.X, npc.Y, npc.MapID); len(effects) != 0 {
+		t.Fatalf("hidden NPC 目標 SHOCK_STUN 不應建立 81162 效果 NPC，got=%d", len(effects))
+	}
+}
+
+func TestSkillClanShockStunNpcRejectedTargetDoesNotConsumeMpLikeJava(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		impl  string
+		maxHP int32
+	}{
+		{name: "effect", impl: "L1Effect", maxHP: 100},
+		{name: "illusory", impl: "L1Illusory", maxHP: 100},
+		{name: "doll", impl: "L1Doll", maxHP: 100},
+		{name: "hierarch", impl: "L1Hierarch", maxHP: 100},
+		{name: "undestroyable-door-zero-hp", impl: "L1Door", maxHP: 0},
+		{name: "undestroyable-door-one-hp", impl: "L1Door", maxHP: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rand.Seed(1)
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID:        1,
+				Session:          newSkillTestSession(t, 1),
+				CharID:           1001,
+				Name:             "knight",
+				X:                100,
+				Y:                100,
+				MapID:            4,
+				Level:            99,
+				MP:               15,
+				MaxMP:            15,
+				OriginalMagicHit: 100,
+				KnownSpells:      []int32{87},
+			})
+			npc := &world.NpcInfo{
+				ID:    world.NextNpcID(),
+				NpcID: 45000,
+				Impl:  tc.impl,
+				Name:  tc.name,
+				X:     101,
+				Y:     100,
+				MapID: 4,
+				Level: 1,
+				HP:    tc.maxHP,
+				MaxHP: tc.maxHP,
+			}
+			ws.AddNpc(npc)
+			caster.Equip.Set(world.SlotWeapon, &world.InvItem{ObjectID: 5001, ItemID: 16, Equipped: true})
+			s := newSkillBuffTestSystem(t, ws)
+			attachShockStunItemTable(t, s)
+			attachShockStunNpcTable(t, s)
+
+			s.processSkill(handler.SkillRequest{
+				SessionID: caster.SessionID,
+				SkillID:   87,
+				TargetID:  npc.ID,
+			})
+
+			if caster.MP != 15 {
+				t.Fatalf("Java isTarget() rejects %s before useConsume; MP=%d", tc.impl, caster.MP)
+			}
+			if npc.HasDebuff(87) || npc.Paralyzed {
+				t.Fatalf("Java rejected %s should not receive SHOCK_STUN; debuff=%v Paralyzed=%v", tc.impl, npc.HasDebuff(87), npc.Paralyzed)
+			}
+			if countSkillEffectPackets(drainSkillTestPackets(caster.Session), npc.ID, 4434) != 0 {
+				t.Fatalf("Java rejected %s should not receive SHOCK_STUN 4434", tc.impl)
+			}
+			if effects := ws.GetNearbyGroundEffects(npc.X, npc.Y, npc.MapID); len(effects) != 0 {
+				t.Fatalf("Java rejected %s should not spawn 81162 effect; got=%d", tc.impl, len(effects))
+			}
+		})
+	}
+}
+
+func TestSkillClanShockStunNpcRejectedTargetDirectPathReturnsBeforeOnActionLikeJava(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		impl  string
+		maxHP int32
+	}{
+		{name: "effect", impl: "L1Effect", maxHP: 100},
+		{name: "illusory", impl: "L1Illusory", maxHP: 100},
+		{name: "doll", impl: "L1Doll", maxHP: 100},
+		{name: "hierarch", impl: "L1Hierarch", maxHP: 100},
+		{name: "undestroyable-door-zero-hp", impl: "L1Door", maxHP: 0},
+		{name: "undestroyable-door-one-hp", impl: "L1Door", maxHP: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rand.Seed(1)
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID:        1,
+				Session:          newSkillTestSession(t, 1),
+				CharID:           1001,
+				Name:             "knight",
+				X:                100,
+				Y:                100,
+				MapID:            4,
+				Level:            99,
+				OriginalMagicHit: 100,
+			})
+			npc := &world.NpcInfo{
+				ID:            world.NextNpcID(),
+				NpcID:         45000,
+				Impl:          tc.impl,
+				Name:          tc.name,
+				X:             101,
+				Y:             100,
+				MapID:         4,
+				Level:         1,
+				HP:            tc.maxHP,
+				MaxHP:         tc.maxHP,
+				Sleeped:       true,
+				ActiveDebuffs: map[int32]int{66: 100, 153: 100},
+			}
+			ws.AddNpc(npc)
+			s := newSkillTestSystem(t, ws)
+			combat := &shockStunCombatSpy{}
+			s.deps.Combat = combat
+			attachShockStunItemTable(t, s)
+			caster.Equip.Set(world.SlotWeapon, &world.InvItem{ObjectID: 5001, ItemID: 16, Equipped: true})
+			skill := &data.SkillInfo{SkillID: 87, BuffDuration: 6, Target: "buff", ActionID: 19, CastGfx: 4434, Ranged: 1}
+
+			s.executeNpcDebuffSkill(caster.Session, caster, skill, npc)
+
+			if npc.HasDebuff(87) || npc.Paralyzed {
+				t.Fatalf("Java rejected %s should not receive SHOCK_STUN; debuff=%v Paralyzed=%v", tc.impl, npc.HasDebuff(87), npc.Paralyzed)
+			}
+			if len(combat.requests) != 0 {
+				t.Fatalf("Java rejected %s should return before onAction; requests=%d", tc.impl, len(combat.requests))
+			}
+			if !npc.Sleeped || !npc.HasDebuff(66) || !npc.HasDebuff(153) {
+				t.Fatalf("Java rejected %s should return before runSkill side effects; Sleeped=%v debuff66=%v debuff153=%v", tc.impl, npc.Sleeped, npc.HasDebuff(66), npc.HasDebuff(153))
+			}
+			if effects := ws.GetNearbyGroundEffects(npc.X, npc.Y, npc.MapID); len(effects) != 0 {
+				t.Fatalf("Java rejected %s should not spawn 81162 effect; got=%d", tc.impl, len(effects))
+			}
+		})
+	}
+}
+
+func TestSkillClanShockStunPlayerSkipsDoorTargetAfterOnActionLikeJava(t *testing.T) {
+	rand.Seed(1)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:   1,
+		Session:     newSkillTestSession(t, 1),
+		CharID:      1001,
+		Name:        "knight",
+		AccessLevel: 200,
+		Level:       99,
+		X:           100,
+		Y:           100,
+		MapID:       4,
+	})
+	door := &world.NpcInfo{
+		ID:    world.NextNpcID(),
+		NpcID: 81012,
+		Impl:  "L1Door",
+		Name:  "door",
+		X:     101,
+		Y:     100,
+		MapID: 4,
+		Level: 1,
+		HP:    1000,
+		MaxHP: 1000,
+	}
+	ws.AddNpc(door)
+	combat := &shockStunCombatSpy{}
+	s := newSkillTestSystem(t, ws)
+	s.deps.Combat = combat
+	attachShockStunItemTable(t, s)
+	attachShockStunNpcTable(t, s)
+	caster.Equip.Set(world.SlotWeapon, &world.InvItem{ObjectID: 5001, ItemID: 16, Equipped: true})
+	skill := &data.SkillInfo{SkillID: 87, BuffDuration: 6, Target: "buff", ActionID: 19, CastGfx: 4434}
+
+	s.executeBuffSkill(caster.Session, caster, skill, door.ID)
+
+	if door.HasDebuff(87) || door.Paralyzed {
+		t.Fatalf("Java isTargetFailure() returns true for L1DoorInstance probability skills; debuff=%v Paralyzed=%v", door.HasDebuff(87), door.Paralyzed)
+	}
+	if effects := ws.GetNearbyGroundEffects(door.X, door.Y, door.MapID); len(effects) != 0 {
+		t.Fatalf("Java SHOCK_STUN should not spawn 81162 on L1DoorInstance; got=%d", len(effects))
+	}
+	packets := drainSkillTestPackets(caster.Session)
+	if hasSkillEffectPacket(packets, door.ID, 4434) {
+		t.Fatal("Java sendGrfx() returns when target list is empty after isTargetFailure; door should not receive 4434")
+	}
+	if hasShockStunGMDurationMessage(packets) {
+		t.Fatal("Java SHOCK_STUN should not send GM duration for L1DoorInstance")
+	}
+	if len(combat.requests) != 1 || combat.requests[0].TargetID != door.ID || !combat.requests[0].IsMelee {
+		t.Fatalf("Java _target.onAction(_player) still runs before isTargetFailure for L1DoorInstance; requests=%+v", combat.requests)
+	}
+}
+
 func TestSkillClanShockStunPlayerTargetClearsSleepLikeJava(t *testing.T) {
 	rand.Seed(1)
 	ws := world.NewState()
@@ -1887,7 +2426,9 @@ func TestSkillClanShockStunPlayerProbabilitySubtractsRegistStunLikeJava(t *testi
 }
 
 // Java L1MagicPc.calcProbabilityMagic() case SHOCK_STUN 第 649-651 行：
-//   if (ConfigSkill.IMPACT_HALO_INT > 0) { probability += IMPACT_HALO_INT * _pc.getInt(); }
+//
+//	if (ConfigSkill.IMPACT_HALO_INT > 0) { probability += IMPACT_HALO_INT * _pc.getInt(); }
+//
 // yiwei `各職業技能相關設置.properties` `IMPACT_HALO_INT = 0`，整個 if block 被略過。
 // 既有 `IgnoresMRWhenJavaImpactHaloMRZero` 對齊 IMPACT_HALO_MR=0；本測試補上 INT
 // 對等的回歸：高 INT 只走 `BaseInt 純 INT 加成` 與 `L1AttackList.INTH` 表格，
@@ -2635,8 +3176,8 @@ func TestSkillClanShockStunPlayerMissStillConsumesMpLikeJava(t *testing.T) {
 		X:          101,
 		Y:          100,
 		MapID:      4,
-		Level:      99,        // 攻方 1 vs 防方 99 → IMPACT_HALO_3 = 10
-		RegistStun: 100,        // 再扣 100 暈眩抗性 → 命中概率被夾到 0%（必失敗）
+		Level:      99,  // 攻方 1 vs 防方 99 → IMPACT_HALO_3 = 10
+		RegistStun: 100, // 再扣 100 暈眩抗性 → 命中概率被夾到 0%（必失敗）
 	})
 	s := newSkillBuffTestSystem(t, ws)
 	attachShockStunItemTable(t, s)
@@ -3941,6 +4482,56 @@ func TestSkillClanShockStunNpcCasterDifferentMapTargetDoesNotConsumeMpLikeJava(t
 	}
 }
 
+func TestSkillClanShockStunNpcCasterDifferentShowIDTargetDoesNotConsumeMpLikeJava(t *testing.T) {
+	rand.Seed(1)
+	ws := world.NewState()
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:  1,
+		Session:    newSkillTestSession(t, 1),
+		CharID:     1001,
+		Name:       "other-show-target",
+		Level:      1,
+		X:          101,
+		Y:          100,
+		MapID:      4,
+		ShowID:     200,
+		RegistStun: -100,
+	})
+	npc := &world.NpcInfo{
+		ID:     2001,
+		NpcID:  45000,
+		Impl:   "L1Monster",
+		Name:   "mob",
+		Level:  50,
+		X:      100,
+		Y:      100,
+		MapID:  4,
+		ShowID: 100,
+		MP:     100,
+		MaxMP:  100,
+	}
+	ws.AddNpc(npc)
+
+	s := newSkillTestSystem(t, ws)
+	attachShockStunNpcTable(t, s)
+	skills, err := data.LoadSkillTable(filepath.Join("..", "..", "data", "yaml", "skill_list.yaml"))
+	if err != nil {
+		t.Fatalf("讀取技能表失敗: %v", err)
+	}
+	s.deps.Skills = skills
+	s.deps.Skill = s
+
+	ai := NewNpcAISystem(ws, s.deps)
+	ai.executeNpcSkill(npc, target, 87, 19, 0, 0)
+
+	if npc.MP != 100 {
+		t.Fatalf("Java isTarget 會以 showId 不同擋下 NPC SHOCK_STUN，不應消耗 NPC MP，MP=%d", npc.MP)
+	}
+	if target.HasBuff(87) || target.Paralyzed {
+		t.Fatalf("NPC SHOCK_STUN 不應套用到不同 showId 玩家，buff=%v Paralyzed=%v", target.GetBuff(87), target.Paralyzed)
+	}
+}
+
 func TestSkillClanShockStunNpcCasterOutOfRangeTargetDoesNotConsumeMpLikeJava(t *testing.T) {
 	rand.Seed(1)
 	ws := world.NewState()
@@ -4377,9 +4968,11 @@ func TestSkillClanShockStunMobAreaShockStunMatchesJava(t *testing.T) {
 }
 
 // Java L1MobSkillUse.areashock_stun() 第 734-738 行：
-//   int actId = getMobSkillTemplate().getActid(idx);
-//   int actionid = 1;
-//   if (actId > 0) { actionid = actId; }
+//
+//	int actId = getMobSkillTemplate().getActid(idx);
+//	int actionid = 1;
+//	if (actId > 0) { actionid = actId; }
+//
 // 即 mob_skill_template.act_id > 0 時覆寫預設值 1，並由 _attacker.broadcastPacketAll(S_DoActionGFX) 廣播。
 // 既有 TestSkillClanShockStunMobAreaShockStunMatchesJava 已驗證 act_id=0 預設 1；
 // 本測試補上 act_id > 0 覆寫路徑的回歸（單體 NPC 路徑已有對應 TestSkillClanShockStunNpcCasterUsesMobSkillActIDOverride）。
@@ -4476,6 +5069,67 @@ func TestSkillClanShockStunMobAreaShockStunSkipsDifferentMapPlayerLikeJava(t *te
 	}
 	if effects := ws.GetNearbyGroundEffects(otherMap.X, otherMap.Y, otherMap.MapID); len(effects) != 0 {
 		t.Fatalf("不同地圖玩家不應觸發 spawnEffect(81162)，got effects=%d", len(effects))
+	}
+}
+
+func TestSkillClanShockStunMobAreaShockStunSkipsDifferentShowIDPlayerLikeJava(t *testing.T) {
+	rand.Seed(1)
+	ws := world.NewState()
+	sameShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "same-show",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		ShowID:    100,
+		Known:     world.NewKnownEntities(),
+	})
+	otherShow := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "other-show",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		ShowID:    200,
+		Known:     world.NewKnownEntities(),
+	})
+	npc := &world.NpcInfo{
+		ID:     2001,
+		NpcID:  231008,
+		Impl:   "L1Monster",
+		Name:   "mob",
+		Level:  50,
+		X:      100,
+		Y:      100,
+		MapID:  4,
+		ShowID: 100,
+	}
+	ws.AddNpc(npc)
+
+	s := newSkillTestSystem(t, ws)
+	attachShockStunNpcTable(t, s)
+	s.deps.Skill = s
+	ai := NewNpcAISystem(ws, s.deps)
+	ai.executeNpcAreaShockStun(npc, 0)
+
+	if !sameShow.HasBuff(87) || !sameShow.Paralyzed {
+		t.Fatalf("Java getVisiblePlayer 同 showId 玩家應被套 87，buff=%v Paralyzed=%v", sameShow.GetBuff(87), sameShow.Paralyzed)
+	}
+	if otherShow.HasBuff(87) || otherShow.Paralyzed {
+		t.Fatalf("Java isTarget 會以 showId 不同擋下 area SHOCK_STUN，buff=%v Paralyzed=%v", otherShow.GetBuff(87), otherShow.Paralyzed)
+	}
+	if effects := ws.GetNearbyGroundEffects(otherShow.X, otherShow.Y, otherShow.MapID); len(effects) != 1 {
+		t.Fatalf("不同 showId 玩家位置只應看見同 showId 目標的 81162，不應為 otherShow 另建效果，got effects=%d", len(effects))
+	}
+	if len(otherShow.Known.GroundEffects) != 0 {
+		t.Fatalf("不同 showId 玩家不應收到 NPC spawnEffect(81162) 可見封包，got known=%d", len(otherShow.Known.GroundEffects))
+	}
+	if hasActionGfxPacket(drainSkillTestPackets(otherShow.Session), npc.ID, 1) {
+		t.Fatal("Java getVisiblePlayer 不會把 area SHOCK_STUN 動作廣播給不同 showId 玩家")
 	}
 }
 
@@ -4604,7 +5258,7 @@ func TestSkillClanShockStunMobAreaShockStunMap93DoesNotCooldownLikeJava(t *testi
         mp_consume: 0
         trigger_random: 1
         trigger_hp: 0
-        trigger_range: 2
+        trigger_range: -2
         skill_id: 0
         act_id: 0
         leverage: 0
@@ -4679,7 +5333,7 @@ func TestSkillClanShockStunMobAreaShockStunUsesSubMagicSpeedCooldownLikeJava(t *
         mp_consume: 0
         trigger_random: 1
         trigger_hp: 0
-        trigger_range: 2
+        trigger_range: -2
         skill_id: 0
         act_id: 0
         leverage: 0

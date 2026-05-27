@@ -13,10 +13,6 @@ func (s *SkillSystem) executeTeleportSpell(sess *net.Session, player *world.Play
 	var destMapID int16
 	var destHeading int16 = 5
 
-	if player.HasBuff(230) {
-		handler.SendServerMessage(sess, 1413)
-		return
-	}
 	if skill.SkillID == 5 && player.HasBuff(4000) {
 		handler.SendNormalChat(sess, 0, "\\fY已被束縛的效果無法瞬移")
 		return
@@ -112,7 +108,7 @@ func (s *SkillSystem) executeTeleportSpell(sess *net.Session, player *world.Play
 		sendMpUpdate(sess, player)
 	}
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(player.CharID, int32(skill.CastGfx)))
 
 	// 傳送時取消交易

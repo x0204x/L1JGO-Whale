@@ -1,10 +1,37 @@
 polymorphs:
+  # 火龍窟「真‧死亡騎士烈炎之劍」(item 850) 觸發變身
+  # 義维 380 db_split/polymorphs.sql:259
+  #   name='tw fire deathknight', poly_id=12232, min_level=1,
+  #   weapon_equip=1791, armor_equip=8191, can_use_skill=1, cause=7
+  # 1791 = dagger|sword|two_hand_sword|axe|spear|staff|edoryu|claw|bow (1+2+4+8+16+32+64+128+256+512 部分位元；Java 原值)
+  # 8191 = 全部防具位元 (1+2+4+8+16+32+64+128+256+512+1024+2048 不含 guarder=2048 之外的全部)
+  - poly_id: 12232
+    name: tw fire deathknight
+    min_level: 1
+    weapon_equip: 1791
+    armor_equip: 8191
+    can_use_skill: true
+    cause: 7
   - poly_id: 29
     name: floating eye
     min_level: 1
     weapon_equip: 0
     armor_equip: 0
     can_use_skill: true
+    cause: 7
+  - poly_id: 52
+    name: 墮落-變形術(人形殭屍)
+    min_level: 1
+    weapon_equip: 0
+    armor_equip: 0
+    can_use_skill: false
+    cause: 7
+  - poly_id: 56
+    name: 安特-變形術(妖魔)
+    min_level: 1
+    weapon_equip: 0
+    armor_equip: 0
+    can_use_skill: false
     cause: 7
   - poly_id: 95
     name: shelob
@@ -67,6 +94,27 @@ polymorphs:
     min_level: 1
     weapon_equip: 0
     armor_equip: 136
+    can_use_skill: false
+    cause: 7
+  - poly_id: 3596
+    name: 法令軍王蕾雅-變形術(歐姆裝甲兵)
+    min_level: 1
+    weapon_equip: 0
+    armor_equip: 0
+    can_use_skill: false
+    cause: 7
+  - poly_id: 3644
+    name: 法令軍王蕾雅-變形術(歐姆民兵)
+    min_level: 1
+    weapon_equip: 0
+    armor_equip: 0
+    can_use_skill: false
+    cause: 7
+  - poly_id: 8321
+    name: 生日蛋糕怪物-集體變形術(生日慶祝妖精)
+    min_level: 1
+    weapon_equip: 0
+    armor_equip: 0
     can_use_skill: false
     cause: 7
   - poly_id: 1047

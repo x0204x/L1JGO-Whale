@@ -158,7 +158,7 @@ func handleResurrectionResponse(sess *net.Session, player *world.PlayerInfo, acc
 	sendMpUpdate(sess, player)
 	SendPlayerStatus(sess, player)
 
-	nearbyTarget := deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearbyTarget := deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, sess.ID, player.ShowID)
 	resData := BuildResurrection(player, caster.CharID, 0)
 	soundData := BuildSkillEffect(player.CharID, 230)
 	sess.Send(soundData)

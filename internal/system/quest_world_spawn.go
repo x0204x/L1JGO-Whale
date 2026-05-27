@@ -73,6 +73,7 @@ func buildDungeonNpc(deps *handler.Deps, tmpl *data.NpcTemplate, x, y int32, map
 		AC:                tmpl.AC,
 		STR:               tmpl.STR,
 		DEX:               tmpl.DEX,
+		Intel:             tmpl.INT,
 		Exp:               tmpl.Exp,
 		Lawful:            tmpl.Lawful,
 		Size:              tmpl.Size,
@@ -84,9 +85,12 @@ func buildDungeonNpc(deps *handler.Deps, tmpl *data.NpcTemplate, x, y int32, map
 		Hard:              tmpl.Hard,
 		CantResurrect:     tmpl.CantResurrect,
 		Agro:              tmpl.Agro,
+		Family:            tmpl.Family,
+		AgroFamily:        tmpl.AgroFamily,
 		AtkDmg:            int32(tmpl.Level) + int32(tmpl.STR)/3,
 		Ranged:            tmpl.Ranged,
 		AtkSpeed:          atkSpeed,
+		AtkMagicSpeed:     tmpl.AtkMagicSpeed,
 		SubMagicSpeed:     tmpl.SubMagicSpeed,
 		MoveSpeed:         moveSpeed,
 		PoisonAtk:         tmpl.PoisonAtk,
@@ -303,6 +307,7 @@ func (s *QuestWorldSystem) spawnGroupMinions(inst *world.QuestInstance, leader *
 				continue
 			}
 			mob.IsMinion = true
+			ApplyNpcMinionHideLikeJava(mob, leader)
 
 			s.addDungeonNpc(inst, mob)
 			groupInfo.Members = append(groupInfo.Members, mob)

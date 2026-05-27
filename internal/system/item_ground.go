@@ -121,6 +121,7 @@ func (s *ItemGroundSystem) DropItem(sess *net.Session, player *world.PlayerInfo,
 		X:          player.X,
 		Y:          player.Y,
 		MapID:      player.MapID,
+		ShowID:     player.ShowID,
 		OwnerID:    player.CharID,
 		TTL:        5 * 60 * 5, // 5 分鐘（200ms tick）
 		NoExpire:   inHouse,
@@ -128,7 +129,7 @@ func (s *ItemGroundSystem) DropItem(sess *net.Session, player *world.PlayerInfo,
 	s.deps.World.AddGroundItem(gndItem)
 
 	// 廣播給附近玩家（含自己）
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	for _, viewer := range nearby {
 		handler.SendDropItem(viewer.Session, gndItem)
 	}
@@ -174,6 +175,10 @@ func (s *ItemGroundSystem) PickupItem(sess *net.Session, player *world.PlayerInf
 		return
 	}
 
+	if player.ShowID != gndItem.ShowID {
+		return
+	}
+
 	// 背包空間檢查
 	if player.Inv.IsFull() {
 		handler.SendServerMessage(sess, 263) // 背包已滿
@@ -195,7 +200,7 @@ func (s *ItemGroundSystem) PickupItem(sess *net.Session, player *world.PlayerInf
 	s.deps.World.RemoveGroundItem(objectID)
 
 	// 廣播移除給附近玩家
-	nearby := s.deps.World.GetNearbyPlayersAt(gndItem.X, gndItem.Y, gndItem.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(gndItem.X, gndItem.Y, gndItem.MapID, 0, gndItem.ShowID)
 	for _, viewer := range nearby {
 		handler.SendRemoveObject(viewer.Session, gndItem.ID)
 	}

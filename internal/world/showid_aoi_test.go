@@ -174,6 +174,82 @@ func TestGetNearbyNpcsUnchangedIgnoresShowID(t *testing.T) {
 	}
 }
 
+func TestGetNearbyGroundItemsInShowDungeonIsolationLikeJava(t *testing.T) {
+	ws := NewState()
+	mainItem := &GroundItem{ID: 3001, ItemID: 1001, X: 100, Y: 100, MapID: 4, ShowID: 0}
+	dungeonItem := &GroundItem{ID: 3002, ItemID: 1001, X: 101, Y: 100, MapID: 4, ShowID: 100}
+	otherDungeonItem := &GroundItem{ID: 3003, ItemID: 1001, X: 102, Y: 100, MapID: 4, ShowID: 101}
+	ws.AddGroundItem(mainItem)
+	ws.AddGroundItem(dungeonItem)
+	ws.AddGroundItem(otherDungeonItem)
+
+	mainView := ws.GetNearbyGroundItemsInShow(100, 100, 4, 0)
+	if len(mainView) != 1 || mainView[0].ID != mainItem.ID {
+		t.Fatalf("主世界玩家只應看見主世界地上物，got=%v", mainView)
+	}
+
+	dungeonView := ws.GetNearbyGroundItemsInShow(100, 100, 4, 100)
+	if len(dungeonView) != 1 || dungeonView[0].ID != dungeonItem.ID {
+		t.Fatalf("副本玩家只應看見同 ShowID 地上物，got=%v", dungeonView)
+	}
+
+	otherDungeonView := ws.GetNearbyGroundItemsInShow(100, 100, 4, 101)
+	if len(otherDungeonView) != 1 || otherDungeonView[0].ID != otherDungeonItem.ID {
+		t.Fatalf("不同副本地上物不可互相可見，got=%v", otherDungeonView)
+	}
+}
+
+func TestGroundItemShowIDDefaultZero(t *testing.T) {
+	g := &GroundItem{}
+	if g.ShowID != 0 {
+		t.Fatalf("GroundItem 預設 ShowID 應為 0（主世界），實際 %d", g.ShowID)
+	}
+}
+
+func TestGetNearbyGroundEffectsInShowDungeonIsolationLikeJava(t *testing.T) {
+	ws := NewState()
+	mainEffect := &GroundEffect{ID: 3101, NpcID: 81169, X: 100, Y: 100, MapID: 4, ShowID: 0}
+	dungeonEffect := &GroundEffect{ID: 3102, NpcID: 81169, X: 101, Y: 100, MapID: 4, ShowID: 100}
+	otherDungeonEffect := &GroundEffect{ID: 3103, NpcID: 81169, X: 102, Y: 100, MapID: 4, ShowID: 101}
+	ws.AddGroundEffect(mainEffect)
+	ws.AddGroundEffect(dungeonEffect)
+	ws.AddGroundEffect(otherDungeonEffect)
+
+	mainView := ws.GetNearbyGroundEffectsInShow(100, 100, 4, 0)
+	if len(mainView) != 1 || mainView[0].ID != mainEffect.ID {
+		t.Fatalf("主世界玩家只應看見主世界地面效果，got=%v", mainView)
+	}
+
+	dungeonView := ws.GetNearbyGroundEffectsInShow(100, 100, 4, 100)
+	if len(dungeonView) != 1 || dungeonView[0].ID != dungeonEffect.ID {
+		t.Fatalf("副本玩家只應看見同 ShowID 地面效果，got=%v", dungeonView)
+	}
+
+	otherDungeonView := ws.GetNearbyGroundEffectsInShow(100, 100, 4, 101)
+	if len(otherDungeonView) != 1 || otherDungeonView[0].ID != otherDungeonEffect.ID {
+		t.Fatalf("不同副本地面效果不可互相可見，got=%v", otherDungeonView)
+	}
+}
+
+func TestHasGroundEffectAtInShowAllowsSameTileAcrossDungeonLikeJava(t *testing.T) {
+	ws := NewState()
+	ws.AddGroundEffect(&GroundEffect{ID: 3201, NpcID: 81157, X: 100, Y: 100, MapID: 4, ShowID: 100})
+
+	if !ws.HasGroundEffectAtInShow(100, 100, 4, 81157, 100) {
+		t.Fatalf("同 ShowID 應能找到同座標地面效果")
+	}
+	if ws.HasGroundEffectAtInShow(100, 100, 4, 81157, 101) {
+		t.Fatalf("不同 ShowID 不應被同座標地面效果阻擋")
+	}
+}
+
+func TestGroundEffectShowIDDefaultZero(t *testing.T) {
+	e := &GroundEffect{}
+	if e.ShowID != 0 {
+		t.Fatalf("GroundEffect 預設 ShowID 應為 0（主世界），實際 %d", e.ShowID)
+	}
+}
+
 // TestPlayerInfoShowIDDefaultZero PlayerInfo 零值建構後 ShowID 應為 0（主世界）。
 func TestPlayerInfoShowIDDefaultZero(t *testing.T) {
 	p := &PlayerInfo{}

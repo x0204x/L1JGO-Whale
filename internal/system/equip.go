@@ -102,6 +102,14 @@ func (s *EquipSystem) EquipWeapon(sess *net.Session, player *world.PlayerInfo, i
 		}
 	}
 
+	// 武器專屬變身（item-on-equip）
+	// 對應 Java com.lineage.data.item_weapon.RealDeathKnightSword.execute case 1
+	//   pc.setPolyName("tw fire deathknight");
+	//   L1PolyMorph.doPoly(pc, 12232, 1800, 1);  // cause=1 (PolyCauseMagic)
+	if invItem.ItemID == 850 && s.deps.Polymorph != nil {
+		s.deps.Polymorph.DoPoly(player, 12232, 1800, data.PolyCauseMagic)
+	}
+
 	s.deps.Log.Debug("武器裝備",
 		zap.String("player", player.Name),
 		zap.String("weapon", invItem.Name),
@@ -300,6 +308,13 @@ func (s *EquipSystem) UnequipSlot(sess *net.Session, player *world.PlayerInfo, s
 	// 特殊效果解除：隱身斗篷
 	if item.ItemID == 20077 || item.ItemID == 120077 {
 		s.applyInvisCloak(sess, player, false)
+	}
+
+	// 武器專屬變身解除（item-on-unequip）
+	// 對應 Java com.lineage.data.item_weapon.RealDeathKnightSword.execute case 0
+	//   L1PolyMorph.undoPoly(pc);
+	if slot == world.SlotWeapon && item.ItemID == 850 && s.deps.Polymorph != nil {
+		s.deps.Polymorph.UndoPoly(player)
 	}
 
 	// 套裝破壞時還原變身
@@ -740,7 +755,7 @@ func sendServerMessageS(sess *net.Session, msgID uint16, args ...string) {
 
 // broadcastVisualUpdate 廣播玩家視覺更新到自己 + 附近玩家。
 func (s *EquipSystem) broadcastVisualUpdate(sess *net.Session, player *world.PlayerInfo) {
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	for _, viewer := range nearby {
 		sendCharVisualUpdate(viewer.Session, player)
 	}
@@ -763,7 +778,7 @@ func (s *EquipSystem) applyInvisCloak(sess *net.Session, player *world.PlayerInf
 	player.Invisible = on
 	handler.SendInvisible(sess, player.CharID, on)
 
-	nearby := s.deps.World.GetNearbyPlayersAt(player.X, player.Y, player.MapID)
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, 0, player.ShowID)
 	if on {
 		// 隱身：周圍玩家移除我的角色顯示
 		removeData := handler.BuildRemoveObject(player.CharID)

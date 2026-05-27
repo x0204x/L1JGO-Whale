@@ -175,7 +175,7 @@ func (s *NpcChatSystem) broadcastNpcChat(npc *world.NpcInfo, chat *data.NpcChat,
 		// 大喊 — 廣播到附近（較大範圍）
 		text := "<" + nameID + "> " + chatID
 		pkt := buildNpcChatPacket(npc.ID, 2, text)
-		nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+		nearby := s.world.GetNearbyPlayersInShowRange(npc.X, npc.Y, npc.MapID, 0, npc.ShowID, 50)
 		for _, p := range nearby {
 			if p.Session != nil {
 				p.Session.Send(pkt)
@@ -185,7 +185,7 @@ func (s *NpcChatSystem) broadcastNpcChat(npc *world.NpcInfo, chat *data.NpcChat,
 		// 一般聊天 — 廣播到附近
 		text := nameID + ": " + chatID
 		pkt := buildNpcChatPacket(npc.ID, 0, text)
-		nearby := s.world.GetNearbyPlayersAt(npc.X, npc.Y, npc.MapID)
+		nearby := s.world.GetNearbyPlayersInShowRange(npc.X, npc.Y, npc.MapID, 0, npc.ShowID, 8)
 		for _, p := range nearby {
 			if p.Session != nil {
 				p.Session.Send(pkt)
