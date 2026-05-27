@@ -794,3 +794,98 @@ func withNpcTypeTwoFixedDamageFullMobSkill(t *testing.T, s *NpcAISystem, skillID
 	s.deps.Skills = skills
 	s.deps.MobSkills = mobSkills
 }
+func TestNpcMobSkillTypeTwoKirtasBarrierOneAppliesNpcSelfBarrierLikeJava(t *testing.T) {
+	ws := world.NewState()
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		HP:        5000,
+		MaxHP:     5000,
+	})
+	npc := &world.NpcInfo{
+		ID:          2001,
+		NpcID:       81163,
+		Impl:        "L1Monster",
+		Name:        "kirtas",
+		X:           100,
+		Y:           100,
+		MapID:       900,
+		HP:          80,
+		MaxHP:       100,
+		MP:          100,
+		MaxMP:       100,
+		Level:       80,
+		STR:         30,
+		DEX:         30,
+		AggroTarget: target.SessionID,
+	}
+	ws.AddNpc(npc)
+	s := newNpcAILOSTestSystem(t, ws)
+	withNpcTypeTwoMobSkill(t, s, 11060, 0)
+
+	if !s.executeNpcSkill(npc, target, 11060, 0, 0, 0) {
+		t.Fatal("yiwei KIRTAS_BARRIER1(11060) type 2 mobskill 應可施放")
+	}
+
+	if !npc.HasDebuff(11060) {
+		t.Fatal("yiwei KIRTAS_BARRIER1(11060) skillmode 會對 NPC 自己 setSkillEffect(11060)")
+	}
+	if npc.HiddenStatus != world.NpcHiddenKirtas || npc.HiddenActionStatus != 20 {
+		t.Fatalf("yiwei KIRTAS_BARRIER1(11060) 會 setHiddenStatus(4)/setStatus(20)，HiddenStatus=%d Action=%d", npc.HiddenStatus, npc.HiddenActionStatus)
+	}
+	if npc.MP != 95 {
+		t.Fatalf("yiwei 11060 mp_consume=5，NPC MP=%d want=95", npc.MP)
+	}
+}
+
+func TestNpcKirtasBarrierOneAppearsAfterBarrierTimerLikeJava(t *testing.T) {
+	ws := world.NewState()
+	trigger := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		HP:        5000,
+		MaxHP:     5000,
+	})
+	npc := &world.NpcInfo{
+		ID:                 2001,
+		NpcID:              81163,
+		Impl:               "L1Monster",
+		Name:               "kirtas",
+		X:                  100,
+		Y:                  100,
+		MapID:              900,
+		HP:                 80,
+		MaxHP:              100,
+		HiddenStatus:       world.NpcHiddenKirtas,
+		HiddenActionStatus: 20,
+		KirtasBarrierTicks: 76,
+	}
+	npc.AddDebuff(11060, 1<<30)
+	ws.AddNpc(npc)
+
+	if !npcShouldAppearForPlayerLikeJava(npc, trigger) {
+		t.Fatal("yiwei HIDDEN_STATUS_KIRTAS 在 barrierTime > 15 後，玩家接近視野更新時應顯形")
+	}
+	if !npcAppearOnGroundLikeJava(npc, ws, trigger) {
+		t.Fatal("KIRTAS hidden 顯形應成功")
+	}
+	if npc.HiddenStatus != world.NpcHiddenNone || npc.HiddenActionStatus != 0 {
+		t.Fatalf("KIRTAS 顯形後應清除 hidden/status，HiddenStatus=%d Action=%d", npc.HiddenStatus, npc.HiddenActionStatus)
+	}
+	if npc.HasDebuff(11060) {
+		t.Fatal("KIRTAS_BARRIER1 顯形時 yiwei 會 killSkillEffectTimer(11060)")
+	}
+	if npc.KirtasBarrierTicks != 0 {
+		t.Fatalf("KIRTAS 顯形後 barrierTime 應歸零，got=%d", npc.KirtasBarrierTicks)
+	}
+}

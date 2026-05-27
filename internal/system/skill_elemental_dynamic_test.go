@@ -129,6 +129,64 @@ func TestSkillElementalDynamicWaterLifeAndPolluteWaterModifyHealing(t *testing.T
 	}
 }
 
+func TestSkillElementalDynamicMobSkillStatusesModifyHealingLikeJava(t *testing.T) {
+	tests := []struct {
+		name     string
+		skillID  int32
+		wantHP   int32
+		wantText string
+	}{
+		{
+			name:     "pollute-water-wave",
+			skillID:  mobSkillPolluteWater,
+			wantHP:   52,
+			wantText: "4012 污濁的水流應讓治療量減半",
+		},
+		{
+			name:     "heal-turn-to-damage",
+			skillID:  mobSkillHealTurnToDamage,
+			wantHP:   45,
+			wantText: "4013 治癒侵蝕術應把治療轉為傷害",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      "caster",
+				X:         100,
+				Y:         100,
+				MapID:     4,
+				Intel:     18,
+			})
+			target := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 2,
+				Session:   newSkillTestSession(t, 2),
+				CharID:    1002,
+				Name:      "target",
+				X:         101,
+				Y:         100,
+				MapID:     4,
+				HP:        50,
+				MaxHP:     200,
+			})
+			target.AddBuff(&world.ActiveBuff{SkillID: tt.skillID, TicksLeft: 60})
+			s := newSkillTestSystem(t, ws)
+			healSkill := &data.SkillInfo{SkillID: 1, BuffDuration: 0, Target: "buff", Type: 16, DamageValue: 2, DamageDice: 1, ActionID: 19}
+
+			s.executeBuffSkill(caster.Session, caster, healSkill, target.CharID)
+
+			if target.HP != tt.wantHP {
+				t.Fatalf("%s，HP=%d want=%d", tt.wantText, target.HP, tt.wantHP)
+			}
+		})
+	}
+}
+
 func TestSkillElementalDynamicElfCombatBuffsAreFlagsAndApplyDamageHelpers(t *testing.T) {
 	ws := world.NewState()
 	player := addSkillTestPlayer(ws, &world.PlayerInfo{

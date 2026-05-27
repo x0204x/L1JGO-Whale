@@ -8464,6 +8464,7 @@ armors:
     add_mpr: 0
     add_sp: 0
     m_def: 0
+    haste_item: true
     hit_modifier: 0
     dmg_modifier: 0
     bow_hit_modifier: 0

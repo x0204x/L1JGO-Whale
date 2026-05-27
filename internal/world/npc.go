@@ -116,6 +116,7 @@ type NpcInfo struct {
 	RespawnTimer       int  // ticks remaining until respawn
 	HiddenStatus       int  // Java L1NpcInstance.HIDDEN_STATUS_*，0=none, 1=sink
 	HiddenActionStatus byte // Java setStatus() for hidden NPC packs; 0 uses the default mapping.
+	KirtasBarrierTicks int  // Java KIRTAS_Timer _barrierTime，以 200ms tick 計數。
 
 	// AI state — 仇恨系統
 	AggroTarget uint64           // SessionID of hate target (0 = no target)，由仇恨列表驅動

@@ -146,6 +146,36 @@ func TestSkillStatusCancelCancellationWorksOnSelfAndKeepsNonCancellableBuff(t *t
 	}
 }
 
+func TestSkillStatusCancellationClearsHasteItemMoveSpeedLikeJava(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID:         1,
+		Session:           newSkillTestSession(t, 1),
+		CharID:            1001,
+		Name:              "haste-item-player",
+		X:                 100,
+		Y:                 100,
+		MapID:             4,
+		MoveSpeed:         1,
+		HasteItemEquipped: 1,
+	})
+	s := newSkillTestSystem(t, ws)
+
+	s.executeBuffSkill(player.Session, player, &data.SkillInfo{
+		SkillID:  44,
+		Target:   "buff",
+		ActionID: 18,
+	}, player.CharID)
+
+	if player.HasteItemEquipped != 1 || player.MoveSpeed != 0 {
+		t.Fatalf("yiwei CANCELLATION 對 haste item 只清 MoveSpeed 不減裝備計數，HasteItemEquipped=%d MoveSpeed=%d",
+			player.HasteItemEquipped, player.MoveSpeed)
+	}
+	if !hasSpeedPacketWithDuration(drainSkillTestPackets(player.Session), player.CharID, 0, 0) {
+		t.Fatal("yiwei CANCELLATION 對 haste item 會送 S_SkillHaste(type=0,duration=0)")
+	}
+}
+
 func TestSkillStatusRemovedWarriorSkillsAreNotCounterMagicExemptFor380C(t *testing.T) {
 	for _, skillID := range []int32{226, 228, 230} {
 		if counterMagicExempt[skillID] {

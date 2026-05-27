@@ -224,6 +224,632 @@ func TestSkillBuffCurseBlindSendsYiweiEffectAndPostCastStatusRefresh(t *testing.
 	}
 }
 
+func TestSkillBuffCancellationSendsYiweiEffectAndPostCastStatusRefresh(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "cancellation",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		HP:        100,
+		MaxHP:     100,
+		MP:        100,
+		MaxMP:     100,
+		Level:     52,
+		SP:        7,
+		MR:        18,
+		Dodge:     3,
+		KnownSpells: []int32{
+			44,
+		},
+	})
+	s := newSkillBuffTestSystem(t, ws)
+	s.applyBuffEffect(player, &data.SkillInfo{SkillID: 29, BuffDuration: 120})
+	_ = drainSkillTestPackets(player.Session)
+
+	s.executeBuffSkill(player.Session, player, &data.SkillInfo{
+		SkillID:  44,
+		Target:   "buff",
+		ActionID: 19,
+		CastGfx:  870,
+	}, player.CharID)
+
+	if player.HasBuff(29) {
+		t.Fatal("Java CANCELLATION 應移除可相消 buff 29")
+	}
+	packets := drainSkillTestPackets(player.Session)
+	if !hasSkillEffectPacket(packets, player.CharID, 870) {
+		t.Fatalf("yiwei sendGrfx 魔法相消術會送目標 S_SkillSound 870，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+		t.Fatalf("yiwei sendGrfx 魔法相消術後會送 S_SPMR 給 PC 目標，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+		t.Fatalf("yiwei sendGrfx 魔法相消術後會送 S_OwnCharStatus 給 PC 目標，packets=%v", packets)
+	}
+	if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(player)) {
+		t.Fatalf("yiwei sendGrfx 魔法相消術後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", packets)
+	}
+}
+
+func TestSkillBuffSleepAliasesSendYiweiEffectAndPostCastStatusRefresh(t *testing.T) {
+	tests := []struct {
+		name    string
+		skillID int32
+		gfxID   int32
+	}{
+		{name: "dark-blind", skillID: 103, gfxID: 2947},
+		{name: "phantasm", skillID: 212, gfxID: 6530},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			disablePlayerDebuffMRForStatusTest(t, tt.skillID)
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      tt.name + "-caster",
+				X:         100,
+				Y:         100,
+				MapID:     4,
+				HP:        100,
+				MaxHP:     100,
+				MP:        100,
+				MaxMP:     100,
+				Level:     52,
+				KnownSpells: []int32{
+					tt.skillID,
+				},
+			})
+			target := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 2,
+				Session:   newSkillTestSession(t, 2),
+				CharID:    1002,
+				Name:      tt.name + "-target",
+				X:         101,
+				Y:         100,
+				MapID:     4,
+				HP:        100,
+				MaxHP:     100,
+				MP:        100,
+				MaxMP:     100,
+				Level:     52,
+				SP:        6,
+				MR:        17,
+				Dodge:     4,
+			})
+			s := newSkillBuffTestSystem(t, ws)
+
+			s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+				SkillID:      tt.skillID,
+				Target:       "buff",
+				BuffDuration: 16,
+				ActionID:     19,
+				CastGfx:      tt.gfxID,
+			}, target.CharID)
+
+			if !target.HasBuff(66) {
+				t.Fatalf("Java 技能 %d 應以 FOG_OF_SLEEPING(66) 作為實際睡眠效果", tt.skillID)
+			}
+			packets := drainSkillTestPackets(target.Session)
+			if !hasSkillEffectPacket(packets, target.CharID, tt.gfxID) {
+				t.Fatalf("yiwei sendGrfx 技能 %d 會送目標 S_SkillSound %d，packets=%v", tt.skillID, tt.gfxID, packets)
+			}
+			if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+				t.Fatalf("yiwei sendGrfx 技能 %d 後會送 S_SPMR 給 PC 目標，packets=%v", tt.skillID, packets)
+			}
+			if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+				t.Fatalf("yiwei sendGrfx 技能 %d 後會送 S_OwnCharStatus 給 PC 目標，packets=%v", tt.skillID, packets)
+			}
+			if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(target)) {
+				t.Fatalf("yiwei sendGrfx 技能 %d 後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", tt.skillID, packets)
+			}
+		})
+	}
+}
+
+func TestSkillBuffElementalFallDownSendsYiweiPostCastStatusRefresh(t *testing.T) {
+	disablePlayerDebuffMRForStatusTest(t, 133)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "elemental-fall-caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		ElfAttr:   8,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "elemental-fall-target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		HP:        100,
+		MaxHP:     100,
+		MP:        100,
+		MaxMP:     100,
+		Level:     52,
+		SP:        5,
+		MR:        16,
+		Dodge:     6,
+		FireRes:   10,
+		WaterRes:  11,
+		WindRes:   12,
+		EarthRes:  13,
+	})
+	s := newSkillBuffTestSystem(t, ws)
+
+	s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+		SkillID:      133,
+		Target:       "buff",
+		BuffDuration: 32,
+		ActionID:     19,
+		CastGfx:      4396,
+	}, target.CharID)
+
+	if !target.HasBuff(133) || target.WindRes != -38 {
+		t.Fatalf("Java ELEMENTAL_FALL_DOWN 應依 caster ElfAttr 降低單一抗性，WindRes=%d buff=%v", target.WindRes, target.GetBuff(133))
+	}
+	packets := drainSkillTestPackets(target.Session)
+	if !hasSkillEffectPacket(packets, target.CharID, 4396) {
+		t.Fatalf("yiwei sendGrfx 弱化屬性會送目標 S_SkillSound 4396，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+		t.Fatalf("yiwei sendGrfx 弱化屬性後會送 S_SPMR 給 PC 目標，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+		t.Fatalf("yiwei sendGrfx 弱化屬性後會送 S_OwnCharStatus 給 PC 目標，packets=%v", packets)
+	}
+	if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(target)) {
+		t.Fatalf("yiwei sendGrfx 弱化屬性後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", packets)
+	}
+}
+
+func TestSkillBuffEarthBindSendsYiweiPostCastStatusRefresh(t *testing.T) {
+	disablePlayerDebuffMRForStatusTest(t, 157)
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "earth-bind-caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "earth-bind-target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		HP:        100,
+		MaxHP:     100,
+		MP:        100,
+		MaxMP:     100,
+		Level:     52,
+		SP:        4,
+		MR:        15,
+		Dodge:     7,
+	})
+	s := newSkillBuffTestSystem(t, ws)
+
+	s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+		SkillID:      157,
+		Target:       "buff",
+		BuffDuration: 16,
+		ActionID:     19,
+		CastGfx:      2251,
+	}, target.CharID)
+
+	buff := target.GetBuff(157)
+	if buff == nil || !target.Paralyzed {
+		t.Fatalf("Java EARTH_BIND 應凍結玩家目標，Paralyzed=%v buff=%v", target.Paralyzed, buff)
+	}
+	packets := drainSkillTestPackets(target.Session)
+	if !hasSkillEffectPacket(packets, target.CharID, 2251) {
+		t.Fatalf("yiwei sendGrfx 大地屏障會送目標 S_SkillSound 2251，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+		t.Fatalf("yiwei sendGrfx 大地屏障後會送 S_SPMR 給 PC 目標，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+		t.Fatalf("yiwei sendGrfx 大地屏障後會送 S_OwnCharStatus 給 PC 目標，packets=%v", packets)
+	}
+	if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(target)) {
+		t.Fatalf("yiwei sendGrfx 大地屏障後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", packets)
+	}
+}
+
+func TestSkillBuffArmorBreakSendsYiweiPostCastStatusRefresh(t *testing.T) {
+	ws := world.NewState()
+	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "armor-break-caster",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		Level:     80,
+		Intel:     127,
+	})
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 2,
+		Session:   newSkillTestSession(t, 2),
+		CharID:    1002,
+		Name:      "armor-break-target",
+		X:         101,
+		Y:         100,
+		MapID:     4,
+		HP:        100,
+		MaxHP:     100,
+		MP:        100,
+		MaxMP:     100,
+		Level:     1,
+		SP:        5,
+		MR:        14,
+		Dodge:     8,
+	})
+	s := newSkillBuffTestSystem(t, ws)
+
+	s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+		SkillID:      112,
+		Target:       "none",
+		BuffDuration: 8,
+		ActionID:     19,
+	}, target.CharID)
+
+	buff := target.GetBuff(112)
+	if buff == nil || buff.TicksLeft != 40 {
+		t.Fatalf("Java ARMOR_BREAK 成功時應套用 8 秒 buff，ticks=%v buff=%v", 40, buff)
+	}
+	packets := drainSkillTestPackets(target.Session)
+	if !hasSkillEffectPacket(packets, target.CharID, 3400) {
+		t.Fatalf("Java ARMOR_BREAK 成功時會送目標 S_SkillSound 3400，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+		t.Fatalf("yiwei sendGrfx 破壞盔甲後會送 S_SPMR 給 PC 目標，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+		t.Fatalf("yiwei sendGrfx 破壞盔甲後會送 S_OwnCharStatus 給 PC 目標，packets=%v", packets)
+	}
+	if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(target)) {
+		t.Fatalf("yiwei sendGrfx 破壞盔甲後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", packets)
+	}
+}
+
+func TestSkillBuffOppositeMoveSpeedSendsYiweiPostCastStatusRefresh(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupSkillID  int32
+		castSkillID   int32
+		castTarget    string
+		casterName    string
+		targetName    string
+		sp            int16
+		mr            int16
+		dodge         int16
+		wantOldAbsent int32
+		wantNewAbsent int32
+	}{
+		{
+			name:          "haste-cancels-slow",
+			setupSkillID:  29,
+			castSkillID:   43,
+			castTarget:    "buff",
+			casterName:    "haste-caster",
+			targetName:    "slowed-target",
+			sp:            5,
+			mr:            13,
+			dodge:         7,
+			wantOldAbsent: 29,
+			wantNewAbsent: 43,
+		},
+		{
+			name:          "slow-cancels-haste",
+			setupSkillID:  43,
+			castSkillID:   29,
+			castTarget:    "attack",
+			casterName:    "slow-caster",
+			targetName:    "hasted-target",
+			sp:            6,
+			mr:            14,
+			dodge:         8,
+			wantOldAbsent: 43,
+			wantNewAbsent: 29,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			disablePlayerDebuffMRForStatusTest(t, tt.castSkillID)
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      tt.casterName,
+				X:         100,
+				Y:         100,
+				MapID:     4,
+			})
+			target := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 2,
+				Session:   newSkillTestSession(t, 2),
+				CharID:    1002,
+				Name:      tt.targetName,
+				X:         101,
+				Y:         100,
+				MapID:     4,
+				SP:        tt.sp,
+				MR:        tt.mr,
+				Dodge:     tt.dodge,
+			})
+			s := newSkillBuffTestSystem(t, ws)
+			s.applyBuffEffect(target, &data.SkillInfo{SkillID: tt.setupSkillID, BuffDuration: 120})
+			_ = drainSkillTestPackets(target.Session)
+
+			s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+				SkillID:      tt.castSkillID,
+				Target:       tt.castTarget,
+				BuffDuration: 120,
+				ActionID:     18,
+			}, target.CharID)
+
+			if target.HasBuff(tt.wantOldAbsent) || target.HasBuff(tt.wantNewAbsent) || target.MoveSpeed != 0 {
+				t.Fatalf("Java 相反速度技能只應解除既有效果，old=%v new=%v MoveSpeed=%d", target.GetBuff(tt.wantOldAbsent), target.GetBuff(tt.wantNewAbsent), target.MoveSpeed)
+			}
+			packets := drainSkillTestPackets(target.Session)
+			if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+				t.Fatalf("yiwei sendGrfx 相反速度技能後會送 S_SPMR 給 PC 目標，packets=%v", packets)
+			}
+			if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+				t.Fatalf("yiwei sendGrfx 相反速度技能後會送 S_OwnCharStatus 給 PC 目標，packets=%v", packets)
+			}
+			if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(target)) {
+				t.Fatalf("yiwei sendGrfx 相反速度技能後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", packets)
+			}
+		})
+	}
+}
+
+func TestSkillBuffSlowFamilySkipsBraveSpeedFiveTargetLikeJava(t *testing.T) {
+	tests := []struct {
+		name    string
+		skillID int32
+	}{
+		{name: "slow", skillID: 29},
+		{name: "mass-slow", skillID: 76},
+		{name: "entangle", skillID: 152},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			disablePlayerDebuffMRForStatusTest(t, tt.skillID)
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      "slow-caster",
+				X:         100,
+				Y:         100,
+				MapID:     4,
+			})
+			target := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID:  2,
+				Session:    newSkillTestSession(t, 2),
+				CharID:     1002,
+				Name:       "third-speed-target",
+				X:          101,
+				Y:          100,
+				MapID:      4,
+				BraveSpeed: 5,
+			})
+			s := newSkillBuffTestSystem(t, ws)
+			s.applyBuffEffect(target, &data.SkillInfo{SkillID: 43, BuffDuration: 120})
+			_ = drainSkillTestPackets(target.Session)
+
+			s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+				SkillID:      tt.skillID,
+				Target:       "attack",
+				BuffDuration: 120,
+				ActionID:     18,
+			}, target.CharID)
+
+			if target.BraveSpeed != 5 || target.MoveSpeed != 1 || !target.HasBuff(43) || target.HasBuff(tt.skillID) {
+				t.Fatalf("yiwei 對 BraveSpeed=5 目標會跳過緩速系列，BraveSpeed=%d MoveSpeed=%d buff43=%v slowBuff=%v",
+					target.BraveSpeed, target.MoveSpeed, target.GetBuff(43), target.GetBuff(tt.skillID))
+			}
+		})
+	}
+}
+
+func TestSkillBuffSlowFamilySkipsHasteItemEquippedTargetLikeJava(t *testing.T) {
+	tests := []struct {
+		name    string
+		skillID int32
+	}{
+		{name: "slow", skillID: 29},
+		{name: "mass-slow", skillID: 76},
+		{name: "entangle", skillID: 152},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			disablePlayerDebuffMRForStatusTest(t, tt.skillID)
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      "slow-caster",
+				X:         100,
+				Y:         100,
+				MapID:     4,
+			})
+			target := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID:         2,
+				Session:           newSkillTestSession(t, 2),
+				CharID:            1002,
+				Name:              "haste-item-target",
+				X:                 101,
+				Y:                 100,
+				MapID:             4,
+				HasteItemEquipped: 1,
+			})
+			s := newSkillBuffTestSystem(t, ws)
+			s.applyBuffEffect(target, &data.SkillInfo{SkillID: 43, BuffDuration: 120})
+			_ = drainSkillTestPackets(target.Session)
+
+			s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+				SkillID:      tt.skillID,
+				Target:       "attack",
+				BuffDuration: 120,
+				ActionID:     18,
+			}, target.CharID)
+
+			if target.HasteItemEquipped != 1 || target.MoveSpeed != 1 || !target.HasBuff(43) || target.HasBuff(tt.skillID) {
+				t.Fatalf("yiwei 對 HasteItemEquipped>0 目標會跳過緩速系列，HasteItemEquipped=%d MoveSpeed=%d buff43=%v slowBuff=%v",
+					target.HasteItemEquipped, target.MoveSpeed, target.GetBuff(43), target.GetBuff(tt.skillID))
+			}
+		})
+	}
+}
+
+func TestSkillBuffHasteFamilySkipsHasteItemEquippedTargetLikeJava(t *testing.T) {
+	tests := []struct {
+		name    string
+		skillID int32
+	}{
+		{name: "haste", skillID: 43},
+		{name: "greater-haste", skillID: 54},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      "haste-caster",
+				X:         100,
+				Y:         100,
+				MapID:     4,
+			})
+			target := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID:         2,
+				Session:           newSkillTestSession(t, 2),
+				CharID:            1002,
+				Name:              "haste-item-target",
+				X:                 101,
+				Y:                 100,
+				MapID:             4,
+				MoveSpeed:         1,
+				HasteItemEquipped: 1,
+			})
+			s := newSkillBuffTestSystem(t, ws)
+
+			s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+				SkillID:      tt.skillID,
+				Target:       "buff",
+				BuffDuration: 120,
+				ActionID:     18,
+			}, target.CharID)
+
+			if target.HasteItemEquipped != 1 || target.MoveSpeed != 1 || target.HasBuff(tt.skillID) {
+				t.Fatalf("yiwei 對 HasteItemEquipped>0 目標會跳過 haste 系列，HasteItemEquipped=%d MoveSpeed=%d buff=%v",
+					target.HasteItemEquipped, target.MoveSpeed, target.GetBuff(tt.skillID))
+			}
+		})
+	}
+}
+
+func TestSkillBuffWindShackleSendsYiweiEffectAndPostCastStatusRefresh(t *testing.T) {
+	tests := []struct {
+		name            string
+		existingTicks   int
+		wantTicksUnkept bool
+	}{
+		{name: "fresh-target"},
+		{name: "existing-target", existingTicks: 25, wantTicksUnkept: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			disablePlayerDebuffMRForStatusTest(t, 167)
+			ws := world.NewState()
+			caster := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      tt.name + "-caster",
+				X:         100,
+				Y:         100,
+				MapID:     4,
+			})
+			target := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 2,
+				Session:   newSkillTestSession(t, 2),
+				CharID:    1002,
+				Name:      tt.name + "-target",
+				X:         101,
+				Y:         100,
+				MapID:     4,
+				HP:        100,
+				MaxHP:     100,
+				MP:        100,
+				MaxMP:     100,
+				Level:     52,
+				SP:        6,
+				MR:        19,
+				Dodge:     5,
+			})
+			if tt.existingTicks > 0 {
+				target.AddBuff(&world.ActiveBuff{SkillID: 167, TicksLeft: tt.existingTicks})
+			}
+			s := newSkillBuffTestSystem(t, ws)
+
+			s.executeBuffSkill(caster.Session, caster, &data.SkillInfo{
+				SkillID:      167,
+				Target:       "buff",
+				BuffDuration: 16,
+				ActionID:     19,
+				CastGfx:      1799,
+			}, target.CharID)
+
+			buff := target.GetBuff(167)
+			if buff == nil {
+				t.Fatal("Java WIND_SHACKLE 應留下 167 buff")
+			}
+			if tt.wantTicksUnkept && buff.TicksLeft != tt.existingTicks {
+				t.Fatalf("Java WIND_SHACKLE 對已有 167 目標不刷新時間，got=%d want=%d", buff.TicksLeft, tt.existingTicks)
+			}
+			packets := drainSkillTestPackets(target.Session)
+			if !hasSkillEffectPacket(packets, target.CharID, 1799) {
+				t.Fatalf("yiwei sendGrfx 風之枷鎖會送目標 S_SkillSound 1799，packets=%v", packets)
+			}
+			if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+				t.Fatalf("yiwei sendGrfx 風之枷鎖後會送 S_SPMR 給 PC 目標，packets=%v", packets)
+			}
+			if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+				t.Fatalf("yiwei sendGrfx 風之枷鎖後會送 S_OwnCharStatus 給 PC 目標，packets=%v", packets)
+			}
+			if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(target)) {
+				t.Fatalf("yiwei sendGrfx 風之枷鎖後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", packets)
+			}
+		})
+	}
+}
+
 func TestSkillBuffSendsYiweiPostCastStatusRefreshToTarget(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{

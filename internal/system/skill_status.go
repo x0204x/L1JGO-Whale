@@ -60,13 +60,40 @@ func (s *SkillSystem) handleOppositeMoveSpeedSkill(target *world.PlayerInfo, ski
 			return false
 		}
 		s.removeMoveSpeedBuffs(target, []int32{29, 76, 152})
+		s.sendYiweiPostCastStatusRefresh(target)
 		return true
 	case 29, 76, 152:
 		if target.MoveSpeed != 1 {
 			return false
 		}
 		s.removeMoveSpeedBuffs(target, []int32{43, 54, skillStatusHaste})
+		s.sendYiweiPostCastStatusRefresh(target)
 		return true
+	default:
+		return false
+	}
+}
+
+func slowSkillTargetBlockedLikeYiwei(target *world.PlayerInfo, skillID int32) bool {
+	if target == nil {
+		return false
+	}
+	switch skillID {
+	case 29, 76, 152:
+		// Java L1SkillUse 在 SLOW/MASS_SLOW/ENTANGLE 對急速道具與 BraveSpeed=5 目標直接 continue。
+		return target.HasteItemEquipped > 0 || target.BraveSpeed == 5
+	default:
+		return false
+	}
+}
+
+func hasteSkillTargetBlockedLikeYiwei(target *world.PlayerInfo, skillID int32) bool {
+	if target == nil {
+		return false
+	}
+	switch skillID {
+	case 43, 54:
+		return target.HasteItemEquipped > 0
 	default:
 		return false
 	}
@@ -784,8 +811,26 @@ func (s *SkillSystem) executeNpcDebuffSkill(sess *net.Session, player *world.Pla
 		handler.SendGlobalChat(sess, 9, "\\f2破壞盔甲 施放成功!")
 		s.deps.Log.Info(fmt.Sprintf("破壞盔甲  施法者=%s  NPC=%s  持續=%d秒", player.Name, npc.Name, dur))
 
+	case 173, 174: // 污濁之水 / 精準射擊 — Java 對 NPC 目標 setSkillEffect(skillID, duration)
+		if !s.checkNpcMRResist(player, npc, skill.SkillID) {
+			s.sendCastFail(sess)
+			return
+		}
+		dur := skill.BuffDuration
+		if dur <= 0 {
+			dur = 192
+		}
+		npc.AddDebuff(skill.SkillID, dur*5)
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
+		}
+		s.deps.Log.Info(fmt.Sprintf("妖精 NPC debuff  施法者=%s  NPC=%s  技能=%d  持續=%d秒", player.Name, npc.Name, skill.SkillID, dur))
+
 	case 167: // 風之枷鎖 — Java WIND_SHACKLE.start(NPC) 對 cha=L1NpcInstance 走 setSkillEffect(167, integer*1000)
 		if npc.HasDebuff(167) {
+			if skill.CastGfx > 0 {
+				handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, skill.CastGfx))
+			}
 			return // Java：hasSkillEffect(167) 已存在則略過
 		}
 		if !s.checkNpcMRResist(player, npc, skill.SkillID) {

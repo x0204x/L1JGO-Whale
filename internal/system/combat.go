@@ -208,6 +208,13 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 	if !result.IsHit {
 		damage = 0
 	}
+	nearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
+	if damage > 0 && npcHasAbsoluteBarrierDamageZeroLikeJava(npc) {
+		damage = 0
+	}
+	if s.tryNpcCounterBarrierAgainstPlayerLikeJava(player, npc, weaponType, damage, nearby) {
+		damage = 0
+	}
 	if damage > 0 {
 		s.applyDragonKnightWeaknessFromMelee(player, npc.ID)
 	}
@@ -222,8 +229,6 @@ func (s *CombatSystem) processMeleeAttack(sessID uint64, targetID int32) *handle
 	damage = braveAuraDamage(player, damage)
 
 	// 取附近玩家用於廣播
-	nearby := ws.GetNearbyPlayersInShow(npc.X, npc.Y, npc.MapID, 0, npc.ShowID)
-
 	// 燃燒擊砍（182）：一次性 +10 + 廣播 S_EffectLocation + 消耗 buff（Java L1AttackPc.calcBuffDamage:2434-2438）
 	if damage > 0 {
 		newDmg, consumed := burningSlashDamage(s.deps, player, damage, weaponType)
@@ -324,6 +329,61 @@ func (s *CombatSystem) ExecuteRangedAttackOnNpc(player *world.PlayerInfo, npcID 
 		return
 	}
 	s.processRangedAttackForPlayer(player, npcID)
+}
+
+const (
+	npcCounterBarrierSkillID int32 = 91
+	npcKirtasBarrier1SkillID int32 = 11060
+)
+
+func (s *CombatSystem) tryNpcCounterBarrierAgainstPlayerLikeJava(player *world.PlayerInfo, npc *world.NpcInfo, weaponType string, damage int32, nearby []*world.PlayerInfo) bool {
+	if player == nil || npc == nil || damage <= 0 {
+		return false
+	}
+	if npc.HasDebuff(npcKirtasBarrier1SkillID) {
+		return s.reflectNpcCounterBarrierDamageToPlayerLikeJava(player, npc, nearby)
+	}
+	if !npc.HasDebuff(npcCounterBarrierSkillID) {
+		return false
+	}
+	if !isCounterBarrierMeleeWeaponLikeJava(weaponType) {
+		return false
+	}
+	prob := 25 + int(npc.Level) - int(player.Level) + 33
+	if world.RandInt(100)+1 > prob {
+		return false
+	}
+	return s.reflectNpcCounterBarrierDamageToPlayerLikeJava(player, npc, nearby)
+}
+
+func (s *CombatSystem) reflectNpcCounterBarrierDamageToPlayerLikeJava(player *world.PlayerInfo, npc *world.NpcInfo, nearby []*world.PlayerInfo) bool {
+	handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, 10710))
+	cbDmg := int32(((int(npc.STR) + int(npc.Level)) << 1) * 3 / 2)
+	cbDmg = applyImmuneToHarmDamage(player, cbDmg)
+	if cbDmg <= 0 {
+		return true
+	}
+
+	handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(player.CharID, 2))
+	player.HP -= cbDmg
+	if player.HP < 0 {
+		player.HP = 0
+	}
+	player.Dirty = true
+	handler.SendHpUpdate(player.Session, player)
+	if player.HP <= 0 && s.deps.Death != nil {
+		s.deps.Death.KillPlayer(player)
+	}
+	return true
+}
+
+func isCounterBarrierMeleeWeaponLikeJava(weaponType string) bool {
+	switch weaponType {
+	case "bow", "singlebow", "claw", "kiringku", "tohandkiringku":
+		return false
+	default:
+		return true
+	}
 }
 
 // processRangedAttack 對目標施加遠程攻擊（佇列入口，由 CombatSystem.Update 呼叫）。

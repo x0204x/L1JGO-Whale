@@ -646,7 +646,9 @@ func (s *SkillSystem) sendBraveToAll(target *world.PlayerInfo, braveType byte, d
 
 // cancelAllBuffs 移除所有可取消的 buff。
 func (s *SkillSystem) cancelAllBuffs(target *world.PlayerInfo) {
+	needHasteItemMoveSpeedClear := target.HasteItemEquipped > 0
 	if target.ActiveBuffs == nil {
+		s.clearHasteItemMoveSpeedForCancellation(target, false)
 		return
 	}
 
@@ -657,6 +659,7 @@ func (s *SkillSystem) cancelAllBuffs(target *world.PlayerInfo) {
 	needSleepRemove := false
 	needBindRemove := false
 	needInvisRemove := false
+	speedClearSent := false
 
 	for skillID, buff := range target.ActiveBuffs {
 		if s.deps.Scripting.IsNonCancellable(int(skillID)) {
@@ -674,6 +677,7 @@ func (s *SkillSystem) cancelAllBuffs(target *world.PlayerInfo) {
 			target.MoveSpeed = 0
 			target.HasteTicks = 0
 			s.sendSpeedToAll(target, 0, 0)
+			speedClearSent = true
 		}
 		if buff.SetBraveSpeed > 0 {
 			target.BraveSpeed = 0
@@ -701,6 +705,9 @@ func (s *SkillSystem) cancelAllBuffs(target *world.PlayerInfo) {
 		if buff.SetInvisible {
 			needInvisRemove = true
 		}
+	}
+	if needHasteItemMoveSpeedClear {
+		s.clearHasteItemMoveSpeedForCancellation(target, speedClearSent)
 	}
 
 	// 凍結解除通知（控制鎖 + 灰色色調）
@@ -733,6 +740,17 @@ func (s *SkillSystem) cancelAllBuffs(target *world.PlayerInfo) {
 	}
 
 	handler.SendPlayerStatus(target.Session, target)
+}
+
+func (s *SkillSystem) clearHasteItemMoveSpeedForCancellation(target *world.PlayerInfo, speedClearSent bool) {
+	if target.HasteItemEquipped <= 0 {
+		return
+	}
+	target.MoveSpeed = 0
+	target.HasteTicks = 0
+	if !speedClearSent {
+		s.sendSpeedToAll(target, 0, 0)
+	}
 }
 
 // ========================================================================
@@ -1099,6 +1117,12 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		if player.Invisible {
 			s.cancelInvisibility(player)
 		}
+		if target != nil {
+			if skill.CastGfx > 0 {
+				handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+			}
+			s.sendYiweiPostCastStatusRefresh(target)
+		}
 		return
 
 	case 71: // 藥水霜化術 — 通知目標無法使用藥水
@@ -1110,6 +1134,10 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		sleepSkill := *skill
 		sleepSkill.SkillID = 66
 		s.applyBuffEffect(target, &sleepSkill)
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+		}
+		s.sendYiweiPostCastStatusRefresh(target)
 		return
 
 	case 212: // 幻想 — Java skillmode/PHANTASM.java:22 對 PC `setSkillEffect(66, integer*1000)`
@@ -1118,6 +1146,10 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		sleepSkill := *skill
 		sleepSkill.SkillID = 66
 		s.applyBuffEffect(target, &sleepSkill)
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+		}
+		s.sendYiweiPostCastStatusRefresh(target)
 		return
 
 	case 113: // 精準目標 — Owner: skill_clan.go；目標狀態 + S_TrueTarget 給血盟成員
@@ -1133,6 +1165,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		if skill.CastGfx > 0 {
 			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
 		}
+		s.sendYiweiPostCastStatusRefresh(target)
 		return
 
 	case 157: // 大地屏障：Java EARTH_BIND，命中後 1-12 秒凍結。
@@ -1145,6 +1178,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		if skill.CastGfx > 0 {
 			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
 		}
+		s.sendYiweiPostCastStatusRefresh(target)
 		return
 
 	case 112: // 破壞盔甲（黑暗妖精 debuff）
@@ -1168,16 +1202,19 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		handler.SendIconAura(target.Session, 119, 8)
 		// 成功訊息
 		handler.SendGlobalChat(sess, 9, "\\f2破壞盔甲 施放成功!")
+		s.sendYiweiPostCastStatusRefresh(target)
 		return
 
 	case 167: // 風之枷鎖 — 降低目標攻擊速度
 		// Java: WIND_SHACKLE.java — 不可重複施加；發送 S_PacketBoxWindShackle
-		if target.HasBuff(167) {
-			return // 已有效果，不重複
+		if !target.HasBuff(167) {
+			s.applyBuffEffect(target, skill)
+			handler.SendWindShackle(target.Session, target.CharID, skill.BuffDuration)
 		}
-		s.applyBuffEffect(target, skill)
-		handler.SendWindShackle(target.Session, target.CharID, skill.BuffDuration)
-		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+		}
+		s.sendYiweiPostCastStatusRefresh(target)
 		return
 	}
 
@@ -1206,6 +1243,12 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		return
 	}
 
+	if hasteSkillTargetBlockedLikeYiwei(target, skill.SkillID) {
+		return
+	}
+	if slowSkillTargetBlockedLikeYiwei(target, skill.SkillID) {
+		return
+	}
 	if s.handleOppositeMoveSpeedSkill(target, skill.SkillID) {
 		return
 	}
@@ -1220,25 +1263,13 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 			for _, p := range nearby {
 				heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 				heal = s.applyElfWaterHealingModifiers(p, heal)
-				if heal > 0 && p.HP < p.MaxHP {
-					p.HP += heal
-					if p.HP > p.MaxHP {
-						p.HP = p.MaxHP
-					}
-					sendHpUpdate(p.Session, p)
-				}
+				applyPlayerHealDeltaLikeJava(s.deps, p, heal)
 			}
 		} else {
 			// 單目標治療
 			heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 			heal = s.applyElfWaterHealingModifiers(target, heal)
-			if heal > 0 && target.HP < target.MaxHP {
-				target.HP += heal
-				if target.HP > target.MaxHP {
-					target.HP = target.MaxHP
-				}
-				sendHpUpdate(target.Session, target)
-			}
+			applyPlayerHealDeltaLikeJava(s.deps, target, heal)
 		}
 	}
 

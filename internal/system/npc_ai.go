@@ -42,6 +42,11 @@ const (
 	mobSkillSpecialAreaStatusTicks        = 60
 	mobSkillCurseParalyzeDelayTicks       = 25
 	mobSkillTurnUndeadID                  = 18
+	mobSkillKirtasBarrier4          int32 = 11057
+	mobSkillKirtasBarrier3          int32 = 11058
+	mobSkillKirtasBarrier2          int32 = 11059
+	mobSkillKirtasBarrier1          int32 = 11060
+	mobSkillKirtasBarrierTicks            = 1 << 30
 )
 
 func NewNpcAISystem(ws *world.State, deps *handler.Deps) *NpcAISystem {
@@ -108,6 +113,7 @@ func (s *NpcAISystem) tickNpcRandomWalk(npc *world.NpcInfo) {
 // ---------- Monster AI (Lua-driven) ----------
 
 func (s *NpcAISystem) tickMonsterAI(npc *world.NpcInfo) {
+	tickNpcKirtasBarrierLikeJava(npc)
 	if npc.HiddenStatus != world.NpcHiddenNone {
 		return
 	}
@@ -1004,8 +1010,15 @@ func (s *NpcAISystem) executeNpcSkill(npc *world.NpcInfo, target *world.PlayerIn
 			}
 		}
 		if gfx > 0 {
-			effData := handler.BuildSkillEffect(target.CharID, gfx)
+			effectID := target.CharID
+			if targetNone {
+				effectID = npc.ID
+			}
+			effData := handler.BuildSkillEffect(effectID, gfx)
 			handler.BroadcastToPlayers(nearby, effData)
+		}
+		if targetNone && s.executeNpcKirtasBarrierLikeJava(npc, skill.SkillID, nearby) {
+			return true
 		}
 		// 透過 SkillManager 套用 buff/debuff 效果（麻痺、睡眠、減速等）
 		if s.deps.Skill != nil {
@@ -1013,6 +1026,50 @@ func (s *NpcAISystem) executeNpcSkill(npc *world.NpcInfo, target *world.PlayerIn
 		}
 	}
 	return true
+}
+
+func (s *NpcAISystem) executeNpcKirtasBarrierLikeJava(npc *world.NpcInfo, skillID int32, nearby []*world.PlayerInfo) bool {
+	if npc == nil {
+		return false
+	}
+	actionStatus := byte(0)
+	switch skillID {
+	case mobSkillKirtasBarrier1:
+		actionStatus = 20
+		npc.AddDebuff(mobSkillKirtasBarrier1, mobSkillKirtasBarrierTicks)
+	case mobSkillKirtasBarrier2:
+		actionStatus = 40
+		npc.AddDebuff(mobSkillKirtasBarrier2, mobSkillKirtasBarrierTicks)
+	case mobSkillKirtasBarrier3:
+		actionStatus = 4
+		npc.AddDebuff(mobSkillKirtasBarrier3, mobSkillKirtasBarrierTicks)
+		npc.AddDebuff(78, mobSkillKirtasBarrierTicks)
+	case mobSkillKirtasBarrier4:
+		actionStatus = 24
+		npc.AddDebuff(mobSkillKirtasBarrier4, mobSkillKirtasBarrierTicks)
+		npc.AddDebuff(mobSkillKirtasBarrier1, mobSkillKirtasBarrierTicks)
+		npc.AddDebuff(mobSkillKirtasBarrier2, mobSkillKirtasBarrierTicks)
+	default:
+		return false
+	}
+	setNpcHidden(npc, world.NpcHiddenKirtas, actionStatus)
+	npc.KirtasBarrierTicks = 0
+	for _, viewer := range nearby {
+		sendNpcPack(viewer.Session, npc)
+	}
+	return true
+}
+
+func tickNpcKirtasBarrierLikeJava(npc *world.NpcInfo) {
+	if npc == nil || npc.NpcID != 81163 || npc.HiddenStatus != world.NpcHiddenKirtas {
+		return
+	}
+	if npc.HasDebuff(mobSkillKirtasBarrier4) ||
+		npc.HasDebuff(mobSkillKirtasBarrier3) ||
+		npc.HasDebuff(mobSkillKirtasBarrier2) ||
+		npc.HasDebuff(mobSkillKirtasBarrier1) {
+		npc.KirtasBarrierTicks++
+	}
 }
 
 func applyNpcMagicLeverageLikeJava(damage int32, leverage int) int32 {
@@ -1051,6 +1108,22 @@ func calcNpcHealingLikeJava(npc *world.NpcInfo, skill *data.SkillInfo, leverage 
 	heal = int32(float64(heal) * (float64(leverage) / 10.0))
 	if heal < 0 {
 		return 0
+	}
+	return heal
+}
+
+func applyNpcMagicHealingModifiersLikeJava(target *world.NpcInfo, heal int32) int32 {
+	if target == nil || heal <= 0 {
+		return heal
+	}
+	if target.HasDebuff(skillPolluteWater) {
+		heal >>= 1
+	}
+	if target.HasDebuff(mobSkillPolluteWater) {
+		heal >>= 1
+	}
+	if target.HasDebuff(mobSkillHealTurnToDamage) {
+		heal *= -1
 	}
 	return heal
 }
@@ -1846,6 +1919,7 @@ func (s *NpcAISystem) executeNpcCompanionSkillLikeJava(caster, target *world.Npc
 
 	if skill.DamageValue > 0 || skill.DamageDice > 0 {
 		heal := calcNpcHealingLikeJava(caster, skill, leverage)
+		heal = applyNpcMagicHealingModifiersLikeJava(target, heal)
 		target.HP += heal
 		if target.HP > target.MaxHP {
 			target.HP = target.MaxHP
@@ -1950,6 +2024,7 @@ func (s *NpcAISystem) executeNpcSelfSkill(npc *world.NpcInfo, skillID, gfxID, le
 	// 自我治療：yiwei 以 DamageValue + NPC INT magicBonus 作為擲骰次數。
 	if skill.DamageValue > 0 || skill.DamageDice > 0 {
 		heal := calcNpcHealingLikeJava(npc, skill, leverage)
+		heal = applyNpcMagicHealingModifiersLikeJava(npc, heal)
 		npc.HP += heal
 		if npc.HP > npc.MaxHP {
 			npc.HP = npc.MaxHP

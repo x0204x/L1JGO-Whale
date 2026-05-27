@@ -582,6 +582,9 @@ func loadAndRestoreBuffs(player *world.PlayerInfo, deps *Deps) {
 		if row.RemainingTime <= 0 {
 			continue // expired
 		}
+		if skipRestoredMoveSpeedBuffForHasteItem(player, row.SkillID, row.SetMoveSpeed) {
+			continue
+		}
 
 		buff := &world.ActiveBuff{
 			SkillID:       row.SkillID,
@@ -662,6 +665,18 @@ func loadAndRestoreBuffs(player *world.PlayerInfo, deps *Deps) {
 	}
 
 	deps.Log.Info(fmt.Sprintf("恢復buff  角色=%s  數量=%d", player.Name, len(rows)))
+}
+
+func skipRestoredMoveSpeedBuffForHasteItem(player *world.PlayerInfo, skillID int32, setMoveSpeed byte) bool {
+	if player == nil || player.HasteItemEquipped <= 0 || setMoveSpeed == 0 {
+		return false
+	}
+	switch skillID {
+	case 29, 43, 54, 76, 152, SkillStatusHaste:
+		return true
+	default:
+		return false
+	}
 }
 
 // sendRestoredBuffIcons sends buff icon/speed/poly packets for all active buffs.

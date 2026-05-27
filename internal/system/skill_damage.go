@@ -9,10 +9,37 @@ import (
 )
 
 const (
-	skillTypeChange  = 2
-	skillTypeRestore = 32
-	skillFinalBurn   = int32(108)
+	npcAbsoluteBarrierSkillID = int32(78)
+	skillTypeChange           = 2
+	skillTypeRestore          = 32
+	skillFinalBurn            = int32(108)
 )
+
+func npcHasAbsoluteBarrierDamageZeroLikeJava(npc *world.NpcInfo) bool {
+	return npc != nil && npc.HasDebuff(npcAbsoluteBarrierSkillID)
+}
+
+func (s *SkillSystem) applyNpcKirtasMirrorMagicDamageLikeJava(attacker *world.PlayerInfo, npc *world.NpcInfo, damage int32, nearby []*world.PlayerInfo) int32 {
+	if attacker == nil || npc == nil || damage <= 0 || !npc.HasDebuff(mobSkillKirtasBarrier2) {
+		return damage
+	}
+	if attacker.HP > 0 {
+		attacker.HP -= damage
+		attacker.Dirty = true
+		if attacker.HP < 0 {
+			attacker.HP = 0
+		}
+		sendHpUpdate(attacker.Session, attacker)
+	}
+	if len(nearby) > 0 {
+		handler.BroadcastToPlayers(nearby, handler.BuildActionGfx(attacker.CharID, 2))
+		handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(npc.ID, 4395))
+	}
+	if attacker.HP <= 0 && s.deps != nil && s.deps.Death != nil {
+		s.deps.Death.KillPlayer(attacker)
+	}
+	return 0
+}
 
 func (s *SkillSystem) canSkillReachTarget(caster *world.PlayerInfo, skill *data.SkillInfo, mapID int16, x, y int32) bool {
 	if caster == nil || skill == nil {
@@ -275,6 +302,12 @@ func (s *SkillSystem) applyAreaSkillDamageToNpc(sess *net.Session, player *world
 	}
 	if npcRejectsDamageWhileHiddenLikeJava(npc) {
 		dmg = 0
+	}
+	if dmg > 0 && npcHasAbsoluteBarrierDamageZeroLikeJava(npc) {
+		dmg = 0
+	}
+	if dmg > 0 && !(skill.DamageValue == 0 && skill.DamageDice == 0) {
+		dmg = s.applyNpcKirtasMirrorMagicDamageLikeJava(player, npc, dmg, nearby)
 	}
 	// 副本武器需求檢查（火龍窟「必須裝備真死亡騎士烈炎之劍」）：玩家技能對副本怪傷害同樣受限。
 	if dmg > 0 && npc.WeaponRequired != 0 {
@@ -653,6 +686,12 @@ func (s *SkillSystem) executeAttackSkill(sess *net.Session, player *world.Player
 			dmg := t.dmg
 			if blockDmg || npcRejectsDamageWhileHiddenLikeJava(t.npc) {
 				dmg = 0
+			}
+			if dmg > 0 && npcHasAbsoluteBarrierDamageZeroLikeJava(t.npc) {
+				dmg = 0
+			}
+			if dmg > 0 && !isPhysicalSkill {
+				dmg = s.applyNpcKirtasMirrorMagicDamageLikeJava(player, t.npc, dmg, nearby)
 			}
 
 			if directedAreaSkill {

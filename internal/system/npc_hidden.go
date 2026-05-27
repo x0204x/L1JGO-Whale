@@ -163,6 +163,8 @@ func npcShouldAppearForPlayerLikeJava(npc *world.NpcInfo, p *world.PlayerInfo) b
 		return npc.HP == npc.MaxHP && chebyshev32(p.X, p.Y, npc.X, npc.Y) <= 2
 	case world.NpcHiddenIce:
 		return npc.HP < npc.MaxHP
+	case world.NpcHiddenKirtas:
+		return npc.HP == npc.MaxHP || npc.KirtasBarrierTicks > 75
 	default:
 		return false
 	}
@@ -172,21 +174,51 @@ func npcAppearOnGroundLikeJava(npc *world.NpcInfo, ws *world.State, p *world.Pla
 	if npc == nil || ws == nil || p == nil {
 		return false
 	}
-	clearNpcHidden(npc)
+	action := byte(4)
+	if npc.HiddenStatus == world.NpcHiddenKirtas {
+		action = clearNpcKirtasBarrierLikeJava(npc)
+	} else {
+		clearNpcHidden(npc)
+		if npc.GfxID == 1245 || npc.PolyOriginalGfxID == 1245 {
+			action = 11
+		}
+	}
 	if p.AccessLevel < 200 {
 		npc.AggroTarget = p.SessionID
 	}
 
-	action := byte(4)
-	if npc.GfxID == 1245 || npc.PolyOriginalGfxID == 1245 {
-		action = 11
-	}
 	nearby := npcHiddenViewers(ws, npc)
 	for _, viewer := range nearby {
 		handler.SendActionGfx(viewer.Session, npc.ID, action)
 		handler.SendNpcPack(viewer.Session, npc)
 	}
 	return true
+}
+
+func clearNpcKirtasBarrierLikeJava(npc *world.NpcInfo) byte {
+	action := byte(4)
+	if npc == nil {
+		return action
+	}
+	if npc.HasDebuff(mobSkillKirtasBarrier1) && !npc.HasDebuff(mobSkillKirtasBarrier4) {
+		npc.RemoveDebuff(mobSkillKirtasBarrier1)
+		action = 21
+	} else if npc.HasDebuff(mobSkillKirtasBarrier2) && !npc.HasDebuff(mobSkillKirtasBarrier4) {
+		npc.RemoveDebuff(mobSkillKirtasBarrier2)
+		action = 41
+	} else if npc.HasDebuff(mobSkillKirtasBarrier3) {
+		npc.RemoveDebuff(mobSkillKirtasBarrier3)
+		npc.RemoveDebuff(78)
+		action = 5
+	} else if npc.HasDebuff(mobSkillKirtasBarrier4) {
+		npc.RemoveDebuff(mobSkillKirtasBarrier4)
+		npc.RemoveDebuff(mobSkillKirtasBarrier1)
+		npc.RemoveDebuff(mobSkillKirtasBarrier2)
+		action = 25
+	}
+	npc.KirtasBarrierTicks = 0
+	clearNpcHidden(npc)
+	return action
 }
 
 func npcHiddenViewers(ws *world.State, npc *world.NpcInfo) []*world.PlayerInfo {

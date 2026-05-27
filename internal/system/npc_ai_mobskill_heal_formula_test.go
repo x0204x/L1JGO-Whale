@@ -114,6 +114,182 @@ func TestNpcMobSkillCompanionHealUsesNpcLawfulAndLeverageLikeJava(t *testing.T) 
 	}
 }
 
+func TestNpcMobSkillSelfHealPolluteWaterHalvesHealingLikeJava(t *testing.T) {
+	ws := world.NewState()
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "target",
+		X:         101,
+		Y:         100,
+		MapID:     900,
+		HP:        5000,
+		MaxHP:     5000,
+	})
+	npc := &world.NpcInfo{
+		ID:          2001,
+		NpcID:       45197,
+		Impl:        "L1Monster",
+		Name:        "polluted_self_healer",
+		X:           100,
+		Y:           100,
+		MapID:       900,
+		HP:          10,
+		MaxHP:       100,
+		MP:          100,
+		MaxMP:       100,
+		Level:       50,
+		STR:         30,
+		DEX:         30,
+		Intel:       18,
+		Lawful:      0,
+		AtkDmg:      20,
+		Ranged:      1,
+		AggroTarget: target.SessionID,
+	}
+	npc.AddDebuff(skillPolluteWater, 960)
+	ws.AddNpc(npc)
+	s := newNpcAILOSTestSystem(t, ws)
+	withNpcHealFormulaMobSkill(t, s, 990001, 2, 0, 10)
+
+	s.tickMonsterAI(npc)
+
+	if npc.HP != 12 {
+		t.Fatalf("yiwei NPC 自補目標有 POLLUTE_WATER 時回復量減半，HP=%d want=12", npc.HP)
+	}
+}
+
+func TestNpcMobSkillSelfHealDragonWaterStatusesModifyHealingLikeJava(t *testing.T) {
+	tests := []struct {
+		name     string
+		skillID  int32
+		wantHP   int32
+		wantText string
+	}{
+		{
+			name:     "pollute-water-wave",
+			skillID:  mobSkillPolluteWater,
+			wantHP:   12,
+			wantText: "4012 污濁的水流應讓 NPC 魔法治療減半",
+		},
+		{
+			name:     "heal-turn-to-damage",
+			skillID:  mobSkillHealTurnToDamage,
+			wantHP:   5,
+			wantText: "4013 治癒侵蝕術應把 NPC 魔法治療轉為傷害",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := world.NewState()
+			target := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      "target",
+				X:         101,
+				Y:         100,
+				MapID:     900,
+				HP:        5000,
+				MaxHP:     5000,
+			})
+			npc := &world.NpcInfo{
+				ID:          2001,
+				NpcID:       45197,
+				Impl:        "L1Monster",
+				Name:        "dragon_status_self_healer",
+				X:           100,
+				Y:           100,
+				MapID:       900,
+				HP:          10,
+				MaxHP:       100,
+				MP:          100,
+				MaxMP:       100,
+				Level:       50,
+				STR:         30,
+				DEX:         30,
+				Intel:       18,
+				Lawful:      0,
+				AtkDmg:      20,
+				Ranged:      1,
+				AggroTarget: target.SessionID,
+			}
+			npc.AddDebuff(tt.skillID, 60)
+			ws.AddNpc(npc)
+			s := newNpcAILOSTestSystem(t, ws)
+			withNpcHealFormulaMobSkill(t, s, 990001, 2, 0, 10)
+
+			s.tickMonsterAI(npc)
+
+			if npc.HP != tt.wantHP {
+				t.Fatalf("%s，HP=%d want=%d", tt.wantText, npc.HP, tt.wantHP)
+			}
+		})
+	}
+}
+
+func TestNpcMobSkillCompanionHealPolluteWaterHalvesTargetHealingLikeJava(t *testing.T) {
+	ws := world.NewState()
+	target := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "target",
+		X:         104,
+		Y:         100,
+		MapID:     900,
+		HP:        5000,
+		MaxHP:     5000,
+	})
+	npc := &world.NpcInfo{
+		ID:          2001,
+		NpcID:       45197,
+		Impl:        "L1Monster",
+		Name:        "companion_healer",
+		Family:      "lizardman",
+		X:           103,
+		Y:           100,
+		MapID:       900,
+		HP:          100,
+		MaxHP:       100,
+		MP:          100,
+		MaxMP:       100,
+		Level:       50,
+		STR:         30,
+		DEX:         30,
+		Intel:       18,
+		Lawful:      32768,
+		AtkDmg:      20,
+		Ranged:      1,
+		AggroTarget: target.SessionID,
+	}
+	companion := &world.NpcInfo{
+		ID:     2002,
+		NpcID:  45200,
+		Impl:   "L1Monster",
+		Name:   "polluted_same_family",
+		Family: "lizardman",
+		X:      105,
+		Y:      100,
+		MapID:  900,
+		HP:     10,
+		MaxHP:  100,
+	}
+	companion.AddDebuff(skillPolluteWater, 960)
+	ws.AddNpc(npc)
+	ws.AddNpc(companion)
+	s := newNpcAILOSTestSystem(t, ws)
+	withNpcHealFormulaMobSkill(t, s, 990001, 0, 70, 20)
+
+	s.tickMonsterAI(npc)
+
+	if companion.HP != 20 {
+		t.Fatalf("yiwei NPC 同族補血看被補目標的 POLLUTE_WATER 減半，HP=%d want=20", companion.HP)
+	}
+}
+
 func TestNpcMobSkillSelfHealBroadcastsOnlySameShowLikeJava(t *testing.T) {
 	ws := world.NewState()
 	target := addSkillTestPlayer(ws, &world.PlayerInfo{

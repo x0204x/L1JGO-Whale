@@ -219,13 +219,7 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 		if skill.Area == -1 {
 			heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 			heal = s.applyElfWaterHealingModifiers(player, heal)
-			if heal > 0 && player.HP < player.MaxHP {
-				player.HP += heal
-				if player.HP > player.MaxHP {
-					player.HP = player.MaxHP
-				}
-				sendHpUpdate(sess, player)
-			}
+			applyPlayerHealDeltaLikeJava(s.deps, player, heal)
 			// Java L1SkillUse.isInTarget() 877-880：target_to=8 (TARGET_TO_PARTY) 只對隊伍成員生效，自己永遠通過 671-676。
 			// 目前僅 164 NATURES_BLESSING 屬 target_to=8 + type=16；非隊員 nearby 不應受惠。
 			var partyMembers map[int32]bool
@@ -246,24 +240,12 @@ func (s *SkillSystem) executeSelfSkill(sess *net.Session, player *world.PlayerIn
 				}
 				h := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 				h = s.applyElfWaterHealingModifiers(p, h)
-				if h > 0 && p.HP < p.MaxHP {
-					p.HP += h
-					if p.HP > p.MaxHP {
-						p.HP = p.MaxHP
-					}
-					sendHpUpdate(p.Session, p)
-				}
+				applyPlayerHealDeltaLikeJava(s.deps, p, h)
 			}
 		} else {
 			heal := int32(s.deps.Scripting.CalcHeal(skill.DamageValue, skill.DamageDice, skill.DamageDiceCount, casterINT, casterLawful, 10))
 			heal = s.applyElfWaterHealingModifiers(player, heal)
-			if heal > 0 && player.HP < player.MaxHP {
-				player.HP += heal
-				if player.HP > player.MaxHP {
-					player.HP = player.MaxHP
-				}
-				sendHpUpdate(sess, player)
-			}
+			applyPlayerHealDeltaLikeJava(s.deps, player, heal)
 		}
 	}
 

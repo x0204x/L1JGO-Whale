@@ -109,6 +109,9 @@ func (s *EquipSystem) EquipWeapon(sess *net.Session, player *world.PlayerInfo, i
 	if invItem.ItemID == 850 && s.deps.Polymorph != nil {
 		s.deps.Polymorph.DoPoly(player, 12232, 1800, data.PolyCauseMagic)
 	}
+	if itemInfo.HasteItem {
+		s.applyHasteItemOnEquip(sess, player)
+	}
 
 	s.deps.Log.Debug("武器裝備",
 		zap.String("player", player.Name),
@@ -268,6 +271,9 @@ func (s *EquipSystem) EquipArmor(sess *net.Session, player *world.PlayerInfo, in
 	if invItem.ItemID == 20077 || invItem.ItemID == 120077 {
 		s.applyInvisCloak(sess, player, true)
 	}
+	if itemInfo.HasteItem {
+		s.applyHasteItemOnEquip(sess, player)
+	}
 
 	s.deps.Log.Debug("防具裝備",
 		zap.String("player", player.Name),
@@ -294,6 +300,7 @@ func (s *EquipSystem) UnequipSlot(sess *net.Session, player *world.PlayerInfo, s
 	// 脫下武器時清除視覺
 	if slot == world.SlotWeapon {
 		player.CurrentWeapon = 0
+		s.removeWeaponDependentBuffsOnUnequip(player)
 		s.broadcastVisualUpdate(sess, player)
 	}
 
@@ -301,6 +308,9 @@ func (s *EquipSystem) UnequipSlot(sess *net.Session, player *world.PlayerInfo, s
 	itemInfo := s.deps.Items.Get(item.ItemID)
 	sendItemNameUpdate(sess, item, itemInfo)
 	sendEquipSlotUpdate(sess, item.ObjectID, slot, false)
+	if itemInfo != nil && itemInfo.HasteItem {
+		s.applyHasteItemOnUnequip(sess, player)
+	}
 
 	// 重新計算屬性
 	s.RecalcEquipStats(sess, player)
@@ -362,6 +372,7 @@ func (s *EquipSystem) InitEquipStats(player *world.PlayerInfo) {
 	player.AC = int16(s.deps.Config.Gameplay.BaseAC)
 	detectActiveArmorSet(player, s.deps.ArmorSets)
 	applyEquipStats(player, s.deps.Items, s.deps.ArmorSets, s.deps.ItemPowers)
+	s.restoreHasteItemStateOnInit(player)
 }
 
 // SendEquipList 發送完整裝備欄位列表封包（登入時用）。
@@ -683,6 +694,99 @@ func checkLevelRestriction(sess *net.Session, playerLevel int16, info *data.Item
 		return false
 	}
 	return true
+}
+
+func (s *EquipSystem) restoreHasteItemStateOnInit(player *world.PlayerInfo) {
+	count := s.countEquippedHasteItems(player)
+	player.HasteItemEquipped = count
+	if count > 0 {
+		player.MoveSpeed = 1
+		player.HasteTicks = 0
+	}
+}
+
+func (s *EquipSystem) removeWeaponDependentBuffsOnUnequip(player *world.PlayerInfo) {
+	if player.HasBuff(91) {
+		handler.RemoveBuffAndRevert(player, 91, s.deps)
+	}
+	if player.HasBuff(155) {
+		handler.RemoveBuffAndRevert(player, 155, s.deps)
+		player.BraveSpeed = 0
+		s.sendWeaponBraveClearToAll(player)
+	}
+}
+
+func (s *EquipSystem) sendWeaponBraveClearToAll(player *world.PlayerInfo) {
+	if player.Session != nil {
+		sendBravePacket(player.Session, player.CharID, 0, 0)
+	}
+	if s.deps == nil || s.deps.World == nil {
+		return
+	}
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, player.SessionID, player.ShowID)
+	for _, other := range nearby {
+		if other.CharID != player.CharID {
+			sendBravePacket(other.Session, player.CharID, 0, 0)
+		}
+	}
+}
+
+func (s *EquipSystem) countEquippedHasteItems(player *world.PlayerInfo) int {
+	if s.deps == nil || s.deps.Items == nil {
+		return 0
+	}
+	count := 0
+	for i := world.EquipSlot(1); i < world.SlotMax; i++ {
+		item := player.Equip.Get(i)
+		if item == nil {
+			continue
+		}
+		info := s.deps.Items.Get(item.ItemID)
+		if info != nil && info.HasteItem {
+			count++
+		}
+	}
+	return count
+}
+
+func (s *EquipSystem) applyHasteItemOnEquip(sess *net.Session, player *world.PlayerInfo) {
+	player.HasteItemEquipped++
+	for _, skillID := range []int32{29, 76, 152, 43, 54, skillStatusHaste} {
+		handler.RemoveBuffAndRevert(player, skillID, s.deps)
+	}
+	player.MoveSpeed = 1
+	player.HasteTicks = 0
+	s.sendHasteItemSpeedToAll(sess, player, 1, 0xffff)
+}
+
+func (s *EquipSystem) applyHasteItemOnUnequip(sess *net.Session, player *world.PlayerInfo) {
+	if player.HasteItemEquipped > 0 {
+		player.HasteItemEquipped--
+	}
+	if player.HasteItemEquipped > 0 {
+		return
+	}
+	player.MoveSpeed = 0
+	player.HasteTicks = 0
+	s.sendHasteItemSpeedToAll(sess, player, 0, 0)
+}
+
+func (s *EquipSystem) sendHasteItemSpeedToAll(sess *net.Session, player *world.PlayerInfo, speedType byte, duration uint16) {
+	if sess == nil {
+		sess = player.Session
+	}
+	if sess != nil {
+		sendSpeedPacket(sess, player.CharID, speedType, duration)
+	}
+	if s.deps == nil || s.deps.World == nil {
+		return
+	}
+	nearby := s.deps.World.GetNearbyPlayersInShow(player.X, player.Y, player.MapID, player.SessionID, player.ShowID)
+	for _, other := range nearby {
+		if other.CharID != player.CharID {
+			sendSpeedPacket(other.Session, player.CharID, speedType, 0)
+		}
+	}
 }
 
 // ==================== 裝備封包建構 ====================

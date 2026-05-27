@@ -110,6 +110,46 @@ weapons:
 	}
 }
 
+func TestItemSchemaLoadsHasteItemLikeJava(t *testing.T) {
+	weaponPath := writeTempYAML(t, "weapon_list.yaml", "weapons: []\n")
+	armorPath := writeTempYAML(t, "armor_list.yaml", `
+armors:
+  - item_id: 20235
+    name: 伊娃之盾
+    type: shield
+    haste_item: true
+`)
+	etcPath := writeTempYAML(t, "etcitem_list.yaml", "items: []\n")
+
+	table, err := LoadItemTable(weaponPath, armorPath, etcPath)
+	if err != nil {
+		t.Fatalf("載入物品 YAML 失敗: %v", err)
+	}
+	item := table.Get(20235)
+	if item == nil {
+		t.Fatal("找不到測試防具 20235")
+	}
+	if !item.HasteItem {
+		t.Fatal("Java armor.haste_item=1 應載入為 HasteItem=true")
+	}
+
+	live, err := LoadItemTable(
+		filepath.Join("..", "..", "data", "yaml", "weapon_list.yaml"),
+		filepath.Join("..", "..", "data", "yaml", "armor_list.yaml"),
+		filepath.Join("..", "..", "data", "yaml", "etcitem_list.yaml"),
+	)
+	if err != nil {
+		t.Fatalf("載入正式物品 YAML 失敗: %v", err)
+	}
+	evaShield := live.Get(20235)
+	if evaShield == nil {
+		t.Fatal("正式 armor_list.yaml 缺少 yiwei 伊娃之盾 20235")
+	}
+	if !evaShield.HasteItem {
+		t.Fatal("yiwei 伊娃之盾 20235 在 armor.sql haste_item=1，Go YAML 應標記 haste_item: true")
+	}
+}
+
 func writeTempYAML(t *testing.T, name string, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)

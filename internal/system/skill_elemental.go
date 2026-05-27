@@ -105,7 +105,41 @@ func (s *SkillSystem) applyElfWaterHealingModifiers(target *world.PlayerInfo, he
 	if target.HasBuff(skillPolluteWater) {
 		heal >>= 1
 	}
+	if target.HasBuff(mobSkillPolluteWater) {
+		heal >>= 1
+	}
+	if target.HasBuff(mobSkillHealTurnToDamage) {
+		heal *= -1
+	}
 	return heal
+}
+
+func applyPlayerHealDeltaLikeJava(deps *handler.Deps, target *world.PlayerInfo, heal int32) bool {
+	if target == nil || heal == 0 {
+		return false
+	}
+	if heal > 0 {
+		if target.HP >= target.MaxHP {
+			return false
+		}
+		target.HP += heal
+		if target.HP > target.MaxHP {
+			target.HP = target.MaxHP
+		}
+		sendHpUpdate(target.Session, target)
+		return true
+	}
+
+	target.HP += heal
+	if target.HP <= 0 {
+		target.HP = 0
+		if deps != nil && deps.Death != nil {
+			deps.Death.KillPlayer(target)
+			return true
+		}
+	}
+	sendHpUpdate(target.Session, target)
+	return true
 }
 
 func (s *SkillSystem) applyAreaOfSilence(caster *world.PlayerInfo, skill *data.SkillInfo, nearby []*world.PlayerInfo) {

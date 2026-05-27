@@ -25,6 +25,22 @@ func NewItemUseSystem(deps *handler.Deps) *ItemUseSystem {
 	return &ItemUseSystem{deps: deps}
 }
 
+func applyPlayerPotionHealingModifiersLikeJava(player *world.PlayerInfo, heal int32) int32 {
+	if player == nil || heal == 0 {
+		return heal
+	}
+	if player.HasBuff(skillPolluteWater) {
+		heal >>= 1
+	}
+	if player.HasBuff(mobSkillPolluteWater) {
+		heal >>= 1
+	}
+	if player.HasBuff(mobSkillPotionTurnToDamage) {
+		heal *= -1
+	}
+	return heal
+}
+
 func isPlayerItemUseBlocked(sess *net.Session, player *world.PlayerInfo) bool {
 	if player.Paralyzed || player.Sleeped {
 		handler.SendParalysis(sess, handler.TeleportUnlock)
@@ -65,31 +81,21 @@ func (s *ItemUseSystem) UseConsumable(sess *net.Session, player *world.PlayerInf
 			// Java ref: Potion.UseHeallingPotion — 總是消耗、總是播放音效/訊息。
 			// 高斯隨機 ±20%: healHp *= (gaussian/5 + 1)
 			if pot.Amount > 0 {
-				healAmt := float64(pot.Amount) * (rand.NormFloat64()/5.0 + 1.0)
+				healAmt := int32(float64(pot.Amount) * (rand.NormFloat64()/5.0 + 1.0))
 				if healAmt < 1 {
 					healAmt = 1
 				}
-				// Java `UserAddHp.java:69-71 / UserAddHp_FR.java:91-93`：
-				// 持有 POLLUTE_WATER(173) 時藥水 HP 回復量減半。
-				if player.HasBuff(173) {
-					healAmt /= 2
-					if healAmt < 1 {
-						healAmt = 1
-					}
-				}
-				if player.HP < player.MaxHP {
-					player.HP += int32(healAmt)
-					if player.HP > player.MaxHP {
-						player.HP = player.MaxHP
-					}
-					sendHpUpdate(sess, player)
-				}
+				// Java UserAddHp：173/4012 讓回復量減半，4011 讓治療轉為傷害。
+				healAmt = applyPlayerPotionHealingModifiersLikeJava(player, healAmt)
+				applyPlayerHealDeltaLikeJava(s.deps, player, healAmt)
 				gfx := int32(pot.GfxID)
 				if gfx == 0 {
 					gfx = 189 // 預設小藍光
 				}
 				s.BroadcastEffect(sess, player, gfx)
-				handler.SendServerMessage(sess, 77) // "你覺得舒服多了"
+				if healAmt > 0 {
+					handler.SendServerMessage(sess, 77) // "你覺得舒服多了"
+				}
 				consumed = true
 			}
 
