@@ -1008,6 +1008,7 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 		if skill.CastGfx > 0 {
 			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
 		}
+		s.sendYiweiPostCastStatusRefresh(target)
 		return
 
 	case 11: // 毒咒 — 對玩家施加傷害毒（Java: L1DamagePoison.doInfection(attacker, target, 3000, 5)）
@@ -1036,6 +1037,10 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 
 	case 20, 40: // 闇盲咒術 / 黑闇之影 — Owner: skill_status.go
 		s.applyCurseBlindEffect(target, skill)
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+		}
+		s.sendYiweiPostCastStatusRefresh(target)
 		return
 
 	case 87: // 衝擊之暈 — Owner: skill_status.go；玩家目標需要雙手劍
@@ -1066,6 +1071,10 @@ func (s *SkillSystem) executeBuffSkill(sess *net.Session, player *world.PlayerIn
 			handler.SendParalysis(target.Session, handler.SleepRemove)
 		}
 		s.removeCurseBlindEffect(target)
+		if skill.CastGfx > 0 {
+			handler.BroadcastToPlayers(nearby, handler.BuildSkillEffect(target.CharID, skill.CastGfx))
+		}
+		s.sendYiweiPostCastStatusRefresh(target)
 		return
 
 	case 39: // 魔力奪取

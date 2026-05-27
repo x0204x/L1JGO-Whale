@@ -66,6 +66,164 @@ func TestSkillBuffCurePoisonSendsJavaSkillSound(t *testing.T) {
 	}
 }
 
+func TestSkillBuffCurePoisonSendsYiweiPostCastStatusRefresh(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "cure-poison-status",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		HP:        100,
+		MaxHP:     100,
+		MP:        100,
+		MaxMP:     100,
+		Level:     52,
+		SP:        5,
+		MR:        14,
+		Dodge:     2,
+		KnownSpells: []int32{
+			9,
+		},
+	})
+	player.PoisonType = 1
+	player.PoisonTicksLeft = 150
+	player.PoisonDmgAmount = 5
+	s := newSkillBuffTestSystem(t, ws)
+
+	s.processSkill(handler.SkillRequest{
+		SessionID: player.SessionID,
+		SkillID:   9,
+		TargetID:  player.CharID,
+	})
+
+	packets := drainSkillTestPackets(player.Session)
+	if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+		t.Fatalf("yiwei sendGrfx 解毒術後會送 S_SPMR 給 PC 目標，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+		t.Fatalf("yiwei sendGrfx 解毒術後會送 S_OwnCharStatus 給 PC 目標，packets=%v", packets)
+	}
+	if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(player)) {
+		t.Fatalf("yiwei sendGrfx 解毒術後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", packets)
+	}
+}
+
+func TestSkillBuffHolyLightSendsYiweiEffectAndPostCastStatusRefresh(t *testing.T) {
+	ws := world.NewState()
+	player := addSkillTestPlayer(ws, &world.PlayerInfo{
+		SessionID: 1,
+		Session:   newSkillTestSession(t, 1),
+		CharID:    1001,
+		Name:      "holy-light",
+		X:         100,
+		Y:         100,
+		MapID:     4,
+		HP:        100,
+		MaxHP:     100,
+		MP:        100,
+		MaxMP:     100,
+		Level:     52,
+		SP:        6,
+		MR:        21,
+		Dodge:     4,
+		KnownSpells: []int32{
+			37,
+		},
+	})
+	player.PoisonType = 1
+	player.PoisonTicksLeft = 150
+	player.PoisonDmgAmount = 5
+	s := newSkillBuffTestSystem(t, ws)
+
+	s.processSkill(handler.SkillRequest{
+		SessionID: player.SessionID,
+		SkillID:   37,
+		TargetID:  player.CharID,
+	})
+
+	if player.PoisonType != 0 {
+		t.Fatalf("聖潔之光應解除中毒，PoisonType=%d", player.PoisonType)
+	}
+	packets := drainSkillTestPackets(player.Session)
+	if !hasSkillEffectPacket(packets, player.CharID, 227) {
+		t.Fatalf("yiwei sendGrfx 聖潔之光會送目標 S_SkillSound 227，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+		t.Fatalf("yiwei sendGrfx 聖潔之光後會送 S_SPMR 給 PC 目標，packets=%v", packets)
+	}
+	if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+		t.Fatalf("yiwei sendGrfx 聖潔之光後會送 S_OwnCharStatus 給 PC 目標，packets=%v", packets)
+	}
+	if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(player)) {
+		t.Fatalf("yiwei sendGrfx 聖潔之光後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", packets)
+	}
+}
+
+func TestSkillBuffCurseBlindSendsYiweiEffectAndPostCastStatusRefresh(t *testing.T) {
+	tests := []struct {
+		name    string
+		skillID int32
+		gfxID   int32
+	}{
+		{name: "curse-blind", skillID: 20, gfxID: 746},
+		{name: "darkness", skillID: 40, gfxID: 2175},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := world.NewState()
+			player := addSkillTestPlayer(ws, &world.PlayerInfo{
+				SessionID: 1,
+				Session:   newSkillTestSession(t, 1),
+				CharID:    1001,
+				Name:      tt.name,
+				X:         100,
+				Y:         100,
+				MapID:     4,
+				HP:        100,
+				MaxHP:     100,
+				MP:        100,
+				MaxMP:     100,
+				Level:     52,
+				SP:        8,
+				MR:        19,
+				Dodge:     5,
+				KnownSpells: []int32{
+					tt.skillID,
+				},
+			})
+			s := newSkillBuffTestSystem(t, ws)
+
+			s.executeBuffSkill(player.Session, player, &data.SkillInfo{
+				SkillID:      tt.skillID,
+				Target:       "buff",
+				BuffDuration: 16,
+				ActionID:     19,
+				CastGfx:      tt.gfxID,
+			}, player.CharID)
+
+			if !player.HasBuff(skillCurseBlindEffect) {
+				t.Fatalf("%d 應套用致盲 buff", tt.skillID)
+			}
+			packets := drainSkillTestPackets(player.Session)
+			if !hasSkillEffectPacket(packets, player.CharID, tt.gfxID) {
+				t.Fatalf("yiwei sendGrfx 技能 %d 會送目標 S_SkillSound %d，packets=%v", tt.skillID, tt.gfxID, packets)
+			}
+			if !hasOpcodePacket(packets, packet.S_OPCODE_MAGIC_STATUS) {
+				t.Fatalf("yiwei sendGrfx 技能 %d 後會送 S_SPMR 給 PC 目標，packets=%v", tt.skillID, packets)
+			}
+			if !hasOpcodePacket(packets, packet.S_OPCODE_STATUS) {
+				t.Fatalf("yiwei sendGrfx 技能 %d 後會送 S_OwnCharStatus 給 PC 目標，packets=%v", tt.skillID, packets)
+			}
+			if !hasYiweiUpdateERPacket(packets, calcPlayerErLikeYiwei(player)) {
+				t.Fatalf("yiwei sendGrfx 技能 %d 後會送 S_PacketBox.UPDATE_ER 給 PC 目標，packets=%v", tt.skillID, packets)
+			}
+		})
+	}
+}
+
 func TestSkillBuffSendsYiweiPostCastStatusRefreshToTarget(t *testing.T) {
 	ws := world.NewState()
 	caster := addSkillTestPlayer(ws, &world.PlayerInfo{
